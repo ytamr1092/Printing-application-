@@ -78,6 +78,30 @@ const copy = {
     stage3Hint: "كلمات مرور، نسخ احتياطي، سجل العمليات",
     stage4: "المرحلة 4 · الذكاء الاصطناعي المحلي",
     stage4Hint: "OCR عربي/إنجليزي وتحسين المستندات دون إنترنت",
+    errorTitle: "تعذر تنفيذ العملية",
+    dismiss: "إغلاق",
+    retry: "إعادة المحاولة",
+    scanUnavailable: "لم يتم العثور على الماسح",
+    scanUnavailableHint: "تأكد من تشغيل Kyocera TASKalfa 306ci واتصال الهاتف بنفس الشبكة المحلية.",
+    printerUnavailable: "الطابعة غير متصلة",
+    printerUnavailableHint: "تحقق من الشبكة أو اختر طابعة من إعدادات Android.",
+    pickerCancelled: "لم يتم اختيار أي ملف",
+    pickerCancelledHint: "اختر ملفًا واحدًا على الأقل ثم حاول مرة أخرى.",
+    phase2: "المرحلة الثانية · الطباعة والمسح",
+    phase2Hint: "حالة الأجهزة ومدير المهام",
+    phase3: "المرحلة الثالثة · الخصوصية والتنظيم",
+    phase3Hint: "نسخ احتياطي وحماية وسجل عمليات محلي",
+    deviceStatus: "حالة الأجهزة",
+    notChecked: "لم يتم التحقق بعد",
+    taskManager: "مدير المهام",
+    noTasks: "لا توجد مهام معلقة",
+    checkDevices: "فحص الأجهزة",
+    backup: "النسخ الاحتياطي المحلي",
+    backupHint: "احفظ نسخة على مجلد تختاره دون رفع الملفات للإنترنت",
+    passwords: "حماية ملفات PDF",
+    passwordsHint: "إضافة كلمة مرور قبل الحفظ",
+    history: "سجل العمليات",
+    historyHint: "آخر العمليات التي نفذها البرنامج",
     picked: "تم اختيار الملفات",
     printReady: "تم تجهيز معاينة الطباعة",
     coming: "سيتم ربط هذه الوظيفة في الإصدار التالي. الواجهة جاهزة لها.",
@@ -139,6 +163,30 @@ const copy = {
     stage3Hint: "Passwords, backups, operation history",
     stage4: "Stage 4 · On-device AI",
     stage4Hint: "Arabic/English OCR and offline document enhancement",
+    errorTitle: "Operation could not be completed",
+    dismiss: "Close",
+    retry: "Try again",
+    scanUnavailable: "Scanner not found",
+    scanUnavailableHint: "Make sure the Kyocera TASKalfa 306ci is on and your phone is on the same local network.",
+    printerUnavailable: "Printer is not connected",
+    printerUnavailableHint: "Check the network or choose a printer from Android settings.",
+    pickerCancelled: "No file selected",
+    pickerCancelledHint: "Choose at least one file and try again.",
+    phase2: "Stage 2 · Print & scan",
+    phase2Hint: "Device status and task manager",
+    phase3: "Stage 3 · Privacy & organization",
+    phase3Hint: "Local backups, protection and activity history",
+    deviceStatus: "Device status",
+    notChecked: "Not checked yet",
+    taskManager: "Task manager",
+    noTasks: "No pending tasks",
+    checkDevices: "Check devices",
+    backup: "Local backup",
+    backupHint: "Save a copy to a folder without uploading files",
+    passwords: "PDF protection",
+    passwordsHint: "Add a password before saving",
+    history: "Activity history",
+    historyHint: "Recent operations performed by the app",
     picked: "Files selected",
     printReady: "Print preview prepared",
     coming: "This function will be connected in the next release. The UI is ready.",
@@ -178,6 +226,10 @@ export default function HomeScreen() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [command, setCommand] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<{ title: string; hint: string } | null>(null);
+  const [deviceChecked, setDeviceChecked] = useState(false);
+  const [deviceMessage, setDeviceMessage] = useState<"unknown" | "not-found">("unknown");
+  const [tasks, setTasks] = useState<string[]>([]);
   const { colorScheme, setColorScheme } = useThemeContext();
   const colors = useColors();
   const isArabic = language === "ar";
@@ -186,11 +238,20 @@ export default function HomeScreen() {
   const readableMuted = colorScheme === "dark" ? "#B7C8D8" : "#4B6377";
   const paper = useMemo(() => paperPresetById(selectedPaper), [selectedPaper]);
 
+  const showError = (title: string, hint: string) => setErrorMessage({ title, hint });
+
   const chooseFiles = async (type: string | string[]) => {
-    const result = await DocumentPicker.getDocumentAsync({ type, multiple: true, copyToCacheDirectory: true });
-    if (!result.canceled) {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type, multiple: true, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) {
+        showError(t.pickerCancelled, t.pickerCancelledHint);
+        return;
+      }
       setSelectedFiles(result.assets.map((asset) => asset.name));
+      setTasks((current) => [`${t.picked}: ${result.assets.length}`, ...current].slice(0, 4));
       Alert.alert(t.picked, `${result.assets.length} ${t.selected}`);
+    } catch {
+      showError(t.errorTitle, t.pickerCancelledHint);
     }
   };
 
@@ -207,11 +268,16 @@ export default function HomeScreen() {
       });
       Alert.alert(t.printReady, `${paper.size} · ${paper.weight}`);
     } catch {
-      Alert.alert("PrintPilot", t.coming);
+      showError(t.printerUnavailable, t.printerUnavailableHint);
     }
   };
 
-  const actionComing = () => Alert.alert("PrintPilot", t.coming);
+  const actionComing = () => showError(t.errorTitle, t.coming);
+  const scanForDevices = () => {
+    setDeviceChecked(true);
+    setDeviceMessage("not-found");
+    showError(t.scanUnavailable, t.scanUnavailableHint);
+  };
 
   return (
     <ScreenContainer className="px-5" edges={["top", "left", "right"]}>
@@ -237,6 +303,8 @@ export default function HomeScreen() {
           <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
         </View>
 
+        {errorMessage && <View style={[styles.errorBanner, { backgroundColor: colorScheme === "dark" ? "#3A2026" : "#FFF1F1", borderColor: colorScheme === "dark" ? "#A94B5C" : "#E7A4A9", flexDirection: isArabic ? "row-reverse" : "row" }]}><Icon name="error-outline" color={colorScheme === "dark" ? "#FF9AAA" : "#B42332"} size={21} /><View style={styles.errorCopy}><Text style={[styles.errorTitle, { color: colorScheme === "dark" ? "#FFD9DE" : "#8E1C29", textAlign: isArabic ? "right" : "left" }]}>{errorMessage.title}</Text><Text style={[styles.errorHint, { color: colorScheme === "dark" ? "#F4BFC7" : "#7C3B43", textAlign: isArabic ? "right" : "left" }]}>{errorMessage.hint}</Text></View><Pressable onPress={() => setErrorMessage(null)}><Icon name="close" color={colorScheme === "dark" ? "#FFB2BF" : "#8E1C29"} size={19} /></Pressable></View>}
+
         <View style={[styles.hero, { backgroundColor: colors.primary, flexDirection: isArabic ? "row-reverse" : "row" }]}>
           <View style={[styles.heroCopy, { alignItems: isArabic ? "flex-end" : "flex-start" }]}>
             <Text style={styles.heroKicker}>{t.ready}</Text>
@@ -251,7 +319,7 @@ export default function HomeScreen() {
           <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
           <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("image/*")} />
           <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
-          <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={actionComing} />
+          <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={scanForDevices} />
         </View>
 
         <View style={[styles.sectionHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.recent}</Text><Pressable onPress={actionComing}><Text style={[styles.viewAll, { color: colors.primary }]}>{t.viewAll}</Text></Pressable></View>
@@ -308,6 +376,22 @@ export default function HomeScreen() {
           ))}
         </View>
 
+        <View style={[styles.phaseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.phaseHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.primary + "18" }]}><Icon name="devices" color={colors.primary} size={21} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.phase2}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{t.phase2Hint}</Text></View></View>
+          <View style={[styles.deviceRow, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Icon name="print" color={colors.primary} size={19} /><View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.foreground }]}>{t.printerName}</Text><Text style={[styles.deviceState, { color: deviceMessage === "not-found" ? colors.error : colors.muted }]}>{deviceChecked ? t.scanUnavailable : t.notChecked}</Text></View><View style={[styles.stateDot, { backgroundColor: deviceMessage === "not-found" ? colors.error : colors.warning }]} /></View>
+          <View style={[styles.deviceRow, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Icon name="document-scanner" color={colors.primary} size={19} /><View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.foreground }]}>{t.scan}</Text><Text style={[styles.deviceState, { color: deviceMessage === "not-found" ? colors.error : colors.muted }]}>{deviceChecked ? t.scanUnavailable : t.notChecked}</Text></View><View style={[styles.stateDot, { backgroundColor: deviceMessage === "not-found" ? colors.error : colors.warning }]} /></View>
+          <Pressable onPress={scanForDevices} style={({ pressed }) => [styles.outlineAction, { borderColor: colors.primary }, pressed && styles.pressed]}><Icon name="refresh" color={colors.primary} size={17} /><Text style={[styles.outlineActionText, { color: colors.primary }]}>{t.checkDevices}</Text></Pressable>
+          <View style={[styles.taskHeader, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Text style={[styles.taskTitle, { color: colors.foreground }]}>{t.taskManager}</Text><Text style={[styles.taskCount, { color: colors.muted }]}>{tasks.length}</Text></View>
+          {tasks.length ? tasks.map((task) => <Text key={task} style={[styles.taskItem, { color: colors.muted }]}>{task}</Text>) : <Text style={[styles.taskEmpty, { color: colors.muted }]}>{t.noTasks}</Text>}
+        </View>
+
+        <View style={[styles.phaseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.phaseHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.success + "18" }]}><Icon name="shield" color={colors.success} size={21} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.phase3}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{t.phase3Hint}</Text></View></View>
+          <PrivacyRow icon="backup" title={t.backup} hint={t.backupHint} colors={colors} onPress={() => showError(t.errorTitle, t.backupHint)} />
+          <PrivacyRow icon="lock-outline" title={t.passwords} hint={t.passwordsHint} colors={colors} onPress={() => showError(t.errorTitle, t.passwordsHint)} />
+          <PrivacyRow icon="history" title={t.history} hint={t.historyHint} colors={colors} onPress={() => Alert.alert(t.history, tasks.length ? tasks.join("\n") : t.noTasks)} />
+        </View>
+
         {selectedFiles.length > 0 && <View style={[styles.selectedNotice, { backgroundColor: colors.success + "12", borderColor: colors.success + "35" }]}><Icon name="attach-file" color={colors.success} size={18} /><Text style={[styles.selectedNoticeText, { color: colors.success }]}>{selectedFiles.length} {t.selected}: {selectedFiles.join("، ")}</Text></View>}
       </ScrollView>
     </ScreenContainer>
@@ -320,6 +404,10 @@ function SectionTitle({ title, colors }: { title: string; colors: ReturnType<typ
 
 function SettingLabel({ title, value, colors }: { title: string; value: string; colors: ReturnType<typeof useColors> }) {
   return <View style={styles.settingLabel}><Text style={[styles.smallLabel, { color: colors.muted }]}>{title}</Text><Text style={[styles.settingValue, { color: colors.foreground }]}>{value}</Text></View>;
+}
+
+function PrivacyRow({ icon, title, hint, colors, onPress }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; hint: string; colors: ReturnType<typeof useColors>; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.privacyRow, { borderTopColor: colors.border }, pressed && styles.rowPressed]}><Icon name={icon} color={colors.success} size={19} /><View style={styles.privacyCopy}><Text style={[styles.deviceName, { color: colors.foreground }]}>{title}</Text><Text style={[styles.deviceState, { color: colors.muted }]}>{hint}</Text></View><Icon name="chevron-right" color={colors.muted} size={18} /></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -335,6 +423,10 @@ const styles = StyleSheet.create({
   offlineBanner: { alignItems: "center", gap: 8, borderRadius: 11, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 8, marginBottom: 14 },
   offlineText: { fontSize: 12, fontWeight: "700", flex: 1 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
+  errorBanner: { alignItems: "center", gap: 9, borderRadius: 13, borderWidth: 1, padding: 11, marginBottom: 14 },
+  errorCopy: { flex: 1 },
+  errorTitle: { fontSize: 12, fontWeight: "800" },
+  errorHint: { fontSize: 10.5, marginTop: 3, lineHeight: 15 },
   hero: { borderRadius: 22, padding: 18, minHeight: 148, overflow: "hidden", marginBottom: 22 },
   heroCopy: { flex: 1, gap: 5 },
   heroKicker: { color: "#BFE8F2", fontWeight: "700", fontSize: 11, letterSpacing: 0.7 },
@@ -400,4 +492,23 @@ const styles = StyleSheet.create({
   roadmapStage: { fontSize: 12, fontWeight: "800" },
   roadmapStageHint: { fontSize: 10, marginTop: 3, lineHeight: 15 },
   roadmapStatus: { fontSize: 10, fontWeight: "800" },
+  phaseCard: { borderRadius: 17, borderWidth: 1, padding: 14, marginBottom: 16 },
+  phaseHeader: { alignItems: "center", gap: 10, marginBottom: 4 },
+  phaseIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  phaseTitleBlock: { flex: 1 },
+  phaseHint: { fontSize: 10, marginTop: 3 },
+  deviceRow: { alignItems: "center", gap: 9, borderTopWidth: 1, paddingVertical: 11 },
+  deviceCopy: { flex: 1 },
+  deviceName: { fontSize: 12, fontWeight: "800" },
+  deviceState: { fontSize: 10, marginTop: 3, lineHeight: 15 },
+  stateDot: { width: 9, height: 9, borderRadius: 5 },
+  outlineAction: { height: 38, borderRadius: 11, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, marginTop: 4 },
+  outlineActionText: { fontSize: 11, fontWeight: "800" },
+  taskHeader: { alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, paddingTop: 11, marginTop: 12 },
+  taskTitle: { fontSize: 12, fontWeight: "800" },
+  taskCount: { fontSize: 11, fontWeight: "700" },
+  taskEmpty: { fontSize: 10.5, paddingTop: 8 },
+  taskItem: { fontSize: 10.5, paddingTop: 8 },
+  privacyRow: { alignItems: "center", gap: 9, borderTopWidth: 1, paddingVertical: 11, flexDirection: "row" },
+  privacyCopy: { flex: 1 },
 });
