@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { paperOptions, paperPresetById, supportedPaperWeights } from "../shared/print-options";
+import { canMergePdfs, hasAtLeastFiles } from "../shared/file-operations";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -27,5 +28,19 @@ describe("PrintPilot theme", () => {
     expect(themeColors.foreground.dark).toBe("#F3F8FC");
     expect(themeColors.foreground.light).toBe("#071A2B");
     expect(themeColors.muted.light).toBe("#4B6377");
+  });
+});
+
+describe("PrintPilot file operations", () => {
+  it("requires at least two files for a PDF merge", () => {
+    expect(canMergePdfs(1)).toBe(false);
+    expect(canMergePdfs(2)).toBe(true);
+    expect(canMergePdfs(0)).toBe(false);
+  });
+
+  it("rejects empty or fractional file counts", () => {
+    expect(hasAtLeastFiles(0)).toBe(false);
+    expect(hasAtLeastFiles(1)).toBe(true);
+    expect(hasAtLeastFiles(1.5)).toBe(false);
   });
 });

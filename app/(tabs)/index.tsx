@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -10,12 +10,19 @@ import {
   View,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+// pdf-lib's bundled ESM build avoids Metro's CommonJS/tslib interop issue.
+// @ts-expect-error The package does not expose a declaration for this bundled entry.
+import { PDFDocument } from "pdf-lib/dist/pdf-lib.esm.js";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext } from "@/lib/theme-provider";
+import { canMergePdfs, hasAtLeastFiles } from "@/shared/file-operations";
 import { paperOptions, paperPresetById } from "@/shared/print-options";
 
 type Language = "ar" | "en";
@@ -87,6 +94,13 @@ const copy = {
     printerUnavailableHint: "تحقق من الشبكة أو اختر طابعة من إعدادات Android.",
     pickerCancelled: "لم يتم اختيار أي ملف",
     pickerCancelledHint: "اختر ملفًا واحدًا على الأقل ثم حاول مرة أخرى.",
+    mergeNeedTwo: "اختر ملفي PDF أو أكثر للدمج.",
+    mergeSuccess: "تم دمج ملفات PDF بنجاح",
+    mergeFailed: "تعذر دمج ملفات PDF",
+    shareResult: "مشاركة الملف الناتج",
+    imagesNeedOne: "اختر صورة واحدة على الأقل.",
+    imagesSuccess: "تم تحويل الصور إلى PDF بنجاح",
+    imagesFailed: "تعذر تحويل الصور إلى PDF",
     phase2: "المرحلة الثانية · الطباعة والمسح",
     phase2Hint: "حالة الأجهزة ومدير المهام",
     phase3: "المرحلة الثالثة · الخصوصية والتنظيم",
@@ -172,6 +186,13 @@ const copy = {
     printerUnavailableHint: "Check the network or choose a printer from Android settings.",
     pickerCancelled: "No file selected",
     pickerCancelledHint: "Choose at least one file and try again.",
+    mergeNeedTwo: "Choose two or more PDF files to merge.",
+    mergeSuccess: "PDF files merged successfully",
+    mergeFailed: "PDF merge failed",
+    shareResult: "Share the result",
+    imagesNeedOne: "Choose at least one image.",
+    imagesSuccess: "Images converted to PDF successfully",
+    imagesFailed: "Image to PDF conversion failed",
     phase2: "Stage 2 · Print & scan",
     phase2Hint: "Device status and task manager",
     phase3: "Stage 3 · Privacy & organization",
@@ -217,6 +238,19 @@ function FileRow({ name, time, icon, colors, onPress }: { name: string; time: st
   );
 }
 
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = globalThis.atob ? globalThis.atob(base64) : Buffer.from(base64, "base64").toString("binary");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) binary += String.fromCharCode(bytes[index]);
+  return globalThis.btoa ? globalThis.btoa(binary) : Buffer.from(binary, "binary").toString("base64");
+}
+
 export default function HomeScreen() {
   const [language, setLanguage] = useState<Language>("ar");
   const [selectedPaper, setSelectedPaper] = useState("certificate");
@@ -230,6 +264,7 @@ export default function HomeScreen() {
   const [deviceChecked, setDeviceChecked] = useState(false);
   const [deviceMessage, setDeviceMessage] = useState<"unknown" | "not-found">("unknown");
   const [tasks, setTasks] = useState<string[]>([]);
+  const [historyReady, setHistoryReady] = useState(false);
   const { colorScheme, setColorScheme } = useThemeContext();
   const colors = useColors();
   const isArabic = language === "ar";
@@ -237,6 +272,17 @@ export default function HomeScreen() {
   const readableText = colorScheme === "dark" ? "#F3F8FC" : "#071A2B";
   const readableMuted = colorScheme === "dark" ? "#B7C8D8" : "#4B6377";
   const paper = useMemo(() => paperPresetById(selectedPaper), [selectedPaper]);
+
+  useEffect(() => {
+    AsyncStorage.getItem("printpilot.activity.v1").then((stored) => {
+      if (stored) setTasks(JSON.parse(stored) as string[]);
+      setHistoryReady(true);
+    }).catch(() => setHistoryReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (historyReady) AsyncStorage.setItem("printpilot.activity.v1", JSON.stringify(tasks)).catch(() => undefined);
+  }, [historyReady, tasks]);
 
   const showError = (title: string, hint: string) => setErrorMessage({ title, hint });
 
@@ -255,6 +301,67 @@ export default function HomeScreen() {
     }
   };
 
+  const mergePdfs = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: true, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) {
+        showError(t.pickerCancelled, t.pickerCancelledHint);
+        return;
+      }
+      if (!canMergePdfs(result.assets.length)) {
+        showError(t.mergeNeedTwo, t.mergeNeedTwo);
+        return;
+      }
+      const merged = await PDFDocument.create();
+      for (const asset of result.assets) {
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+        const source = await PDFDocument.load(base64ToBytes(base64));
+        const pages = await merged.copyPages(source, source.getPageIndices());
+        pages.forEach((page: any) => merged.addPage(page));
+      }
+      const mergedBase64 = bytesToBase64(await merged.save());
+      const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Merged-${Date.now()}.pdf`;
+      await FileSystem.writeAsStringAsync(outputUri, mergedBase64, { encoding: FileSystem.EncodingType.Base64 });
+      setSelectedFiles(result.assets.map((asset) => asset.name));
+      setTasks((current) => [`${t.mergeSuccess}: ${result.assets.length}`, ...current].slice(0, 4));
+      setErrorMessage(null);
+      Alert.alert(t.mergeSuccess, outputUri, [{ text: t.dismiss, style: "cancel" }, { text: t.shareResult, onPress: async () => {
+        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
+        else showError(t.errorTitle, t.printerUnavailableHint);
+      } }]);
+    } catch {
+      showError(t.mergeFailed, t.coming);
+    }
+  };
+
+  const imagesToPdf = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "image/*", multiple: true, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length || !hasAtLeastFiles(result.assets.length)) {
+        showError(t.imagesNeedOne, t.imagesNeedOne);
+        return;
+      }
+      const imageMarkup = await Promise.all(result.assets.map(async (asset) => {
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+        const mime = asset.mimeType || "image/jpeg";
+        return `<section><img src="data:${mime};base64,${base64}" /></section>`;
+      }));
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{margin:0}body{margin:0;background:#fff}section{page-break-after:always;width:100%;height:100vh;display:flex;align-items:center;justify-content:center}section:last-child{page-break-after:auto}img{max-width:100%;max-height:100%;object-fit:contain}</style></head><body>${imageMarkup.join("")}</body></html>`;
+      const generated = await Print.printToFileAsync({ html, width: 794, height: 1123 });
+      const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Images-${Date.now()}.pdf`;
+      await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
+      setSelectedFiles(result.assets.map((asset) => asset.name));
+      setTasks((current) => [`${t.imagesSuccess}: ${result.assets.length}`, ...current].slice(0, 4));
+      setErrorMessage(null);
+      Alert.alert(t.imagesSuccess, outputUri, [{ text: t.dismiss, style: "cancel" }, { text: t.shareResult, onPress: async () => {
+        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
+        else showError(t.errorTitle, t.printerUnavailableHint);
+      } }]);
+    } catch {
+      showError(t.imagesFailed, t.coming);
+    }
+  };
+
   const openPrintDialog = async () => {
     try {
       const width = orientation === "portrait" ? 794 : 1123;
@@ -266,7 +373,8 @@ export default function HomeScreen() {
         orientation: orientation === "portrait" ? Print.Orientation.portrait : Print.Orientation.landscape,
         margins: { top: 18, bottom: 18, left: 18, right: 18 },
       });
-      Alert.alert(t.printReady, `${paper.size} · ${paper.weight}`);
+      setTasks((current) => [`${t.printReady}: ${paper.size} · ${selectedWeight}`, ...current].slice(0, 4));
+      Alert.alert(t.printReady, `${paper.size} · ${selectedWeight}`);
     } catch {
       showError(t.printerUnavailable, t.printerUnavailableHint);
     }
@@ -316,8 +424,8 @@ export default function HomeScreen() {
 
         <SectionTitle title={t.quick} colors={colors} />
         <View style={styles.actionsGrid}>
-          <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
-          <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("image/*")} />
+          <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" textColor={readableText} mutedColor={readableMuted} onPress={mergePdfs} />
+          <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={readableText} mutedColor={readableMuted} onPress={imagesToPdf} />
           <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
           <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={scanForDevices} />
         </View>
