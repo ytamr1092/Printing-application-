@@ -68,6 +68,16 @@ const copy = {
     placeholder: "اكتب أمرًا مثل: ادمج الملفين ورقّم الصفحات...",
     execute: "تنفيذ",
     noInternet: "الذكاء الاصطناعي المحلي متاح دون إنترنت",
+    roadmap: "مراحل التطوير القادمة",
+    roadmapHint: "نطوّر البرنامج خطوة بخطوة بدون تعقيد",
+    stage1: "المرحلة 1 · إدارة الملفات",
+    stage1Hint: "دمج PDF، تحويل الصور، ترتيب وحذف الصفحات",
+    stage2: "المرحلة 2 · الطباعة والمسح",
+    stage2Hint: "ربط Kyocera، المسح الشبكي، المعاينة المتقدمة",
+    stage3: "المرحلة 3 · الخصوصية والتنظيم",
+    stage3Hint: "كلمات مرور، نسخ احتياطي، سجل العمليات",
+    stage4: "المرحلة 4 · الذكاء الاصطناعي المحلي",
+    stage4Hint: "OCR عربي/إنجليزي وتحسين المستندات دون إنترنت",
     picked: "تم اختيار الملفات",
     printReady: "تم تجهيز معاينة الطباعة",
     coming: "سيتم ربط هذه الوظيفة في الإصدار التالي. الواجهة جاهزة لها.",
@@ -119,6 +129,16 @@ const copy = {
     placeholder: "Try: merge the files and number the pages...",
     execute: "Run",
     noInternet: "On-device AI is available without internet",
+    roadmap: "Next development stages",
+    roadmapHint: "We build it step by step, without unnecessary complexity",
+    stage1: "Stage 1 · File management",
+    stage1Hint: "Merge PDF, images to PDF, reorder and delete pages",
+    stage2: "Stage 2 · Print & scan",
+    stage2Hint: "Kyocera connection, network scan, advanced preview",
+    stage3: "Stage 3 · Privacy & organization",
+    stage3Hint: "Passwords, backups, operation history",
+    stage4: "Stage 4 · On-device AI",
+    stage4Hint: "Arabic/English OCR and offline document enhancement",
     picked: "Files selected",
     printReady: "Print preview prepared",
     coming: "This function will be connected in the next release. The UI is ready.",
@@ -129,12 +149,12 @@ function Icon({ name, color, size = 22 }: { name: React.ComponentProps<typeof Ma
   return <MaterialIcons name={name} color={color} size={size} />;
 }
 
-function ActionCard({ icon, title, hint, color, onPress }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; hint: string; color: string; onPress: () => void }) {
+function ActionCard({ icon, title, hint, color, textColor, mutedColor, onPress }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; hint: string; color: string; textColor: string; mutedColor: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.actionCard, { backgroundColor: color + "14" }, pressed && styles.pressed]}>
       <View style={[styles.actionIcon, { backgroundColor: color + "22" }]}><Icon name={icon} color={color} size={23} /></View>
-      <Text style={styles.actionTitle}>{title}</Text>
-      <Text style={styles.actionHint} numberOfLines={1}>{hint}</Text>
+      <Text style={[styles.actionTitle, { color: textColor }]}>{title}</Text>
+      <Text style={[styles.actionHint, { color: mutedColor }]} numberOfLines={1}>{hint}</Text>
     </Pressable>
   );
 }
@@ -152,6 +172,7 @@ function FileRow({ name, time, icon, colors, onPress }: { name: string; time: st
 export default function HomeScreen() {
   const [language, setLanguage] = useState<Language>("ar");
   const [selectedPaper, setSelectedPaper] = useState("certificate");
+  const [selectedWeight, setSelectedWeight] = useState("200 g/m²");
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
   const [copies, setCopies] = useState("1");
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -176,7 +197,7 @@ export default function HomeScreen() {
       const width = orientation === "portrait" ? 794 : 1123;
       const height = orientation === "portrait" ? 1123 : 794;
       await Print.printAsync({
-        html: `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:${paper.size};margin:18mm}body{font-family:Arial;color:#10233f;text-align:center;padding-top:28%;}h1{font-size:30px}p{font-size:16px;color:#527087}</style></head><body><h1>${isArabic ? "معاينة شهادة PrintPilot" : "PrintPilot Certificate Preview"}</h1><p>${paper.ar} · ${paper.weight} · ${copies} ${isArabic ? "نسخة" : "copies"}</p></body></html>`,
+        html: `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:${paper.size};margin:18mm}body{font-family:Arial;color:#10233f;text-align:center;padding-top:28%;}h1{font-size:30px}p{font-size:16px;color:#527087}</style></head><body><h1>${isArabic ? "معاينة شهادة PrintPilot" : "PrintPilot Certificate Preview"}</h1><p>${paper.ar} · ${selectedWeight} · ${copies} ${isArabic ? "نسخة" : "copies"}</p></body></html>`,
         width,
         height,
         orientation: orientation === "portrait" ? Print.Orientation.portrait : Print.Orientation.landscape,
@@ -225,10 +246,10 @@ export default function HomeScreen() {
 
         <SectionTitle title={t.quick} colors={colors} />
         <View style={styles.actionsGrid}>
-          <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" onPress={() => chooseFiles("application/pdf")} />
-          <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" onPress={() => chooseFiles("image/*")} />
-          <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" onPress={() => chooseFiles("application/pdf")} />
-          <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" onPress={actionComing} />
+          <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" textColor={colors.foreground} mutedColor={colors.muted} onPress={() => chooseFiles("application/pdf")} />
+          <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={colors.foreground} mutedColor={colors.muted} onPress={() => chooseFiles("image/*")} />
+          <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={colors.foreground} mutedColor={colors.muted} onPress={() => chooseFiles("application/pdf")} />
+          <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={colors.foreground} mutedColor={colors.muted} onPress={actionComing} />
         </View>
 
         <View style={[styles.sectionHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.recent}</Text><Pressable onPress={actionComing}><Text style={[styles.viewAll, { color: colors.primary }]}>{t.viewAll}</Text></Pressable></View>
@@ -245,13 +266,14 @@ export default function HomeScreen() {
             {paperOptions.map((option) => <Pressable key={option.id} onPress={() => setSelectedPaper(option.id)} style={[styles.pill, { backgroundColor: selectedPaper === option.id ? colors.primary : colors.background, borderColor: selectedPaper === option.id ? colors.primary : colors.border }]}><Text style={[styles.pillText, { color: selectedPaper === option.id ? "#fff" : colors.foreground }]}>{isArabic ? option.ar : option.en}</Text></Pressable>)}
           </ScrollView>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingLabel title={t.weight} value={paper.weight} colors={colors} />
+          <SettingLabel title={t.weight} value={selectedWeight} colors={colors} />
           <View style={[styles.weightRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
             {[
+              ["70 g/m²", "خفيف"],
               ["80 g/m²", "عادي"],
               ["120 g/m²", "متوسط"],
               ["200 g/m²", "شهادة"],
-            ].map(([value, label]) => <Pressable key={value} onPress={() => setSelectedPaper(value === "200 g/m²" ? "certificate" : "a4")} style={[styles.weightItem, { backgroundColor: paper.weight === value ? colors.primary + "16" : colors.background, borderColor: paper.weight === value ? colors.primary : colors.border }]}><Text style={[styles.weightValue, { color: paper.weight === value ? colors.primary : colors.foreground }]}>{value}</Text><Text style={[styles.weightLabel, { color: colors.muted }]}>{isArabic ? label : value === "80 g/m²" ? "Standard" : value === "120 g/m²" ? "Medium" : "Certificate"}</Text></Pressable>)}
+            ].map(([value, label]) => <Pressable key={value} onPress={() => setSelectedWeight(value)} style={[styles.weightItem, { backgroundColor: selectedWeight === value ? colors.primary + "16" : colors.background, borderColor: selectedWeight === value ? colors.primary : colors.border }]}><Text style={[styles.weightValue, { color: selectedWeight === value ? colors.primary : colors.foreground }]}>{value}</Text><Text style={[styles.weightLabel, { color: colors.muted }]}>{isArabic ? label : value === "70 g/m²" ? "Light" : value === "80 g/m²" ? "Standard" : value === "120 g/m²" ? "Medium" : "Certificate"}</Text></Pressable>)}
           </View>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <SettingLabel title={t.orientation} value={orientation === "portrait" ? t.portrait : t.landscape} colors={colors} />
@@ -268,6 +290,20 @@ export default function HomeScreen() {
         <View style={[styles.smartCard, { backgroundColor: colorScheme === "dark" ? "#1D2C3B" : "#EEF6FA", borderColor: colors.primary + "38" }]}>
           <View style={[styles.sectionHeader, { flexDirection: isArabic ? "row-reverse" : "row", marginBottom: 4 }]}><View style={[styles.aiTitle, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.aiIcon, { backgroundColor: colors.primary }]}><Icon name="auto-awesome" color="#fff" size={19} /></View><View><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.smart}</Text><Text style={[styles.aiHint, { color: colors.muted }]}>{t.smartHint}</Text></View></View><Switch value={aiEnabled} onValueChange={setAiEnabled} trackColor={{ false: colors.border, true: colors.primary + "66" }} thumbColor={aiEnabled ? colors.primary : colors.muted} /></View>
           {aiEnabled ? <View style={[styles.aiBody, { flexDirection: isArabic ? "row-reverse" : "row" }]}><TextInput value={command} onChangeText={setCommand} placeholder={t.placeholder} placeholderTextColor={colors.muted} multiline style={[styles.commandInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, textAlign: isArabic ? "right" : "left" }]} /><Pressable onPress={() => Alert.alert(t.smart, command || t.noInternet)} style={({ pressed }) => [styles.executeButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Icon name="play-arrow" color="#fff" size={20} /><Text style={styles.executeText}>{t.execute}</Text></Pressable></View> : <Text style={[styles.aiOffText, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{t.smartAction} · {t.noInternet}</Text>}
+        </View>
+
+        <View style={[styles.roadmapCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.roadmapHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
+            <View style={[styles.roadmapIcon, { backgroundColor: colors.primary + "18" }]}><Icon name="alt-route" color={colors.primary} size={21} /></View>
+            <View style={styles.roadmapTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.roadmap}</Text><Text style={[styles.roadmapHint, { color: colors.muted }]}>{t.roadmapHint}</Text></View>
+          </View>
+          {[{ title: t.stage1, hint: t.stage1Hint, icon: "folder-special" as const, done: true }, { title: t.stage2, hint: t.stage2Hint, icon: "print" as const, done: false }, { title: t.stage3, hint: t.stage3Hint, icon: "security" as const, done: false }, { title: t.stage4, hint: t.stage4Hint, icon: "auto-awesome" as const, done: false }].map((stage, index) => (
+            <View key={stage.title} style={[styles.roadmapRow, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}>
+              <View style={[styles.roadmapStep, { backgroundColor: stage.done ? colors.success + "18" : colors.background, borderColor: stage.done ? colors.success : colors.border }]}><Icon name={stage.icon} color={stage.done ? colors.success : colors.muted} size={17} /></View>
+              <View style={styles.roadmapCopy}><Text style={[styles.roadmapStage, { color: colors.foreground }]}>{stage.title}</Text><Text style={[styles.roadmapStageHint, { color: colors.muted }]}>{stage.hint}</Text></View>
+              <Text style={[styles.roadmapStatus, { color: stage.done ? colors.success : colors.muted }]}>{stage.done ? (isArabic ? "جاهز" : "Ready") : (isArabic ? "قادم" : "Next")}</Text>
+            </View>
+          ))}
         </View>
 
         {selectedFiles.length > 0 && <View style={[styles.selectedNotice, { backgroundColor: colors.success + "12", borderColor: colors.success + "35" }]}><Icon name="attach-file" color={colors.success} size={18} /><Text style={[styles.selectedNoticeText, { color: colors.success }]}>{selectedFiles.length} {t.selected}: {selectedFiles.join("، ")}</Text></View>}
@@ -351,4 +387,15 @@ const styles = StyleSheet.create({
   aiOffText: { fontSize: 11, marginTop: 6, lineHeight: 18 },
   selectedNotice: { borderWidth: 1, borderRadius: 12, padding: 11, flexDirection: "row", alignItems: "center", gap: 7 },
   selectedNoticeText: { flex: 1, fontSize: 10.5, fontWeight: "700" },
+  roadmapCard: { borderRadius: 17, borderWidth: 1, padding: 14, marginBottom: 16 },
+  roadmapHeader: { alignItems: "center", gap: 10, marginBottom: 4 },
+  roadmapIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  roadmapTitleBlock: { flex: 1 },
+  roadmapHint: { fontSize: 10, marginTop: 3 },
+  roadmapRow: { alignItems: "center", gap: 9, borderTopWidth: 1, paddingVertical: 11 },
+  roadmapStep: { width: 33, height: 33, borderRadius: 11, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  roadmapCopy: { flex: 1 },
+  roadmapStage: { fontSize: 12, fontWeight: "800" },
+  roadmapStageHint: { fontSize: 10, marginTop: 3, lineHeight: 15 },
+  roadmapStatus: { fontSize: 10, fontWeight: "800" },
 });

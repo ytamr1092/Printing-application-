@@ -13,6 +13,6 @@ export const paperOptions: PaperOption[] = [
   { id: "certificate", ar: "شهادة — A4 سميك", en: "Certificate — A4", size: "210 × 297 mm", weight: "200 g/m²" },
 ];
 
-export const supportedPaperWeights = ["80 g/m²", "120 g/m²", "200 g/m²"] as const;
+export const supportedPaperWeights = ["70 g/m²", "80 g/m²", "120 g/m²", "200 g/m²"] as const;
 
 export const paperPresetById = (id: string) => paperOptions.find((paper) => paper.id === id) ?? paperOptions[0];

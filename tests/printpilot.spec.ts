@@ -15,7 +15,7 @@ describe("PrintPilot paper presets", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain("a4");
     expect(ids).toContain("certificate");
-    expect(supportedPaperWeights).toEqual(["80 g/m²", "120 g/m²", "200 g/m²"]);
+    expect(supportedPaperWeights).toEqual(["70 g/m²", "80 g/m²", "120 g/m²", "200 g/m²"]);
   });
 });
 
