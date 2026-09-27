@@ -182,6 +182,8 @@ export default function HomeScreen() {
   const colors = useColors();
   const isArabic = language === "ar";
   const t = copy[language];
+  const readableText = colorScheme === "dark" ? "#F3F8FC" : "#071A2B";
+  const readableMuted = colorScheme === "dark" ? "#B7C8D8" : "#4B6377";
   const paper = useMemo(() => paperPresetById(selectedPaper), [selectedPaper]);
 
   const chooseFiles = async (type: string | string[]) => {
@@ -246,10 +248,10 @@ export default function HomeScreen() {
 
         <SectionTitle title={t.quick} colors={colors} />
         <View style={styles.actionsGrid}>
-          <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" textColor={colors.foreground} mutedColor={colors.muted} onPress={() => chooseFiles("application/pdf")} />
-          <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={colors.foreground} mutedColor={colors.muted} onPress={() => chooseFiles("image/*")} />
-          <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={colors.foreground} mutedColor={colors.muted} onPress={() => chooseFiles("application/pdf")} />
-          <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={colors.foreground} mutedColor={colors.muted} onPress={actionComing} />
+          <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
+          <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("image/*")} />
+          <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
+          <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={actionComing} />
         </View>
 
         <View style={[styles.sectionHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.recent}</Text><Pressable onPress={actionComing}><Text style={[styles.viewAll, { color: colors.primary }]}>{t.viewAll}</Text></Pressable></View>

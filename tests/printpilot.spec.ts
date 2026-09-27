@@ -25,5 +25,7 @@ describe("PrintPilot theme", () => {
     expect(themeColors.primary.dark).toBe("#42C4D9");
     expect(themeColors.background.dark).toBe("#0C1725");
     expect(themeColors.foreground.dark).toBe("#F3F8FC");
+    expect(themeColors.foreground.light).toBe("#071A2B");
+    expect(themeColors.muted.light).toBe("#4B6377");
   });
 });
