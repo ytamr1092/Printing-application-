@@ -15,15 +15,13 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-// pdf-lib's bundled ESM build avoids Metro's CommonJS/tslib interop issue.
-// @ts-expect-error The package does not expose a declaration for this bundled entry.
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib/dist/pdf-lib.esm.js";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext } from "@/lib/theme-provider";
 import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "@/shared/file-operations";
 import { paperOptions, paperPresetById } from "@/shared/print-options";
+import { printProfiles, printProfileById } from "@/shared/print-profiles";
 
 type Language = "ar" | "en";
 
@@ -124,6 +122,27 @@ const copy = {
     passwordsHint: "إضافة كلمة مرور قبل الحفظ",
     history: "سجل العمليات",
     historyHint: "آخر العمليات التي نفذها البرنامج",
+    profiles: "ملفات تعريف الطباعة",
+    profilesHint: "إعدادات جاهزة بضغطة واحدة",
+    colorMode: "الألوان",
+    color: "ملون",
+    bw: "أبيض وأسود",
+    duplex: "وجهين",
+    oneSided: "وجه واحد",
+    profileApplied: "تم تطبيق ملف التعريف",
+    cancelAll: "إلغاء كل المهام",
+    tasksCancelled: "تم إلغاء كل المهام المعلقة",
+    backupSuccess: "تم إنشاء النسخة الاحتياطية المحلية",
+    backupFailed: "تعذر إنشاء النسخة الاحتياطية",
+    backupConfirm: "سيتم حفظ إعداداتك وسجل العمليات في ملف محلي قابل للمشاركة. هل تريد المتابعة؟",
+    restoreBackup: "استعادة نسخة احتياطية",
+    restoreHint: "استعد الإعدادات من ملف محلي",
+    restoreSuccess: "تمت استعادة النسخة الاحتياطية",
+    restoreFailed: "تعذر استعادة النسخة الاحتياطية",
+    invalidBackup: "ملف النسخة الاحتياطية غير صالح",
+    confirmPrint: "تأكيد الطباعة",
+    confirmPrintHint: "راجع الإعدادات قبل فتح واجهة الطباعة.",
+    continueAction: "متابعة",
     picked: "تم اختيار الملفات",
     printReady: "تم تجهيز معاينة الطباعة",
     coming: "سيتم ربط هذه الوظيفة في الإصدار التالي. الواجهة جاهزة لها.",
@@ -224,6 +243,27 @@ const copy = {
     passwordsHint: "Add a password before saving",
     history: "Activity history",
     historyHint: "Recent operations performed by the app",
+    profiles: "Print profiles",
+    profilesHint: "Ready-to-use settings in one tap",
+    colorMode: "Color mode",
+    color: "Color",
+    bw: "Black & white",
+    duplex: "Duplex",
+    oneSided: "One-sided",
+    profileApplied: "Print profile applied",
+    cancelAll: "Cancel all tasks",
+    tasksCancelled: "All pending tasks were cancelled",
+    backupSuccess: "Local backup created",
+    backupFailed: "Backup could not be created",
+    backupConfirm: "Your settings and activity history will be saved to a local shareable file. Continue?",
+    restoreBackup: "Restore backup",
+    restoreHint: "Restore settings from a local file",
+    restoreSuccess: "Backup restored",
+    restoreFailed: "Backup could not be restored",
+    invalidBackup: "This backup file is not valid",
+    confirmPrint: "Confirm printing",
+    confirmPrintHint: "Review the settings before opening the print dialog.",
+    continueAction: "Continue",
     picked: "Files selected",
     printReady: "Print preview prepared",
     coming: "This function will be connected in the next release. The UI is ready.",
@@ -267,12 +307,19 @@ function bytesToBase64(bytes: Uint8Array): string {
   return globalThis.btoa ? globalThis.btoa(binary) : Buffer.from(binary, "binary").toString("base64");
 }
 
+// Load the PDF engine only when a PDF action is requested.
+// @ts-ignore pdf-lib does not publish declarations for this bundled entry.
+const loadPdfLib = () => import("pdf-lib/dist/pdf-lib.esm.js") as Promise<any>;
+
 export default function HomeScreen() {
   const [language, setLanguage] = useState<Language>("ar");
   const [selectedPaper, setSelectedPaper] = useState("certificate");
   const [selectedWeight, setSelectedWeight] = useState("200 g/m²");
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
   const [copies, setCopies] = useState("1");
+  const [selectedProfile, setSelectedProfile] = useState("certificate");
+  const [colorMode, setColorMode] = useState<"color" | "bw">("color");
+  const [duplex, setDuplex] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [command, setCommand] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
@@ -300,7 +347,88 @@ export default function HomeScreen() {
     if (historyReady) AsyncStorage.setItem("printpilot.activity.v1", JSON.stringify(tasks)).catch(() => undefined);
   }, [historyReady, tasks]);
 
+  useEffect(() => {
+    AsyncStorage.getItem("printpilot.settings.v1").then((stored) => {
+      if (!stored) return;
+      const settings = JSON.parse(stored) as Partial<{ selectedPaper: string; selectedWeight: string; orientation: "portrait" | "landscape"; copies: string; selectedProfile: string; colorMode: "color" | "bw"; duplex: boolean }>;
+      if (settings.selectedPaper) setSelectedPaper(settings.selectedPaper);
+      if (settings.selectedWeight) setSelectedWeight(settings.selectedWeight);
+      if (settings.orientation) setOrientation(settings.orientation);
+      if (settings.copies) setCopies(settings.copies);
+      if (settings.selectedProfile) setSelectedProfile(settings.selectedProfile);
+      if (settings.colorMode) setColorMode(settings.colorMode);
+      if (typeof settings.duplex === "boolean") setDuplex(settings.duplex);
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem("printpilot.settings.v1", JSON.stringify({ selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex })).catch(() => undefined);
+  }, [selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex]);
+
   const showError = (title: string, hint: string) => setErrorMessage({ title, hint });
+
+  const applyProfile = (profileId: string) => {
+    const profile = printProfileById(profileId);
+    setSelectedProfile(profileId);
+    setSelectedPaper(profile.paperId);
+    setSelectedWeight(profile.weight);
+    setOrientation(profile.orientation);
+    setCopies(profile.copies);
+    setColorMode(profile.colorMode);
+    setDuplex(profile.duplex);
+    setTasks((current) => [`${t.profileApplied}: ${isArabic ? profile.ar : profile.en}`, ...current].slice(0, 4));
+    setErrorMessage(null);
+  };
+
+  const cancelAllTasks = () => {
+    setTasks([]);
+    setErrorMessage({ title: t.tasksCancelled, hint: t.noTasks });
+  };
+
+  const createLocalBackup = () => {
+    Alert.alert(t.backup, t.backupConfirm, [
+      { text: t.dismiss, style: "cancel" },
+      { text: t.continueAction, onPress: async () => {
+        try {
+          const backup = { version: 1, createdAt: new Date().toISOString(), settings: { selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex }, activity: tasks };
+          const uri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Backup-${Date.now()}.json`;
+          await FileSystem.writeAsStringAsync(uri, JSON.stringify(backup, null, 2), { encoding: FileSystem.EncodingType.UTF8 });
+          setTasks((current) => [`${t.backupSuccess}: ${uri.split("/").pop()}`, ...current].slice(0, 4));
+          Alert.alert(t.backupSuccess, uri, [{ text: t.dismiss, style: "cancel" }, { text: t.shareResult, onPress: async () => {
+            if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/json", dialogTitle: t.shareResult });
+          } }]);
+        } catch {
+          showError(t.backupFailed, t.backupHint);
+        }
+      } },
+    ]);
+  };
+
+  const restoreLocalBackup = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "application/json", multiple: false, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) return;
+      const raw = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
+      const backup = JSON.parse(raw) as { version?: number; settings?: Partial<{ selectedPaper: string; selectedWeight: string; orientation: "portrait" | "landscape"; copies: string; selectedProfile: string; colorMode: "color" | "bw"; duplex: boolean }>; activity?: string[] };
+      if (backup.version !== 1 || !backup.settings) {
+        showError(t.invalidBackup, t.restoreHint);
+        return;
+      }
+      const settings = backup.settings;
+      if (settings.selectedPaper) setSelectedPaper(settings.selectedPaper);
+      if (settings.selectedWeight) setSelectedWeight(settings.selectedWeight);
+      if (settings.orientation) setOrientation(settings.orientation);
+      if (settings.copies) setCopies(settings.copies);
+      if (settings.selectedProfile) setSelectedProfile(settings.selectedProfile);
+      if (settings.colorMode) setColorMode(settings.colorMode);
+      if (typeof settings.duplex === "boolean") setDuplex(settings.duplex);
+      if (Array.isArray(backup.activity)) setTasks(backup.activity.slice(0, 4));
+      setErrorMessage(null);
+      Alert.alert(t.restoreSuccess, result.assets[0].name);
+    } catch {
+      showError(t.restoreFailed, t.restoreHint);
+    }
+  };
 
   const chooseFiles = async (type: string | string[]) => {
     try {
@@ -319,6 +447,7 @@ export default function HomeScreen() {
 
   const mergePdfs = async () => {
     try {
+      const { PDFDocument } = await loadPdfLib();
       const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: true, copyToCacheDirectory: true });
       if (result.canceled || !result.assets?.length) {
         showError(t.pickerCancelled, t.pickerCancelledHint);
@@ -380,6 +509,7 @@ export default function HomeScreen() {
 
   const numberPdf = async () => {
     try {
+      const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
       const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: false, copyToCacheDirectory: true });
       if (result.canceled || !result.assets?.length) {
         showError(t.numberingNeedOne, t.pickerCancelledHint);
@@ -442,11 +572,14 @@ export default function HomeScreen() {
   };
 
   const openPrintDialog = async () => {
+    Alert.alert(t.confirmPrint, `${t.confirmPrintHint}\n${paper.ar} · ${selectedWeight} · ${colorMode === "color" ? t.color : t.bw} · ${duplex ? t.duplex : t.oneSided}`, [
+      { text: t.dismiss, style: "cancel" },
+      { text: t.continueAction, onPress: async () => {
     try {
       const width = orientation === "portrait" ? 794 : 1123;
       const height = orientation === "portrait" ? 1123 : 794;
       await Print.printAsync({
-        html: `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:${paper.size};margin:18mm}body{font-family:Arial;color:#10233f;text-align:center;padding-top:28%;}h1{font-size:30px}p{font-size:16px;color:#527087}</style></head><body><h1>${isArabic ? "معاينة شهادة PrintPilot" : "PrintPilot Certificate Preview"}</h1><p>${paper.ar} · ${selectedWeight} · ${copies} ${isArabic ? "نسخة" : "copies"}</p></body></html>`,
+        html: `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:${paper.size};margin:18mm}body{font-family:Arial;color:#10233f;text-align:center;padding-top:28%;}h1{font-size:30px}p{font-size:16px;color:#527087}</style></head><body><h1>${isArabic ? "معاينة شهادة PrintPilot" : "PrintPilot Certificate Preview"}</h1><p>${paper.ar} · ${selectedWeight} · ${colorMode === "color" ? t.color : t.bw} · ${duplex ? t.duplex : t.oneSided} · ${copies} ${isArabic ? "نسخة" : "copies"}</p></body></html>`,
         width,
         height,
         orientation: orientation === "portrait" ? Print.Orientation.portrait : Print.Orientation.landscape,
@@ -457,6 +590,8 @@ export default function HomeScreen() {
     } catch {
       showError(t.printerUnavailable, t.printerUnavailableHint);
     }
+      } },
+    ]);
   };
 
   const actionComing = () => showError(t.errorTitle, t.coming);
@@ -505,7 +640,7 @@ export default function HomeScreen() {
         <View style={styles.actionsGrid}>
           <ActionCard icon="merge-type" title={t.merge} hint={t.mergeHint} color="#0A7EA4" textColor={readableText} mutedColor={readableMuted} onPress={mergePdfs} />
           <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={readableText} mutedColor={readableMuted} onPress={imagesToPdf} />
-          <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
+          <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={extractImages} />
           <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={scanForDevices} />
           <ActionCard icon="format-list-numbered" title={t.numbering} hint={t.numberingHint} color="#E45757" textColor={readableText} mutedColor={readableMuted} onPress={numberPdf} />
         </View>
@@ -535,17 +670,30 @@ export default function HomeScreen() {
           </View>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <SettingLabel title={t.orientation} value={orientation === "portrait" ? t.portrait : t.landscape} colors={colors} />
-          <View style={[styles.segmented, { backgroundColor: colors.background }]}>
+          <View style={[styles.segmented, { backgroundColor: colors.background }]}> 
             <Pressable onPress={() => setOrientation("portrait")} style={[styles.segment, orientation === "portrait" && { backgroundColor: colors.primary }]}><Icon name="crop-portrait" color={orientation === "portrait" ? "#fff" : colors.muted} size={18} /><Text style={[styles.segmentText, { color: orientation === "portrait" ? "#fff" : colors.muted }]}>{t.portrait}</Text></Pressable>
             <Pressable onPress={() => setOrientation("landscape")} style={[styles.segment, orientation === "landscape" && { backgroundColor: colors.primary }]}><Icon name="crop-landscape" color={orientation === "landscape" ? "#fff" : colors.muted} size={18} /><Text style={[styles.segmentText, { color: orientation === "landscape" ? "#fff" : colors.muted }]}>{t.landscape}</Text></Pressable>
           </View>
-          <View style={[styles.printFooter, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
+          <SettingLabel title={t.colorMode} value={colorMode === "color" ? t.color : t.bw} colors={colors} />
+          <View style={[styles.segmented, { backgroundColor: colors.background }]}> 
+            <Pressable onPress={() => setColorMode("color")} style={[styles.segment, colorMode === "color" && { backgroundColor: colors.primary }]}><Icon name="palette" color={colorMode === "color" ? "#fff" : colors.muted} size={18} /><Text style={[styles.segmentText, { color: colorMode === "color" ? "#fff" : colors.muted }]}>{t.color}</Text></Pressable>
+            <Pressable onPress={() => setColorMode("bw")} style={[styles.segment, colorMode === "bw" && { backgroundColor: colors.primary }]}><Icon name="tonality" color={colorMode === "bw" ? "#fff" : colors.muted} size={18} /><Text style={[styles.segmentText, { color: colorMode === "bw" ? "#fff" : colors.muted }]}>{t.bw}</Text></Pressable>
+          </View>
+          <Pressable onPress={() => setDuplex((value) => !value)} style={[styles.duplexToggle, { borderColor: duplex ? colors.primary : colors.border, backgroundColor: duplex ? colors.primary + "14" : colors.background, flexDirection: isArabic ? "row-reverse" : "row" }]}><Icon name="flip" color={duplex ? colors.primary : colors.muted} size={18} /><Text style={[styles.segmentText, { color: duplex ? colors.primary : colors.muted }]}>{duplex ? t.duplex : t.oneSided}</Text></Pressable>
+          <View style={[styles.printFooter, { flexDirection: isArabic ? "row-reverse" : "row" }]}> 
             <View style={styles.copiesBlock}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.copies}</Text><TextInput value={copies} onChangeText={setCopies} keyboardType="number-pad" style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} /></View>
             <Pressable onPress={openPrintDialog} style={({ pressed }) => [styles.printButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Icon name="print" color="#fff" size={19} /><Text style={styles.printButtonText}>{t.openPrint}</Text></Pressable>
           </View>
         </View>
 
-        <View style={[styles.smartCard, { backgroundColor: colorScheme === "dark" ? "#1D2C3B" : "#EEF6FA", borderColor: colors.primary + "38" }]}>
+        <View style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.profileHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.primary + "18" }]}><Icon name="bookmark" color={colors.primary} size={20} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.profiles}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{t.profilesHint}</Text></View></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 10 }}>
+            {printProfiles.map((profile) => <Pressable key={profile.id} onPress={() => applyProfile(profile.id)} style={[styles.profilePill, { backgroundColor: selectedProfile === profile.id ? colors.primary : colors.background, borderColor: selectedProfile === profile.id ? colors.primary : colors.border }]}><Text style={[styles.profilePillText, { color: selectedProfile === profile.id ? "#fff" : colors.foreground }]}>{isArabic ? profile.ar : profile.en}</Text><Text style={[styles.profilePillHint, { color: selectedProfile === profile.id ? "#DDF6FA" : colors.muted }]}>{profile.duplex ? t.duplex : profile.colorMode === "color" ? t.color : t.bw}</Text></Pressable>)}
+          </ScrollView>
+        </View>
+
+        <View style={[styles.smartCard, { backgroundColor: colorScheme === "dark" ? "#1D2C3B" : "#EEF6FA", borderColor: colors.primary + "38" }]}> 
           <View style={[styles.sectionHeader, { flexDirection: isArabic ? "row-reverse" : "row", marginBottom: 4 }]}><View style={[styles.aiTitle, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.aiIcon, { backgroundColor: colors.primary }]}><Icon name="auto-awesome" color="#fff" size={19} /></View><View><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.smart}</Text><Text style={[styles.aiHint, { color: colors.muted }]}>{t.smartHint}</Text></View></View><Switch value={aiEnabled} onValueChange={setAiEnabled} trackColor={{ false: colors.border, true: colors.primary + "66" }} thumbColor={aiEnabled ? colors.primary : colors.muted} /></View>
           {aiEnabled ? <View style={[styles.aiBody, { flexDirection: isArabic ? "row-reverse" : "row" }]}><TextInput value={command} onChangeText={setCommand} placeholder={t.placeholder} placeholderTextColor={colors.muted} multiline style={[styles.commandInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, textAlign: isArabic ? "right" : "left" }]} /><Pressable onPress={() => Alert.alert(t.smart, command || t.noInternet)} style={({ pressed }) => [styles.executeButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Icon name="play-arrow" color="#fff" size={20} /><Text style={styles.executeText}>{t.execute}</Text></Pressable></View> : <Text style={[styles.aiOffText, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{t.smartAction} · {t.noInternet}</Text>}
         </View>
@@ -571,11 +719,13 @@ export default function HomeScreen() {
           <Pressable onPress={scanForDevices} style={({ pressed }) => [styles.outlineAction, { borderColor: colors.primary }, pressed && styles.pressed]}><Icon name="refresh" color={colors.primary} size={17} /><Text style={[styles.outlineActionText, { color: colors.primary }]}>{t.checkDevices}</Text></Pressable>
           <View style={[styles.taskHeader, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Text style={[styles.taskTitle, { color: colors.foreground }]}>{t.taskManager}</Text><Text style={[styles.taskCount, { color: colors.muted }]}>{tasks.length}</Text></View>
           {tasks.length ? tasks.map((task) => <Text key={task} style={[styles.taskItem, { color: colors.muted }]}>{task}</Text>) : <Text style={[styles.taskEmpty, { color: colors.muted }]}>{t.noTasks}</Text>}
+          {tasks.length > 0 && <Pressable onPress={cancelAllTasks} style={({ pressed }) => [styles.cancelTasksButton, { borderColor: colors.error }, pressed && styles.pressed]}><Icon name="cancel" color={colors.error} size={17} /><Text style={[styles.outlineActionText, { color: colors.error }]}>{t.cancelAll}</Text></Pressable>}
         </View>
 
         <View style={[styles.phaseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.phaseHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.success + "18" }]}><Icon name="shield" color={colors.success} size={21} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.phase3}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{t.phase3Hint}</Text></View></View>
-          <PrivacyRow icon="backup" title={t.backup} hint={t.backupHint} colors={colors} onPress={() => showError(t.errorTitle, t.backupHint)} />
+          <PrivacyRow icon="backup" title={t.backup} hint={t.backupHint} colors={colors} onPress={createLocalBackup} />
+          <PrivacyRow icon="restore" title={t.restoreBackup} hint={t.restoreHint} colors={colors} onPress={restoreLocalBackup} />
           <PrivacyRow icon="lock-outline" title={t.passwords} hint={t.passwordsHint} colors={colors} onPress={() => showError(t.errorTitle, t.passwordsHint)} />
           <PrivacyRow icon="history" title={t.history} hint={t.historyHint} colors={colors} onPress={() => Alert.alert(t.history, tasks.length ? tasks.join("\n") : t.noTasks)} />
         </View>
@@ -653,6 +803,7 @@ const styles = StyleSheet.create({
   segmented: { flexDirection: "row", padding: 3, borderRadius: 12, gap: 3, marginTop: 10 },
   segment: { flex: 1, borderRadius: 9, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 },
   segmentText: { fontSize: 11, fontWeight: "700" },
+  duplexToggle: { borderWidth: 1, borderRadius: 11, paddingVertical: 9, paddingHorizontal: 11, alignItems: "center", justifyContent: "center", gap: 6, marginTop: 9 },
   printFooter: { alignItems: "flex-end", gap: 10, marginTop: 14 },
   copiesBlock: { width: 72, gap: 4 },
   copiesInput: { borderWidth: 1, borderRadius: 10, height: 39, paddingHorizontal: 11, textAlign: "center", fontWeight: "800" },
@@ -680,6 +831,11 @@ const styles = StyleSheet.create({
   roadmapStage: { fontSize: 12, fontWeight: "800" },
   roadmapStageHint: { fontSize: 10, marginTop: 3, lineHeight: 15 },
   roadmapStatus: { fontSize: 10, fontWeight: "800" },
+  profileCard: { borderRadius: 17, borderWidth: 1, padding: 14, marginBottom: 16 },
+  profileHeader: { alignItems: "center", gap: 10 },
+  profilePill: { borderRadius: 13, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, minWidth: 130 },
+  profilePillText: { fontSize: 11, fontWeight: "800" },
+  profilePillHint: { fontSize: 9.5, marginTop: 4 },
   phaseCard: { borderRadius: 17, borderWidth: 1, padding: 14, marginBottom: 16 },
   phaseHeader: { alignItems: "center", gap: 10, marginBottom: 4 },
   phaseIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
@@ -697,6 +853,7 @@ const styles = StyleSheet.create({
   taskCount: { fontSize: 11, fontWeight: "700" },
   taskEmpty: { fontSize: 10.5, paddingTop: 8 },
   taskItem: { fontSize: 10.5, paddingTop: 8 },
+  cancelTasksButton: { height: 36, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, marginTop: 11 },
   privacyRow: { alignItems: "center", gap: 9, borderTopWidth: 1, paddingVertical: 11, flexDirection: "row" },
   privacyCopy: { flex: 1 },
 });

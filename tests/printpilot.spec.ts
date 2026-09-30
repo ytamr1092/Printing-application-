@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { paperOptions, paperPresetById, supportedPaperWeights } from "../shared/print-options";
 import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "../shared/file-operations";
+import { printProfiles, printProfileById } from "../shared/print-profiles";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -47,5 +48,13 @@ describe("PrintPilot file operations", () => {
   it("finds complete JPEG byte ranges without treating unrelated bytes as images", () => {
     const bytes = new Uint8Array([0, 0xff, 0xd8, 1, 2, 0xff, 0xd9, 4, 0xff, 0xd8, 9, 0xff, 0xd9]);
     expect(findJpegByteRanges(bytes)).toEqual([{ start: 1, end: 7 }, { start: 8, end: 13 }]);
+  });
+});
+
+describe("PrintPilot print profiles", () => {
+  it("includes useful ready-to-use profiles", () => {
+    expect(printProfiles.map((profile) => profile.id)).toEqual(["certificate", "a4-bw", "photos-a4", "duplex", "id-card"]);
+    expect(printProfileById("duplex").duplex).toBe(true);
+    expect(printProfileById("photos-a4").colorMode).toBe("color");
   });
 });
