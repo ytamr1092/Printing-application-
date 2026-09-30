@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { paperOptions, paperPresetById, supportedPaperWeights } from "../shared/print-options";
 import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "../shared/file-operations";
 import { printProfiles, printProfileById } from "../shared/print-profiles";
+import { hasBothIdFaces, isValidIpv4 } from "../shared/device-operations";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -56,5 +57,14 @@ describe("PrintPilot print profiles", () => {
     expect(printProfiles.map((profile) => profile.id)).toEqual(["certificate", "a4-bw", "photos-a4", "duplex", "id-card"]);
     expect(printProfileById("duplex").duplex).toBe(true);
     expect(printProfileById("photos-a4").colorMode).toBe("color");
+  });
+});
+
+describe("PrintPilot ID card and device validation", () => {
+  it("requires both ID card faces and validates local IPv4 addresses", () => {
+    expect(hasBothIdFaces("front.jpg", null)).toBe(false);
+    expect(hasBothIdFaces("front.jpg", "back.jpg")).toBe(true);
+    expect(isValidIpv4("192.168.1.50")).toBe(true);
+    expect(isValidIpv4("999.1.1.2")).toBe(false);
   });
 });

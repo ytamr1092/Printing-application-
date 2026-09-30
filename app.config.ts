@@ -87,6 +87,13 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-image-picker",
+      {
+        photosPermission: "اسمح لـ PrintPilot باختيار صور بطاقات الهوية والمستندات.",
+        cameraPermission: "اسمح لـ PrintPilot بالتقاط صور بطاقات الهوية.",
+      },
+    ],
+    [
       "expo-audio",
       {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",

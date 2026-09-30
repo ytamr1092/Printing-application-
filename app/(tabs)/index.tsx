@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +24,7 @@ import { useThemeContext } from "@/lib/theme-provider";
 import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "@/shared/file-operations";
 import { paperOptions, paperPresetById } from "@/shared/print-options";
 import { printProfiles, printProfileById } from "@/shared/print-profiles";
+import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
 
 type Language = "ar" | "en";
 
@@ -42,6 +45,27 @@ const copy = {
     extractHint: "استخرج الصور من PDF",
     scan: "مسح ضوئي",
     scanHint: "Kyocera TASKalfa 306ci",
+    idWizard: "بطاقة هوية بالوجهين",
+    idWizardHint: "صوّر أو اختر الوجه الأمامي والخلفي ثم أنشئ PDF",
+    idFront: "الوجه الأمامي",
+    idBack: "الوجه الخلفي",
+    takePhoto: "تصوير",
+    choosePhoto: "اختيار صورة",
+    makeIdPdf: "إنشاء PDF للبطاقة",
+    idNeedBoth: "اختر صورة للوجهين أولًا.",
+    idSuccess: "تم إنشاء ملف بطاقة الهوية",
+    idFailed: "تعذر إنشاء ملف بطاقة الهوية",
+    cameraDenied: "لم يتم السماح باستخدام الكاميرا",
+    scannerSettings: "إعدادات السكانر",
+    scannerIp: "عنوان IP للطابعة",
+    scannerIpHint: "مثال: 192.168.1.50",
+    networkAddress: "عنوان الهاتف على الشبكة",
+    dpi: "الدقة",
+    scanColor: "ملون",
+    scanBw: "أبيض وأسود",
+    adf: "المغذي التلقائي ADF",
+    connected: "متصل بالطابعة",
+    connectionFailed: "لم يتم العثور على الطابعة",
     print: "طباعة جديدة",
     printHint: "معاينة وإعدادات كاملة",
     recent: "آخر الملفات",
@@ -163,6 +187,27 @@ const copy = {
     extractHint: "Pull images from a PDF",
     scan: "Scan",
     scanHint: "Kyocera TASKalfa 306ci",
+    idWizard: "Two-sided ID card",
+    idWizardHint: "Capture or choose both sides, then create a print-ready PDF",
+    idFront: "Front side",
+    idBack: "Back side",
+    takePhoto: "Camera",
+    choosePhoto: "Choose image",
+    makeIdPdf: "Create ID card PDF",
+    idNeedBoth: "Choose an image for both sides first.",
+    idSuccess: "ID card PDF created",
+    idFailed: "Could not create the ID card PDF",
+    cameraDenied: "Camera permission was not granted",
+    scannerSettings: "Scanner settings",
+    scannerIp: "Printer IP address",
+    scannerIpHint: "Example: 192.168.1.50",
+    networkAddress: "Phone network address",
+    dpi: "Resolution",
+    scanColor: "Color",
+    scanBw: "Black & white",
+    adf: "Automatic document feeder (ADF)",
+    connected: "Printer connected",
+    connectionFailed: "Printer was not found",
     print: "New print",
     printHint: "Preview & full settings",
     recent: "Recent files",
@@ -310,6 +355,8 @@ function bytesToBase64(bytes: Uint8Array): string {
 // Load the PDF engine only when a PDF action is requested.
 // @ts-ignore pdf-lib does not publish declarations for this bundled entry.
 const loadPdfLib = () => import("pdf-lib/dist/pdf-lib.esm.js") as Promise<any>;
+const loadImagePicker = () => import("expo-image-picker");
+const loadNetwork = () => import("expo-network");
 
 export default function HomeScreen() {
   const [language, setLanguage] = useState<Language>("ar");
@@ -325,7 +372,15 @@ export default function HomeScreen() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<{ title: string; hint: string } | null>(null);
   const [deviceChecked, setDeviceChecked] = useState(false);
-  const [deviceMessage, setDeviceMessage] = useState<"unknown" | "not-found">("unknown");
+  const [deviceMessage, setDeviceMessage] = useState<"unknown" | "not-found" | "connected">("unknown");
+  const [printerIp, setPrinterIp] = useState("");
+  const [phoneIp, setPhoneIp] = useState("");
+  const [scannerDpi, setScannerDpi] = useState("300");
+  const [scannerColor, setScannerColor] = useState<"color" | "bw">("color");
+  const [scannerAdf, setScannerAdf] = useState(true);
+  const [idFrontUri, setIdFrontUri] = useState<string | null>(null);
+  const [idBackUri, setIdBackUri] = useState<string | null>(null);
+  const [idBusy, setIdBusy] = useState(false);
   const [tasks, setTasks] = useState<string[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
   const { colorScheme, setColorScheme } = useThemeContext();
@@ -427,6 +482,99 @@ export default function HomeScreen() {
       Alert.alert(t.restoreSuccess, result.assets[0].name);
     } catch {
       showError(t.restoreFailed, t.restoreHint);
+    }
+  };
+
+  const chooseIdFace = async (side: "front" | "back", source: "camera" | "library") => {
+    try {
+      if (Platform.OS === "web") {
+        showError(t.errorTitle, t.coming);
+        return;
+      }
+      const ImagePicker = await loadImagePicker();
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          showError(t.cameraDenied, t.idWizardHint);
+          return;
+        }
+      }
+      const result = source === "camera"
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [16, 10], quality: 0.9 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [16, 10], quality: 0.9 });
+      if (result.canceled || !result.assets?.length) return;
+      if (side === "front") setIdFrontUri(result.assets[0].uri);
+      else setIdBackUri(result.assets[0].uri);
+      setErrorMessage(null);
+    } catch {
+      showError(t.errorTitle, t.idWizardHint);
+    }
+  };
+
+  const createIdCardPdf = async () => {
+    if (!hasBothIdFaces(idFrontUri, idBackUri)) {
+      showError(t.idNeedBoth, t.idWizardHint);
+      return;
+    }
+    setIdBusy(true);
+    try {
+      const faceUris = [idFrontUri, idBackUri] as [string, string];
+      const [front, back] = await Promise.all(faceUris.map(async (uri) => {
+        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        return `data:image/jpeg;base64,${base64}`;
+      }));
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.sheet{width:210mm;height:297mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14mm}.card{width:85.6mm;height:54mm;border:0.4mm solid #555;border-radius:2mm;object-fit:cover}.label{font:12px Arial;color:#334155;margin-top:-10mm}</style></head><body><main class="sheet"><img class="card" src="${front}"/><div class="label">${isArabic ? "الوجه الأمامي" : "Front"}</div><img class="card" src="${back}"/><div class="label">${isArabic ? "الوجه الخلفي" : "Back"}</div></main></body></html>`;
+      const generated = await Print.printToFileAsync({ html, width: 794, height: 1123 });
+      const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-ID-Card-${Date.now()}.pdf`;
+      await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
+      setTasks((current) => [`${t.idSuccess}: ${outputUri.split("/").pop()}`, ...current].slice(0, 4));
+      setSelectedFiles([t.idWizard]);
+      setErrorMessage(null);
+      Alert.alert(t.idSuccess, outputUri, [{ text: t.dismiss, style: "cancel" }, { text: t.shareResult, onPress: async () => {
+        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
+      } }]);
+    } catch {
+      showError(t.idFailed, t.idWizardHint);
+    } finally {
+      setIdBusy(false);
+    }
+  };
+
+  const checkPrinterConnection = async () => {
+    const ip = printerIp.trim();
+    if (!isValidIpv4(ip)) {
+      showError(t.connectionFailed, t.scannerIpHint);
+      return;
+    }
+    try {
+      if (Platform.OS === "web") {
+        showError(t.connectionFailed, t.scanUnavailableHint);
+        return;
+      }
+      const Network = await loadNetwork();
+      const [networkState, localIp] = await Promise.all([Network.getNetworkStateAsync(), Network.getIpAddressAsync()]);
+      setPhoneIp(localIp);
+      if (!networkState.isConnected) {
+        setDeviceChecked(true);
+        setDeviceMessage("not-found");
+        showError(t.connectionFailed, t.scanUnavailableHint);
+        return;
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      try {
+        const response = await fetch(`http://${ip}`, { method: "GET", signal: controller.signal });
+        setDeviceChecked(true);
+        setDeviceMessage(response.ok ? "connected" : "not-found");
+        if (response.ok) setTasks((current) => [`${t.connected}: ${ip}`, ...current].slice(0, 4));
+        else showError(t.connectionFailed, t.scanUnavailableHint);
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch {
+      setDeviceChecked(true);
+      setDeviceMessage("not-found");
+      showError(t.connectionFailed, t.scanUnavailableHint);
     }
   };
 
@@ -596,9 +744,13 @@ export default function HomeScreen() {
 
   const actionComing = () => showError(t.errorTitle, t.coming);
   const scanForDevices = () => {
+    if (printerIp.trim()) {
+      void checkPrinterConnection();
+      return;
+    }
     setDeviceChecked(true);
     setDeviceMessage("not-found");
-    showError(t.scanUnavailable, t.scanUnavailableHint);
+    showError(t.connectionFailed, t.scannerIpHint);
   };
 
   return (
@@ -643,6 +795,14 @@ export default function HomeScreen() {
           <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={extractImages} />
           <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={scanForDevices} />
           <ActionCard icon="format-list-numbered" title={t.numbering} hint={t.numberingHint} color="#E45757" textColor={readableText} mutedColor={readableMuted} onPress={numberPdf} />
+        </View>
+
+        <View style={[styles.idCardCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.profileHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.warning + "18" }]}><Icon name="badge" color={colors.warning} size={20} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.idWizard}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{t.idWizardHint}</Text></View></View>
+          <View style={[styles.idFacesRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
+            {([{ side: "front" as const, uri: idFrontUri, label: t.idFront }, { side: "back" as const, uri: idBackUri, label: t.idBack }]).map((face) => <View key={face.side} style={styles.idFaceBlock}><View style={[styles.idPreview, { backgroundColor: colors.background, borderColor: colors.border }]}>{face.uri ? <Image source={{ uri: face.uri }} style={styles.idPreviewImage} /> : <Icon name="credit-card" color={colors.muted} size={28} />}</View><Text style={[styles.idFaceLabel, { color: colors.foreground }]}>{face.label}</Text><View style={styles.idFaceActions}><Pressable onPress={() => chooseIdFace(face.side, "camera")} style={[styles.miniButton, { borderColor: colors.primary }]}><Icon name="photo-camera" color={colors.primary} size={15} /><Text style={[styles.miniButtonText, { color: colors.primary }]}>{t.takePhoto}</Text></Pressable><Pressable onPress={() => chooseIdFace(face.side, "library")} style={[styles.miniButton, { borderColor: colors.border }]}><Icon name="photo-library" color={colors.muted} size={15} /><Text style={[styles.miniButtonText, { color: colors.muted }]}>{t.choosePhoto}</Text></Pressable></View></View>)}
+          </View>
+          <Pressable disabled={idBusy} onPress={createIdCardPdf} style={({ pressed }) => [styles.printButton, { backgroundColor: idFrontUri && idBackUri ? colors.primary : colors.border, marginTop: 12 }, pressed && styles.pressed]}><Icon name="picture-as-pdf" color="#fff" size={18} /><Text style={styles.printButtonText}>{idBusy ? "…" : t.makeIdPdf}</Text></Pressable>
         </View>
 
         <View style={[styles.sectionHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.recent}</Text><Pressable onPress={actionComing}><Text style={[styles.viewAll, { color: colors.primary }]}>{t.viewAll}</Text></Pressable></View>
@@ -714,8 +874,14 @@ export default function HomeScreen() {
 
         <View style={[styles.phaseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.phaseHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.primary + "18" }]}><Icon name="devices" color={colors.primary} size={21} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.phase2}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{t.phase2Hint}</Text></View></View>
-          <View style={[styles.deviceRow, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Icon name="print" color={colors.primary} size={19} /><View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.foreground }]}>{t.printerName}</Text><Text style={[styles.deviceState, { color: deviceMessage === "not-found" ? colors.error : colors.muted }]}>{deviceChecked ? t.scanUnavailable : t.notChecked}</Text></View><View style={[styles.stateDot, { backgroundColor: deviceMessage === "not-found" ? colors.error : colors.warning }]} /></View>
-          <View style={[styles.deviceRow, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Icon name="document-scanner" color={colors.primary} size={19} /><View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.foreground }]}>{t.scan}</Text><Text style={[styles.deviceState, { color: deviceMessage === "not-found" ? colors.error : colors.muted }]}>{deviceChecked ? t.scanUnavailable : t.notChecked}</Text></View><View style={[styles.stateDot, { backgroundColor: deviceMessage === "not-found" ? colors.error : colors.warning }]} /></View>
+          <View style={[styles.deviceRow, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Icon name="print" color={colors.primary} size={19} /><View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.foreground }]}>{t.printerName}</Text><Text style={[styles.deviceState, { color: deviceMessage === "connected" ? colors.success : deviceMessage === "not-found" ? colors.error : colors.muted }]}>{deviceMessage === "connected" ? t.connected : deviceChecked ? t.connectionFailed : t.notChecked}</Text></View><View style={[styles.stateDot, { backgroundColor: deviceMessage === "connected" ? colors.success : deviceMessage === "not-found" ? colors.error : colors.warning }]} /></View>
+          <View style={[styles.deviceRow, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Icon name="document-scanner" color={colors.primary} size={19} /><View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.foreground }]}>{t.scan}</Text><Text style={[styles.deviceState, { color: deviceMessage === "connected" ? colors.success : deviceMessage === "not-found" ? colors.error : colors.muted }]}>{deviceMessage === "connected" ? t.connected : deviceChecked ? t.connectionFailed : t.notChecked}</Text></View><View style={[styles.stateDot, { backgroundColor: deviceMessage === "connected" ? colors.success : deviceMessage === "not-found" ? colors.error : colors.warning }]} /></View>
+          <Text style={[styles.scannerSectionTitle, { color: colors.foreground }]}>{t.scannerSettings}</Text>
+          <TextInput value={printerIp} onChangeText={setPrinterIp} placeholder={t.scannerIpHint} placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" autoCapitalize="none" style={[styles.scannerInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, textAlign: isArabic ? "right" : "left" }]} />
+          <Text style={[styles.scannerNetworkText, { color: colors.muted }]}>{t.networkAddress}: {phoneIp || "—"}</Text>
+          <View style={[styles.scannerOptionRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Text style={[styles.scannerLabel, { color: colors.muted }]}>{t.dpi}</Text><View style={[styles.scannerPills, { flexDirection: isArabic ? "row-reverse" : "row" }]}>{["200", "300", "600"].map((value) => <Pressable key={value} onPress={() => setScannerDpi(value)} style={[styles.scannerPill, { backgroundColor: scannerDpi === value ? colors.primary : colors.background, borderColor: scannerDpi === value ? colors.primary : colors.border }]}><Text style={[styles.scannerPillText, { color: scannerDpi === value ? "#fff" : colors.foreground }]}>{value}</Text></Pressable>)}</View></View>
+          <View style={[styles.scannerOptionRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Text style={[styles.scannerLabel, { color: colors.muted }]}>{t.colorMode}</Text><View style={[styles.scannerPills, { flexDirection: isArabic ? "row-reverse" : "row" }]}>{[["color", t.scanColor], ["bw", t.scanBw]].map(([value, label]) => <Pressable key={value} onPress={() => setScannerColor(value as "color" | "bw")} style={[styles.scannerPill, { backgroundColor: scannerColor === value ? colors.primary : colors.background, borderColor: scannerColor === value ? colors.primary : colors.border }]}><Text style={[styles.scannerPillText, { color: scannerColor === value ? "#fff" : colors.foreground }]}>{label}</Text></Pressable>)}</View></View>
+          <Pressable onPress={() => setScannerAdf((value) => !value)} style={[styles.scannerAdf, { borderColor: scannerAdf ? colors.primary : colors.border, backgroundColor: scannerAdf ? colors.primary + "14" : colors.background, flexDirection: isArabic ? "row-reverse" : "row" }]}><Icon name="layers" color={scannerAdf ? colors.primary : colors.muted} size={17} /><Text style={[styles.scannerLabel, { color: scannerAdf ? colors.primary : colors.muted }]}>{t.adf}</Text></Pressable>
           <Pressable onPress={scanForDevices} style={({ pressed }) => [styles.outlineAction, { borderColor: colors.primary }, pressed && styles.pressed]}><Icon name="refresh" color={colors.primary} size={17} /><Text style={[styles.outlineActionText, { color: colors.primary }]}>{t.checkDevices}</Text></Pressable>
           <View style={[styles.taskHeader, { flexDirection: isArabic ? "row-reverse" : "row", borderTopColor: colors.border }]}><Text style={[styles.taskTitle, { color: colors.foreground }]}>{t.taskManager}</Text><Text style={[styles.taskCount, { color: colors.muted }]}>{tasks.length}</Text></View>
           {tasks.length ? tasks.map((task) => <Text key={task} style={[styles.taskItem, { color: colors.muted }]}>{task}</Text>) : <Text style={[styles.taskEmpty, { color: colors.muted }]}>{t.noTasks}</Text>}
@@ -777,6 +943,15 @@ const styles = StyleSheet.create({
   titleRule: { height: 3, width: 31, borderRadius: 3, marginLeft: 8, flex: 1, maxWidth: 31 },
   viewAll: { fontSize: 12, fontWeight: "700" },
   actionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 22 },
+  idCardCard: { borderRadius: 17, borderWidth: 1, padding: 14, marginBottom: 16 },
+  idFacesRow: { gap: 9, marginTop: 12 },
+  idFaceBlock: { flex: 1, gap: 6 },
+  idPreview: { height: 76, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  idPreviewImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  idFaceLabel: { fontSize: 11, fontWeight: "800", textAlign: "center" },
+  idFaceActions: { gap: 5 },
+  miniButton: { minHeight: 31, borderRadius: 8, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4, paddingHorizontal: 4 },
+  miniButtonText: { fontSize: 9.5, fontWeight: "700" },
   actionCard: { width: "48.5%", borderRadius: 17, padding: 13, minHeight: 113 },
   actionIcon: { width: 39, height: 39, borderRadius: 13, alignItems: "center", justifyContent: "center", marginBottom: 10 },
   actionTitle: { color: "#10233F", fontSize: 14, fontWeight: "800" },
@@ -846,6 +1021,15 @@ const styles = StyleSheet.create({
   deviceName: { fontSize: 12, fontWeight: "800" },
   deviceState: { fontSize: 10, marginTop: 3, lineHeight: 15 },
   stateDot: { width: 9, height: 9, borderRadius: 5 },
+  scannerSectionTitle: { fontSize: 12, fontWeight: "800", marginTop: 10, marginBottom: 8 },
+  scannerInput: { height: 40, borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, fontSize: 11 },
+  scannerNetworkText: { fontSize: 10, marginTop: 5 },
+  scannerOptionRow: { alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 },
+  scannerLabel: { fontSize: 10.5, fontWeight: "700", flex: 1 },
+  scannerPills: { gap: 5 },
+  scannerPill: { minWidth: 42, borderRadius: 9, borderWidth: 1, paddingVertical: 7, paddingHorizontal: 8, alignItems: "center" },
+  scannerPillText: { fontSize: 10, fontWeight: "800" },
+  scannerAdf: { borderRadius: 10, borderWidth: 1, padding: 9, alignItems: "center", gap: 6, marginTop: 10 },
   outlineAction: { height: 38, borderRadius: 11, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, marginTop: 4 },
   outlineActionText: { fontSize: 11, fontWeight: "800" },
   taskHeader: { alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, paddingTop: 11, marginTop: 12 },
