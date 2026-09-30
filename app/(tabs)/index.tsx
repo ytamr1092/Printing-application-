@@ -17,12 +17,12 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 // pdf-lib's bundled ESM build avoids Metro's CommonJS/tslib interop issue.
 // @ts-expect-error The package does not expose a declaration for this bundled entry.
-import { PDFDocument } from "pdf-lib/dist/pdf-lib.esm.js";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib/dist/pdf-lib.esm.js";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext } from "@/lib/theme-provider";
-import { canMergePdfs, hasAtLeastFiles } from "@/shared/file-operations";
+import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "@/shared/file-operations";
 import { paperOptions, paperPresetById } from "@/shared/print-options";
 
 type Language = "ar" | "en";
@@ -101,6 +101,14 @@ const copy = {
     imagesNeedOne: "اختر صورة واحدة على الأقل.",
     imagesSuccess: "تم تحويل الصور إلى PDF بنجاح",
     imagesFailed: "تعذر تحويل الصور إلى PDF",
+    numbering: "ترقيم PDF",
+    numberingHint: "أضف رقمًا لكل صفحة",
+    numberingNeedOne: "اختر ملف PDF واحدًا على الأقل.",
+    numberingSuccess: "تم ترقيم صفحات PDF بنجاح",
+    numberingFailed: "تعذر ترقيم صفحات PDF",
+    extractSuccess: "تم استخراج الصور من PDF",
+    extractNone: "لم يتم العثور على صور JPEG داخل الملف",
+    extractFailed: "تعذر استخراج الصور من PDF",
     phase2: "المرحلة الثانية · الطباعة والمسح",
     phase2Hint: "حالة الأجهزة ومدير المهام",
     phase3: "المرحلة الثالثة · الخصوصية والتنظيم",
@@ -193,6 +201,14 @@ const copy = {
     imagesNeedOne: "Choose at least one image.",
     imagesSuccess: "Images converted to PDF successfully",
     imagesFailed: "Image to PDF conversion failed",
+    numbering: "Number PDF",
+    numberingHint: "Add a number to every page",
+    numberingNeedOne: "Choose at least one PDF file.",
+    numberingSuccess: "PDF pages numbered successfully",
+    numberingFailed: "PDF numbering failed",
+    extractSuccess: "Images extracted from PDF",
+    extractNone: "No JPEG images were found inside the file",
+    extractFailed: "PDF image extraction failed",
     phase2: "Stage 2 · Print & scan",
     phase2Hint: "Device status and task manager",
     phase3: "Stage 3 · Privacy & organization",
@@ -362,6 +378,69 @@ export default function HomeScreen() {
     }
   };
 
+  const numberPdf = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: false, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) {
+        showError(t.numberingNeedOne, t.pickerCancelledHint);
+        return;
+      }
+      const sourceBase64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const document = await PDFDocument.load(base64ToBytes(sourceBase64));
+      const font = await document.embedFont(StandardFonts.Helvetica);
+      const pages = document.getPages();
+      pages.forEach((page: any, index: number) => {
+        const { width } = page.getSize();
+        const label = `${index + 1} / ${pages.length}`;
+        const labelWidth = font.widthOfTextAtSize(label, 9);
+        page.drawText(label, { x: (width - labelWidth) / 2, y: 16, size: 9, font, color: rgb(0.32, 0.39, 0.45) });
+      });
+      const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Numbered-${Date.now()}.pdf`;
+      await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await document.save()), { encoding: FileSystem.EncodingType.Base64 });
+      setSelectedFiles([result.assets[0].name]);
+      setTasks((current) => [`${t.numberingSuccess}: ${pages.length}`, ...current].slice(0, 4));
+      setErrorMessage(null);
+      Alert.alert(t.numberingSuccess, outputUri, [{ text: t.dismiss, style: "cancel" }, { text: t.shareResult, onPress: async () => {
+        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
+        else showError(t.errorTitle, t.printerUnavailableHint);
+      } }]);
+    } catch {
+      showError(t.numberingFailed, t.coming);
+    }
+  };
+
+  const extractImages = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: false, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) {
+        showError(t.pickerCancelled, t.pickerCancelledHint);
+        return;
+      }
+      const sourceBase64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const sourceBytes = base64ToBytes(sourceBase64);
+      const ranges = findJpegByteRanges(sourceBytes);
+      if (!ranges.length) {
+        showError(t.extractNone, t.extractNone);
+        return;
+      }
+      const outputUris: string[] = [];
+      for (const [index, range] of ranges.entries()) {
+        const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Image-${Date.now()}-${String(index + 1).padStart(2, "0")}.jpg`;
+        await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(sourceBytes.slice(range.start, range.end)), { encoding: FileSystem.EncodingType.Base64 });
+        outputUris.push(outputUri);
+      }
+      setSelectedFiles([result.assets[0].name]);
+      setTasks((current) => [`${t.extractSuccess}: ${outputUris.length}`, ...current].slice(0, 4));
+      setErrorMessage(null);
+      Alert.alert(t.extractSuccess, `${outputUris.length} JPG`, [{ text: t.dismiss, style: "cancel" }, { text: t.shareResult, onPress: async () => {
+        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(outputUris[0], { mimeType: "image/jpeg", dialogTitle: t.shareResult });
+        else showError(t.errorTitle, t.printerUnavailableHint);
+      } }]);
+    } catch {
+      showError(t.extractFailed, t.coming);
+    }
+  };
+
   const openPrintDialog = async () => {
     try {
       const width = orientation === "portrait" ? 794 : 1123;
@@ -428,6 +507,7 @@ export default function HomeScreen() {
           <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={readableText} mutedColor={readableMuted} onPress={imagesToPdf} />
           <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={() => chooseFiles("application/pdf")} />
           <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={scanForDevices} />
+          <ActionCard icon="format-list-numbered" title={t.numbering} hint={t.numberingHint} color="#E45757" textColor={readableText} mutedColor={readableMuted} onPress={numberPdf} />
         </View>
 
         <View style={[styles.sectionHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.recent}</Text><Pressable onPress={actionComing}><Text style={[styles.viewAll, { color: colors.primary }]}>{t.viewAll}</Text></Pressable></View>

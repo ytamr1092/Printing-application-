@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { paperOptions, paperPresetById, supportedPaperWeights } from "../shared/print-options";
-import { canMergePdfs, hasAtLeastFiles } from "../shared/file-operations";
+import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "../shared/file-operations";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -42,5 +42,10 @@ describe("PrintPilot file operations", () => {
     expect(hasAtLeastFiles(0)).toBe(false);
     expect(hasAtLeastFiles(1)).toBe(true);
     expect(hasAtLeastFiles(1.5)).toBe(false);
+  });
+
+  it("finds complete JPEG byte ranges without treating unrelated bytes as images", () => {
+    const bytes = new Uint8Array([0, 0xff, 0xd8, 1, 2, 0xff, 0xd9, 4, 0xff, 0xd8, 9, 0xff, 0xd9]);
+    expect(findJpegByteRanges(bytes)).toEqual([{ start: 1, end: 7 }, { start: 8, end: 13 }]);
   });
 });
