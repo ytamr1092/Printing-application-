@@ -5,6 +5,7 @@ import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "../shared/fil
 import { printProfiles, printProfileById } from "../shared/print-profiles";
 import { canStartKyoceraScan, hasBothIdFaces, isValidIpv4 } from "../shared/device-operations";
 import { formatNumberValue, getNumberingPages } from "../shared/numbering";
+import { duplexEdgeLabel, isDuplexEdge } from "../shared/duplex-settings";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -84,5 +85,15 @@ describe("PrintPilot numbering settings", () => {
     expect(formatNumberValue(12, "indic")).toBe("١٢");
     expect(formatNumberValue(12, "roman-l")).toBe("xii");
     expect(formatNumberValue(12, "roman-u")).toBe("XII");
+  });
+});
+
+describe("PrintPilot duplex settings", () => {
+  it("supports long-edge and short-edge flip modes", () => {
+    expect(isDuplexEdge("long")).toBe(true);
+    expect(isDuplexEdge("short")).toBe(true);
+    expect(isDuplexEdge("top")).toBe(false);
+    expect(duplexEdgeLabel("long", "ar")).toBe("الحافة الطويلة");
+    expect(duplexEdgeLabel("short", "en")).toBe("Short edge");
   });
 });

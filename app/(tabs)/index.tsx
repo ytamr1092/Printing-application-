@@ -26,6 +26,7 @@ import { paperOptions, paperPresetById } from "@/shared/print-options";
 import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
 import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
+import { duplexEdgeLabel } from "@/shared/duplex-settings";
 
 type Language = "ar" | "en";
 type NumberPosition = "left" | "center" | "right";
@@ -187,6 +188,9 @@ const copy = {
     bw: "أبيض وأسود",
     duplex: "وجهين",
     oneSided: "وجه واحد",
+    duplexEdge: "حافة قلب الورقة",
+    longEdge: "الحافة الطويلة",
+    shortEdge: "الحافة القصيرة",
     profileApplied: "تم تطبيق ملف التعريف",
     cancelAll: "إلغاء كل المهام",
     tasksCancelled: "تم إلغاء كل المهام المعلقة",
@@ -357,6 +361,9 @@ const copy = {
     bw: "Black & white",
     duplex: "Duplex",
     oneSided: "One-sided",
+    duplexEdge: "Duplex flip edge",
+    longEdge: "Long edge",
+    shortEdge: "Short edge",
     profileApplied: "Print profile applied",
     cancelAll: "Cancel all tasks",
     tasksCancelled: "All pending tasks were cancelled",
@@ -435,6 +442,7 @@ export default function HomeScreen() {
   const [selectedProfile, setSelectedProfile] = useState("certificate");
   const [colorMode, setColorMode] = useState<"color" | "bw">("color");
   const [duplex, setDuplex] = useState(false);
+  const [duplexEdge, setDuplexEdge] = useState<"long" | "short">("long");
   const [aiEnabled, setAiEnabled] = useState(false);
   const [command, setCommand] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
@@ -488,7 +496,7 @@ export default function HomeScreen() {
   useEffect(() => {
     AsyncStorage.getItem("printpilot.settings.v1").then((stored) => {
       if (!stored) return;
-      const settings = JSON.parse(stored) as Partial<{ selectedPaper: string; selectedWeight: string; orientation: "portrait" | "landscape"; copies: string; selectedProfile: string; colorMode: "color" | "bw"; duplex: boolean }>;
+      const settings = JSON.parse(stored) as Partial<{ selectedPaper: string; selectedWeight: string; orientation: "portrait" | "landscape"; copies: string; selectedProfile: string; colorMode: "color" | "bw"; duplex: boolean; duplexEdge: "long" | "short" }>;
       if (settings.selectedPaper) setSelectedPaper(settings.selectedPaper);
       if (settings.selectedWeight) setSelectedWeight(settings.selectedWeight);
       if (settings.orientation) setOrientation(settings.orientation);
@@ -496,12 +504,13 @@ export default function HomeScreen() {
       if (settings.selectedProfile) setSelectedProfile(settings.selectedProfile);
       if (settings.colorMode) setColorMode(settings.colorMode);
       if (typeof settings.duplex === "boolean") setDuplex(settings.duplex);
+      if (settings.duplexEdge) setDuplexEdge(settings.duplexEdge);
     }).catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    AsyncStorage.setItem("printpilot.settings.v1", JSON.stringify({ selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex })).catch(() => undefined);
-  }, [selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex]);
+    AsyncStorage.setItem("printpilot.settings.v1", JSON.stringify({ selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex, duplexEdge })).catch(() => undefined);
+  }, [selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex, duplexEdge]);
 
   const showError = (title: string, hint: string) => setErrorMessage({ title, hint });
 
@@ -514,6 +523,7 @@ export default function HomeScreen() {
     setCopies(profile.copies);
     setColorMode(profile.colorMode);
     setDuplex(profile.duplex);
+    setDuplexEdge("long");
     setTasks((current) => [`${t.profileApplied}: ${isArabic ? profile.ar : profile.en}`, ...current].slice(0, 4));
     setErrorMessage(null);
   };
@@ -528,7 +538,7 @@ export default function HomeScreen() {
       { text: t.dismiss, style: "cancel" },
       { text: t.continueAction, onPress: async () => {
         try {
-          const backup = { version: 1, createdAt: new Date().toISOString(), settings: { selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex }, activity: tasks };
+          const backup = { version: 1, createdAt: new Date().toISOString(), settings: { selectedPaper, selectedWeight, orientation, copies, selectedProfile, colorMode, duplex, duplexEdge }, activity: tasks };
           const uri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Backup-${Date.now()}.json`;
           await FileSystem.writeAsStringAsync(uri, JSON.stringify(backup, null, 2), { encoding: FileSystem.EncodingType.UTF8 });
           setTasks((current) => [`${t.backupSuccess}: ${uri.split("/").pop()}`, ...current].slice(0, 4));
@@ -547,7 +557,7 @@ export default function HomeScreen() {
       const result = await DocumentPicker.getDocumentAsync({ type: "application/json", multiple: false, copyToCacheDirectory: true });
       if (result.canceled || !result.assets?.length) return;
       const raw = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
-      const backup = JSON.parse(raw) as { version?: number; settings?: Partial<{ selectedPaper: string; selectedWeight: string; orientation: "portrait" | "landscape"; copies: string; selectedProfile: string; colorMode: "color" | "bw"; duplex: boolean }>; activity?: string[] };
+      const backup = JSON.parse(raw) as { version?: number; settings?: Partial<{ selectedPaper: string; selectedWeight: string; orientation: "portrait" | "landscape"; copies: string; selectedProfile: string; colorMode: "color" | "bw"; duplex: boolean; duplexEdge: "long" | "short" }>; activity?: string[] };
       if (backup.version !== 1 || !backup.settings) {
         showError(t.invalidBackup, t.restoreHint);
         return;
@@ -560,6 +570,7 @@ export default function HomeScreen() {
       if (settings.selectedProfile) setSelectedProfile(settings.selectedProfile);
       if (settings.colorMode) setColorMode(settings.colorMode);
       if (typeof settings.duplex === "boolean") setDuplex(settings.duplex);
+      if (settings.duplexEdge) setDuplexEdge(settings.duplexEdge);
       if (Array.isArray(backup.activity)) setTasks(backup.activity.slice(0, 4));
       setErrorMessage(null);
       Alert.alert(t.restoreSuccess, result.assets[0].name);
@@ -854,7 +865,8 @@ export default function HomeScreen() {
         return;
       }
       const asset = result.assets[0];
-      Alert.alert(t.confirmPrint, `${asset.name}\n${paper.ar} · ${selectedWeight} · ${colorMode === "color" ? t.color : t.bw} · ${duplex ? t.duplex : t.oneSided} · ${copies}`, [
+      const duplexSummary = duplex ? `${t.duplex} · ${duplexEdgeLabel(duplexEdge, language)}` : t.oneSided;
+      Alert.alert(t.confirmPrint, `${asset.name}\n${paper.ar} · ${selectedWeight} · ${colorMode === "color" ? t.color : t.bw} · ${duplexSummary} · ${copies}`, [
         { text: t.dismiss, style: "cancel" },
         { text: t.continueAction, onPress: async () => {
           try {
@@ -992,6 +1004,7 @@ export default function HomeScreen() {
             <Pressable onPress={() => setColorMode("bw")} style={[styles.segment, colorMode === "bw" && { backgroundColor: colors.primary }]}><Icon name="tonality" color={colorMode === "bw" ? "#fff" : colors.muted} size={18} /><Text style={[styles.segmentText, { color: colorMode === "bw" ? "#fff" : colors.muted }]}>{t.bw}</Text></Pressable>
           </View>
           <Pressable onPress={() => setDuplex((value) => !value)} style={[styles.duplexToggle, { borderColor: duplex ? colors.primary : colors.border, backgroundColor: duplex ? colors.primary + "14" : colors.background, flexDirection: isArabic ? "row-reverse" : "row" }]}><Icon name="flip" color={duplex ? colors.primary : colors.muted} size={18} /><Text style={[styles.segmentText, { color: duplex ? colors.primary : colors.muted }]}>{duplex ? t.duplex : t.oneSided}</Text></Pressable>
+          {duplex && <View style={styles.duplexEdgeBlock}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.duplexEdge}</Text><View style={[styles.segmented, { backgroundColor: colors.background, marginTop: 5 }]}><Pressable onPress={() => setDuplexEdge("long")} style={[styles.segment, duplexEdge === "long" && { backgroundColor: colors.primary }]}><Icon name="flip-to-front" color={duplexEdge === "long" ? "#fff" : colors.muted} size={17} /><Text style={[styles.segmentText, { color: duplexEdge === "long" ? "#fff" : colors.muted }]}>{t.longEdge}</Text></Pressable><Pressable onPress={() => setDuplexEdge("short")} style={[styles.segment, duplexEdge === "short" && { backgroundColor: colors.primary }]}><Icon name="flip-to-back" color={duplexEdge === "short" ? "#fff" : colors.muted} size={17} /><Text style={[styles.segmentText, { color: duplexEdge === "short" ? "#fff" : colors.muted }]}>{t.shortEdge}</Text></Pressable></View></View>}
           <View style={[styles.printFooter, { flexDirection: isArabic ? "row-reverse" : "row" }]}> 
             <View style={styles.copiesBlock}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.copies}</Text><TextInput value={copies} onChangeText={setCopies} keyboardType="number-pad" style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} /></View>
             <Pressable onPress={openPrintDialog} style={({ pressed }) => [styles.printButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Icon name="print" color="#fff" size={19} /><Text style={styles.printButtonText}>{t.openPrint}</Text></Pressable>
@@ -1136,6 +1149,7 @@ const styles = StyleSheet.create({
   segment: { flex: 1, borderRadius: 9, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 },
   segmentText: { fontSize: 11, fontWeight: "700" },
   duplexToggle: { borderWidth: 1, borderRadius: 11, paddingVertical: 9, paddingHorizontal: 11, alignItems: "center", justifyContent: "center", gap: 6, marginTop: 9 },
+  duplexEdgeBlock: { marginTop: 9, gap: 3 },
   printFooter: { alignItems: "flex-end", gap: 10, marginTop: 14 },
   copiesBlock: { width: 72, gap: 4 },
   copiesInput: { borderWidth: 1, borderRadius: 10, height: 39, paddingHorizontal: 11, textAlign: "center", fontWeight: "800" },
