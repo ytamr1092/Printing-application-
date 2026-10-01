@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { paperOptions, paperPresetById, supportedPaperWeights } from "../shared/print-options";
-import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "../shared/file-operations";
+import {
+  paperOptions,
+  paperPresetById,
+  supportedPaperWeights,
+} from "../shared/print-options";
+import {
+  canMergePdfs,
+  findJpegByteRanges,
+  hasAtLeastFiles,
+} from "../shared/file-operations";
 import { printProfiles, printProfileById } from "../shared/print-profiles";
-import { canStartKyoceraScan, hasBothIdFaces, isValidIpv4 } from "../shared/device-operations";
+import {
+  canStartKyoceraScan,
+  hasBothIdFaces,
+  isValidIpv4,
+} from "../shared/device-operations";
 import { formatNumberValue, getNumberingPages } from "../shared/numbering";
 import { duplexEdgeLabel, isDuplexEdge } from "../shared/duplex-settings";
+import { hasPreviewContent, previewKinds } from "../shared/preview";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -20,7 +33,12 @@ describe("PrintPilot paper presets", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain("a4");
     expect(ids).toContain("certificate");
-    expect(supportedPaperWeights).toEqual(["70 g/m²", "80 g/m²", "120 g/m²", "200 g/m²"]);
+    expect(supportedPaperWeights).toEqual([
+      "70 g/m²",
+      "80 g/m²",
+      "120 g/m²",
+      "200 g/m²",
+    ]);
   });
 });
 
@@ -49,14 +67,25 @@ describe("PrintPilot file operations", () => {
   });
 
   it("finds complete JPEG byte ranges without treating unrelated bytes as images", () => {
-    const bytes = new Uint8Array([0, 0xff, 0xd8, 1, 2, 0xff, 0xd9, 4, 0xff, 0xd8, 9, 0xff, 0xd9]);
-    expect(findJpegByteRanges(bytes)).toEqual([{ start: 1, end: 7 }, { start: 8, end: 13 }]);
+    const bytes = new Uint8Array([
+      0, 0xff, 0xd8, 1, 2, 0xff, 0xd9, 4, 0xff, 0xd8, 9, 0xff, 0xd9,
+    ]);
+    expect(findJpegByteRanges(bytes)).toEqual([
+      { start: 1, end: 7 },
+      { start: 8, end: 13 },
+    ]);
   });
 });
 
 describe("PrintPilot print profiles", () => {
   it("includes useful ready-to-use profiles", () => {
-    expect(printProfiles.map((profile) => profile.id)).toEqual(["certificate", "a4-bw", "photos-a4", "duplex", "id-card"]);
+    expect(printProfiles.map((profile) => profile.id)).toEqual([
+      "certificate",
+      "a4-bw",
+      "photos-a4",
+      "duplex",
+      "id-card",
+    ]);
     expect(printProfileById("duplex").duplex).toBe(true);
     expect(printProfileById("photos-a4").colorMode).toBe("color");
   });
@@ -95,5 +124,22 @@ describe("PrintPilot duplex settings", () => {
     expect(isDuplexEdge("top")).toBe(false);
     expect(duplexEdgeLabel("long", "ar")).toBe("الحافة الطويلة");
     expect(duplexEdgeLabel("short", "en")).toBe("Short edge");
+  });
+});
+
+describe("PrintPilot separate previews", () => {
+  it("keeps every workflow in its own preview section", () => {
+    expect(previewKinds).toEqual([
+      "merge",
+      "images",
+      "extract",
+      "numbering",
+      "id",
+      "print",
+    ]);
+    expect(new Set(previewKinds).size).toBe(6);
+    expect(hasPreviewContent("print", ["document.pdf"], null, null)).toBe(true);
+    expect(hasPreviewContent("id", [], "front.jpg", null)).toBe(true);
+    expect(hasPreviewContent("id", [], null, null)).toBe(false);
   });
 });
