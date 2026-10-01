@@ -25,8 +25,14 @@ import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "@/shared/file
 import { paperOptions, paperPresetById } from "@/shared/print-options";
 import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
+import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 
 type Language = "ar" | "en";
+type NumberPosition = "left" | "center" | "right";
+type NumberVertical = "top" | "middle" | "bottom";
+type NumberWhich = "all" | "odd" | "even";
+type NumberNumerals = "latin" | "indic" | "roman-l" | "roman-u";
+type NumberFont = "helvetica" | "times" | "courier";
 
 const copy = {
   ar: {
@@ -132,6 +138,30 @@ const copy = {
     numberingNeedOne: "اختر ملف PDF واحدًا على الأقل.",
     numberingSuccess: "تم ترقيم صفحات PDF بنجاح",
     numberingFailed: "تعذر ترقيم صفحات PDF",
+    numberingFile: "ملف الترقيم",
+    chooseNumberingFile: "اختيار ملف PDF للترقيم",
+    numberingSettings: "إعدادات الترقيم",
+    numberLeft: "يسار",
+    numberCenter: "وسط",
+    numberRight: "يمين",
+    numberTop: "أعلى",
+    numberMiddle: "النص",
+    numberBottom: "أسفل",
+    numberMargin: "البعد عن الحافة (مم)",
+    numberFrom: "من صفحة",
+    numberTo: "إلى صفحة",
+    numberStart: "بداية الرقم",
+    numberWhich: "الصفحات المرقمة",
+    numberAll: "كل الصفحات",
+    numberOdd: "الفردية",
+    numberEven: "الزوجية",
+    numberFormat: "صيغة الرقم",
+    numberNumerals: "نوع الأرقام",
+    numberSize: "الحجم (نقطة)",
+    numberFont: "الخط",
+    numberBold: "خط غامق",
+    numberMirror: "عكس الموضع في الصفحات الزوجية",
+    runNumbering: "رقّم الملف",
     extractSuccess: "تم استخراج الصور من PDF",
     extractNone: "لم يتم العثور على صور JPEG داخل الملف",
     extractFailed: "تعذر استخراج الصور من PDF",
@@ -278,6 +308,30 @@ const copy = {
     numberingNeedOne: "Choose at least one PDF file.",
     numberingSuccess: "PDF pages numbered successfully",
     numberingFailed: "PDF numbering failed",
+    numberingFile: "Numbering file",
+    chooseNumberingFile: "Choose PDF to number",
+    numberingSettings: "Numbering settings",
+    numberLeft: "Left",
+    numberCenter: "Center",
+    numberRight: "Right",
+    numberTop: "Top",
+    numberMiddle: "Middle",
+    numberBottom: "Bottom",
+    numberMargin: "Distance from edge (mm)",
+    numberFrom: "From page",
+    numberTo: "To page",
+    numberStart: "Starting number",
+    numberWhich: "Numbered pages",
+    numberAll: "All pages",
+    numberOdd: "Odd",
+    numberEven: "Even",
+    numberFormat: "Number format",
+    numberNumerals: "Numerals",
+    numberSize: "Size (pt)",
+    numberFont: "Font",
+    numberBold: "Bold text",
+    numberMirror: "Mirror position on even pages",
+    runNumbering: "Number file",
     extractSuccess: "Images extracted from PDF",
     extractNone: "No JPEG images were found inside the file",
     extractFailed: "PDF image extraction failed",
@@ -360,6 +414,12 @@ function bytesToBase64(bytes: Uint8Array): string {
   return globalThis.btoa ? globalThis.btoa(binary) : Buffer.from(binary, "binary").toString("base64");
 }
 
+function getNumberFont(StandardFonts: Record<string, string>, font: NumberFont, bold: boolean): string {
+  if (font === "times") return StandardFonts[bold ? "TimesRomanBold" : "TimesRoman"];
+  if (font === "courier") return StandardFonts[bold ? "CourierBold" : "Courier"];
+  return StandardFonts[bold ? "HelveticaBold" : "Helvetica"];
+}
+
 // Load the PDF engine only when a PDF action is requested.
 // @ts-ignore pdf-lib does not publish declarations for this bundled entry.
 const loadPdfLib = () => import("pdf-lib/dist/pdf-lib.esm.js") as Promise<any>;
@@ -389,6 +449,21 @@ export default function HomeScreen() {
   const [idFrontUri, setIdFrontUri] = useState<string | null>(null);
   const [idBackUri, setIdBackUri] = useState<string | null>(null);
   const [idBusy, setIdBusy] = useState(false);
+  const [numberingFile, setNumberingFile] = useState<{ uri: string; name: string; pages: number } | null>(null);
+  const [numberPosition, setNumberPosition] = useState<NumberPosition>("center");
+  const [numberVertical, setNumberVertical] = useState<NumberVertical>("bottom");
+  const [numberMargin, setNumberMargin] = useState("10");
+  const [numberFrom, setNumberFrom] = useState("1");
+  const [numberTo, setNumberTo] = useState("");
+  const [numberStart, setNumberStart] = useState("1");
+  const [numberWhich, setNumberWhich] = useState<NumberWhich>("all");
+  const [numberFormat, setNumberFormat] = useState("{n} / {t}");
+  const [numberNumerals, setNumberNumerals] = useState<NumberNumerals>("latin");
+  const [numberSize, setNumberSize] = useState("9");
+  const [numberColor, setNumberColor] = useState("#526270");
+  const [numberFont, setNumberFont] = useState<NumberFont>("helvetica");
+  const [numberBold, setNumberBold] = useState(false);
+  const [numberMirror, setNumberMirror] = useState(false);
   const [tasks, setTasks] = useState<string[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
   const { colorScheme, setColorScheme } = useThemeContext();
@@ -544,7 +619,7 @@ export default function HomeScreen() {
         const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
         return `data:image/jpeg;base64,${base64}`;
       }));
-      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.sheet{width:210mm;height:297mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14mm}.card{width:85.6mm;height:54mm;border:0.4mm solid #555;border-radius:2mm;object-fit:cover}.label{font:12px Arial;color:#334155;margin-top:-10mm}</style></head><body><main class="sheet"><img class="card" src="${front}"/><div class="label">${isArabic ? "الوجه الأمامي" : "Front"}</div><img class="card" src="${back}"/><div class="label">${isArabic ? "الوجه الخلفي" : "Back"}</div></main></body></html>`;
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.page{width:210mm;height:297mm;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.card{width:85.6mm;height:54mm;border:0.4mm solid #555;border-radius:2mm;object-fit:cover}.label{font:12px Arial;color:#334155;margin-top:5mm}</style></head><body><main class="page"><img class="card" src="${front}"/><div class="label">${isArabic ? "الوجه الأمامي — الصفحة الأولى" : "Front — page 1"}</div></main><main class="page"><img class="card" src="${back}"/><div class="label">${isArabic ? "الوجه الخلفي — الصفحة الثانية" : "Back — page 2"}</div></main></body></html>`;
       const generated = await Print.printToFileAsync({ html, width: 794, height: 1123 });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-ID-Card-${Date.now()}.pdf`;
       await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
@@ -676,32 +751,63 @@ export default function HomeScreen() {
     }
   };
 
+  const chooseNumberingFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: false, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) return;
+      const sourceBase64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const { PDFDocument } = await loadPdfLib();
+      const document = await PDFDocument.load(base64ToBytes(sourceBase64));
+      setNumberingFile({ uri: result.assets[0].uri, name: result.assets[0].name, pages: document.getPageCount() });
+      setErrorMessage(null);
+    } catch {
+      showError(t.numberingFailed, t.pickerCancelledHint);
+    }
+  };
+
   const numberPdf = async () => {
+    if (!numberingFile) {
+      showError(t.numberingNeedOne, t.chooseNumberingFile);
+      return;
+    }
     try {
       const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
-      const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: false, copyToCacheDirectory: true });
-      if (result.canceled || !result.assets?.length) {
-        showError(t.numberingNeedOne, t.pickerCancelledHint);
-        return;
-      }
-      const sourceBase64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const sourceBase64 = await FileSystem.readAsStringAsync(numberingFile.uri, { encoding: FileSystem.EncodingType.Base64 });
       const document = await PDFDocument.load(base64ToBytes(sourceBase64));
-      const font = await document.embedFont(StandardFonts.Helvetica);
+      const font = await document.embedFont(getNumberFont(StandardFonts, numberFont, numberBold));
       const pages = document.getPages();
+      const from = Math.max(1, Number(numberFrom) || 1);
+      const to = Math.min(pages.length, Number(numberTo) || pages.length);
+      const firstNumber = Math.max(0, Number(numberStart) || 0);
+      const margin = Math.max(0, Number(numberMargin) || 0) * 2.83465;
+      const size = Math.max(4, Math.min(72, Number(numberSize) || 9));
+      const selected = getNumberingPages(pages.length, from, to, numberWhich);
+      const total = selected.length;
+      let sequence = 0;
+      const hex = numberColor.replace("#", "");
+      const red = parseInt(hex.slice(0, 2) || "52", 16) / 255;
+      const green = parseInt(hex.slice(2, 4) || "98", 16) / 255;
+      const blue = parseInt(hex.slice(4, 6) || "112", 16) / 255;
       pages.forEach((page: any, index: number) => {
-        const { width } = page.getSize();
-        const label = `${index + 1} / ${pages.length}`;
-        const labelWidth = font.widthOfTextAtSize(label, 9);
-        page.drawText(label, { x: (width - labelWidth) / 2, y: 16, size: 9, font, color: rgb(0.32, 0.39, 0.45) });
+        const pageNo = index + 1;
+        if (!selected.includes(pageNo)) return;
+        const shown = firstNumber + sequence;
+        sequence += 1;
+        let label = numberFormat.replace("{n}", formatNumberValue(shown, numberNumerals)).replace("{t}", formatNumberValue(firstNumber + total - 1, numberNumerals));
+        const labelWidth = font.widthOfTextAtSize(label, size);
+        const { width, height } = page.getSize();
+        const mirroredPosition = numberMirror && pageNo % 2 === 0 ? (numberPosition === "left" ? "right" : numberPosition === "right" ? "left" : "center") : numberPosition;
+        const x = mirroredPosition === "left" ? margin : mirroredPosition === "right" ? width - margin - labelWidth : (width - labelWidth) / 2;
+        const y = numberVertical === "top" ? height - margin - size : numberVertical === "middle" ? (height - size) / 2 : margin;
+        page.drawText(label, { x, y, size, font, color: rgb(red, green, blue) });
       });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Numbered-${Date.now()}.pdf`;
       await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await document.save()), { encoding: FileSystem.EncodingType.Base64 });
-      setSelectedFiles([result.assets[0].name]);
-      setTasks((current) => [`${t.numberingSuccess}: ${pages.length}`, ...current].slice(0, 4));
+      setSelectedFiles([numberingFile.name]);
+      setTasks((current) => [`${t.numberingSuccess}: ${selected.length}`, ...current].slice(0, 4));
       setErrorMessage(null);
       Alert.alert(t.numberingSuccess, outputUri, [{ text: t.dismiss, style: "cancel" }, { text: t.shareResult, onPress: async () => {
         if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
-        else showError(t.errorTitle, t.printerUnavailableHint);
       } }]);
     } catch {
       showError(t.numberingFailed, t.coming);
@@ -741,26 +847,29 @@ export default function HomeScreen() {
   };
 
   const openPrintDialog = async () => {
-    Alert.alert(t.confirmPrint, `${t.confirmPrintHint}\n${paper.ar} · ${selectedWeight} · ${colorMode === "color" ? t.color : t.bw} · ${duplex ? t.duplex : t.oneSided}`, [
-      { text: t.dismiss, style: "cancel" },
-      { text: t.continueAction, onPress: async () => {
     try {
-      const width = orientation === "portrait" ? 794 : 1123;
-      const height = orientation === "portrait" ? 1123 : 794;
-      await Print.printAsync({
-        html: `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:${paper.size};margin:18mm}body{font-family:Arial;color:#10233f;text-align:center;padding-top:28%;}h1{font-size:30px}p{font-size:16px;color:#527087}</style></head><body><h1>${isArabic ? "معاينة شهادة PrintPilot" : "PrintPilot Certificate Preview"}</h1><p>${paper.ar} · ${selectedWeight} · ${colorMode === "color" ? t.color : t.bw} · ${duplex ? t.duplex : t.oneSided} · ${copies} ${isArabic ? "نسخة" : "copies"}</p></body></html>`,
-        width,
-        height,
-        orientation: orientation === "portrait" ? Print.Orientation.portrait : Print.Orientation.landscape,
-        margins: { top: 18, bottom: 18, left: 18, right: 18 },
-      });
-      setTasks((current) => [`${t.printReady}: ${paper.size} · ${selectedWeight}`, ...current].slice(0, 4));
-      Alert.alert(t.printReady, `${paper.size} · ${selectedWeight}`);
+      const result = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "image/*"], multiple: false, copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.length) {
+        showError(t.pickerCancelled, t.pickerCancelledHint);
+        return;
+      }
+      const asset = result.assets[0];
+      Alert.alert(t.confirmPrint, `${asset.name}\n${paper.ar} · ${selectedWeight} · ${colorMode === "color" ? t.color : t.bw} · ${duplex ? t.duplex : t.oneSided} · ${copies}`, [
+        { text: t.dismiss, style: "cancel" },
+        { text: t.continueAction, onPress: async () => {
+          try {
+            await Print.printAsync({ uri: asset.uri });
+            setSelectedFiles([asset.name]);
+            setTasks((current) => [`${t.printReady}: ${asset.name}`, ...current].slice(0, 4));
+            setErrorMessage(null);
+          } catch {
+            showError(t.printerUnavailable, t.printerUnavailableHint);
+          }
+        } },
+      ]);
     } catch {
       showError(t.printerUnavailable, t.printerUnavailableHint);
     }
-      } },
-    ]);
   };
 
   const actionComing = () => showError(t.errorTitle, t.coming);
@@ -815,7 +924,29 @@ export default function HomeScreen() {
           <ActionCard icon="photo-library" title={t.images} hint={t.imagesHint} color="#8B5CF6" textColor={readableText} mutedColor={readableMuted} onPress={imagesToPdf} />
           <ActionCard icon="photo-filter" title={t.extract} hint={t.extractHint} color="#F59E0B" textColor={readableText} mutedColor={readableMuted} onPress={extractImages} />
           <ActionCard icon="document-scanner" title={t.scan} hint={t.scanHint} color="#10B981" textColor={readableText} mutedColor={readableMuted} onPress={scanForDevices} />
-          <ActionCard icon="format-list-numbered" title={t.numbering} hint={t.numberingHint} color="#E45757" textColor={readableText} mutedColor={readableMuted} onPress={numberPdf} />
+          <ActionCard icon="format-list-numbered" title={t.numbering} hint={t.numberingHint} color="#E45757" textColor={readableText} mutedColor={readableMuted} onPress={chooseNumberingFile} />
+        </View>
+
+        <View style={[styles.numberingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
+          <View style={[styles.profileHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.error + "18" }]}><Icon name="format-list-numbered" color={colors.error} size={20} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.numberingSettings}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{numberingFile ? `${numberingFile.name} · ${numberingFile.pages} ${isArabic ? "صفحة" : "pages"}` : t.chooseNumberingFile}</Text></View></View>
+          <Pressable onPress={chooseNumberingFile} style={[styles.outlineAction, { borderColor: colors.primary }]}><Icon name="folder-open" color={colors.primary} size={17} /><Text style={[styles.outlineActionText, { color: colors.primary }]}>{t.chooseNumberingFile}</Text></Pressable>
+          <Text style={[styles.smallLabel, { color: colors.muted, marginTop: 10 }]}>{t.numberLeft} / {t.numberCenter} / {t.numberRight}</Text>
+          <View style={[styles.segmented, { backgroundColor: colors.background }]}>
+            {([ ["left", t.numberLeft], ["center", t.numberCenter], ["right", t.numberRight] ] as [NumberPosition, string][]).map(([value, label]) => <Pressable key={value} onPress={() => setNumberPosition(value)} style={[styles.segment, numberPosition === value && { backgroundColor: colors.primary }]}><Text style={[styles.segmentText, { color: numberPosition === value ? "#fff" : colors.muted }]}>{label}</Text></Pressable>)}
+          </View>
+          <Text style={[styles.smallLabel, { color: colors.muted, marginTop: 10 }]}>{t.numberTop} / {t.numberMiddle} / {t.numberBottom}</Text>
+          <View style={[styles.segmented, { backgroundColor: colors.background }]}>
+            {([ ["top", t.numberTop], ["middle", t.numberMiddle], ["bottom", t.numberBottom] ] as [NumberVertical, string][]).map(([value, label]) => <Pressable key={value} onPress={() => setNumberVertical(value)} style={[styles.segment, numberVertical === value && { backgroundColor: colors.primary }]}><Text style={[styles.segmentText, { color: numberVertical === value ? "#fff" : colors.muted }]}>{label}</Text></Pressable>)}
+          </View>
+          <View style={[styles.numberFieldsRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={styles.numberField}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.numberMargin}</Text><TextInput value={numberMargin} onChangeText={setNumberMargin} keyboardType="numeric" style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} /></View><View style={styles.numberField}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.numberFrom}</Text><TextInput value={numberFrom} onChangeText={setNumberFrom} keyboardType="numeric" style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} /></View><View style={styles.numberField}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.numberTo}</Text><TextInput value={numberTo} onChangeText={setNumberTo} placeholder={numberingFile ? String(numberingFile.pages) : "—"} placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} /></View></View>
+          <View style={[styles.numberFieldsRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={styles.numberField}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.numberStart}</Text><TextInput value={numberStart} onChangeText={setNumberStart} keyboardType="numeric" style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} /></View><View style={[styles.numberField, { flex: 2 }]}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.numberFormat}</Text><TextInput value={numberFormat} onChangeText={setNumberFormat} style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, textAlign: isArabic ? "right" : "left" }]} /></View></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingVertical: 8 }}><Text style={[styles.smallLabel, { color: colors.muted, alignSelf: "center" }]}>{t.numberWhich}</Text>{([ ["all", t.numberAll], ["odd", t.numberOdd], ["even", t.numberEven] ] as [NumberWhich, string][]).map(([value, label]) => <Pressable key={value} onPress={() => setNumberWhich(value)} style={[styles.pill, { backgroundColor: numberWhich === value ? colors.primary : colors.background, borderColor: numberWhich === value ? colors.primary : colors.border }]}><Text style={[styles.pillText, { color: numberWhich === value ? "#fff" : colors.foreground }]}>{label}</Text></Pressable>)}</ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, paddingVertical: 2 }}><Text style={[styles.smallLabel, { color: colors.muted, alignSelf: "center" }]}>{t.numberNumerals}</Text>{([ ["latin", "1 2 3"], ["indic", "١ ٢ ٣"], ["roman-l", "i ii iii"], ["roman-u", "I II III"] ] as [NumberNumerals, string][]).map(([value, label]) => <Pressable key={value} onPress={() => setNumberNumerals(value)} style={[styles.pill, { backgroundColor: numberNumerals === value ? colors.primary : colors.background, borderColor: numberNumerals === value ? colors.primary : colors.border }]}><Text style={[styles.pillText, { color: numberNumerals === value ? "#fff" : colors.foreground }]}>{label}</Text></Pressable>)}</ScrollView>
+          <View style={[styles.numberFieldsRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={styles.numberField}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.numberSize}</Text><TextInput value={numberSize} onChangeText={setNumberSize} keyboardType="numeric" style={[styles.copiesInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} /></View><View style={[styles.numberField, { flex: 2 }]}><Text style={[styles.smallLabel, { color: colors.muted }]}>{t.numberFont}</Text><View style={[styles.segmented, { backgroundColor: colors.background, marginTop: 0 }]}>{([ ["helvetica", "Helvetica"], ["times", "Times"], ["courier", "Courier"] ] as [NumberFont, string][]).map(([value, label]) => <Pressable key={value} onPress={() => setNumberFont(value)} style={[styles.segment, numberFont === value && { backgroundColor: colors.primary }]}><Text style={[styles.segmentText, { color: numberFont === value ? "#fff" : colors.muted }]}>{label}</Text></Pressable>)}</View></View></View>
+          <View style={[styles.numberToggleRow, { flexDirection: isArabic ? "row-reverse" : "row", borderColor: colors.border }]}><Text style={[styles.segmentText, { color: colors.foreground }]}>{t.numberBold}</Text><Switch value={numberBold} onValueChange={setNumberBold} trackColor={{ false: colors.border, true: colors.primary + "66" }} thumbColor={numberBold ? colors.primary : colors.muted} /></View>
+          <View style={[styles.numberToggleRow, { flexDirection: isArabic ? "row-reverse" : "row", borderColor: colors.border }]}><Text style={[styles.segmentText, { color: colors.foreground }]}>{t.numberMirror}</Text><Switch value={numberMirror} onValueChange={setNumberMirror} trackColor={{ false: colors.border, true: colors.primary + "66" }} thumbColor={numberMirror ? colors.primary : colors.muted} /></View>
+          <TextInput value={numberColor} onChangeText={setNumberColor} autoCapitalize="none" placeholder="#526270" placeholderTextColor={colors.muted} style={[styles.colorInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]} />
+          <Pressable disabled={!numberingFile} onPress={numberPdf} style={({ pressed }) => [styles.printButton, { backgroundColor: numberingFile ? colors.primary : colors.border, marginTop: 10 }, pressed && styles.pressed]}><Icon name="format-list-numbered" color="#fff" size={18} /><Text style={styles.printButtonText}>{t.runNumbering}</Text></Pressable>
         </View>
 
         <View style={[styles.idCardCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -965,6 +1096,11 @@ const styles = StyleSheet.create({
   viewAll: { fontSize: 12, fontWeight: "700" },
   actionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 22 },
   idCardCard: { borderRadius: 17, borderWidth: 1, padding: 14, marginBottom: 16 },
+  numberingCard: { borderRadius: 17, borderWidth: 1, padding: 14, marginBottom: 16 },
+  numberFieldsRow: { gap: 8, marginTop: 10 },
+  numberField: { flex: 1, gap: 4 },
+  numberToggleRow: { minHeight: 44, borderTopWidth: 1, alignItems: "center", justifyContent: "space-between", gap: 8 },
+  colorInput: { minHeight: 38, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, marginTop: 9, fontSize: 12 },
   idFacesRow: { gap: 9, marginTop: 12 },
   idFaceBlock: { flex: 1, gap: 6 },
   idPreview: { height: 76, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
