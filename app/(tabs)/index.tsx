@@ -49,6 +49,10 @@ const copy = {
     idWizardHint: "صوّر أو اختر الوجه الأمامي والخلفي ثم أنشئ PDF",
     idFront: "الوجه الأمامي",
     idBack: "الوجه الخلفي",
+    scanIdFace: "مسح من Kyocera",
+    scanIdFaceHint: "ضع البطاقة على زجاج السكانر ثم ابدأ المسح",
+    scanNeedsConnection: "أدخل IP الطابعة واختبر الاتصال أولًا",
+    scanProtocolMissing: "تم تجهيز الخانة للمسح من Kyocera، لكن استقبال الملف يحتاج إعداد Scan-to-FTP/SMB أو TWAIN للطابعة.",
     takePhoto: "تصوير",
     choosePhoto: "اختيار صورة",
     makeIdPdf: "إنشاء PDF للبطاقة",
@@ -191,6 +195,10 @@ const copy = {
     idWizardHint: "Capture or choose both sides, then create a print-ready PDF",
     idFront: "Front side",
     idBack: "Back side",
+    scanIdFace: "Scan from Kyocera",
+    scanIdFaceHint: "Place the card on the scanner glass, then start scanning",
+    scanNeedsConnection: "Enter the printer IP and test the connection first",
+    scanProtocolMissing: "The Kyocera scan slot is ready, but receiving the file requires Scan-to-FTP/SMB or the printer TWAIN setup.",
     takePhoto: "Camera",
     choosePhoto: "Choose image",
     makeIdPdf: "Create ID card PDF",
@@ -511,6 +519,19 @@ export default function HomeScreen() {
     }
   };
 
+  const scanIdFaceFromKyocera = async (side: "front" | "back") => {
+    if (!isValidIpv4(printerIp.trim())) {
+      showError(t.scanNeedsConnection, t.scannerIpHint);
+      return;
+    }
+    if (deviceMessage !== "connected") {
+      await checkPrinterConnection();
+      return;
+    }
+    setTasks((current) => [`${t.scanIdFace}: ${side === "front" ? t.idFront : t.idBack}`, ...current].slice(0, 4));
+    Alert.alert(t.scanIdFace, t.scanProtocolMissing);
+  };
+
   const createIdCardPdf = async () => {
     if (!hasBothIdFaces(idFrontUri, idBackUri)) {
       showError(t.idNeedBoth, t.idWizardHint);
@@ -800,7 +821,7 @@ export default function HomeScreen() {
         <View style={[styles.idCardCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.profileHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}><View style={[styles.phaseIcon, { backgroundColor: colors.warning + "18" }]}><Icon name="badge" color={colors.warning} size={20} /></View><View style={styles.phaseTitleBlock}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t.idWizard}</Text><Text style={[styles.phaseHint, { color: colors.muted }]}>{t.idWizardHint}</Text></View></View>
           <View style={[styles.idFacesRow, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
-            {([{ side: "front" as const, uri: idFrontUri, label: t.idFront }, { side: "back" as const, uri: idBackUri, label: t.idBack }]).map((face) => <View key={face.side} style={styles.idFaceBlock}><View style={[styles.idPreview, { backgroundColor: colors.background, borderColor: colors.border }]}>{face.uri ? <Image source={{ uri: face.uri }} style={styles.idPreviewImage} /> : <Icon name="credit-card" color={colors.muted} size={28} />}</View><Text style={[styles.idFaceLabel, { color: colors.foreground }]}>{face.label}</Text><View style={styles.idFaceActions}><Pressable onPress={() => chooseIdFace(face.side, "camera")} style={[styles.miniButton, { borderColor: colors.primary }]}><Icon name="photo-camera" color={colors.primary} size={15} /><Text style={[styles.miniButtonText, { color: colors.primary }]}>{t.takePhoto}</Text></Pressable><Pressable onPress={() => chooseIdFace(face.side, "library")} style={[styles.miniButton, { borderColor: colors.border }]}><Icon name="photo-library" color={colors.muted} size={15} /><Text style={[styles.miniButtonText, { color: colors.muted }]}>{t.choosePhoto}</Text></Pressable></View></View>)}
+            {([{ side: "front" as const, uri: idFrontUri, label: t.idFront }, { side: "back" as const, uri: idBackUri, label: t.idBack }]).map((face) => <View key={face.side} style={styles.idFaceBlock}><View style={[styles.idPreview, { backgroundColor: colors.background, borderColor: colors.border }]}>{face.uri ? <Image source={{ uri: face.uri }} style={styles.idPreviewImage} /> : <Icon name="scanner" color={colors.muted} size={28} />}</View><Text style={[styles.idFaceLabel, { color: colors.foreground }]}>{face.label}</Text><Pressable onPress={() => scanIdFaceFromKyocera(face.side)} style={[styles.miniButton, { borderColor: colors.primary, backgroundColor: colors.primary + "10" }]}><Icon name="scanner" color={colors.primary} size={15} /><Text style={[styles.miniButtonText, { color: colors.primary }]}>{t.scanIdFace}</Text></Pressable><Pressable onPress={() => chooseIdFace(face.side, "library")} style={[styles.miniButton, { borderColor: colors.border }]}><Icon name="photo-library" color={colors.muted} size={15} /><Text style={[styles.miniButtonText, { color: colors.muted }]}>{t.choosePhoto}</Text></Pressable></View>)}
           </View>
           <Pressable disabled={idBusy} onPress={createIdCardPdf} style={({ pressed }) => [styles.printButton, { backgroundColor: idFrontUri && idBackUri ? colors.primary : colors.border, marginTop: 12 }, pressed && styles.pressed]}><Icon name="picture-as-pdf" color="#fff" size={18} /><Text style={styles.printButtonText}>{idBusy ? "…" : t.makeIdPdf}</Text></Pressable>
         </View>

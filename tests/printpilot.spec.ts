@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { paperOptions, paperPresetById, supportedPaperWeights } from "../shared/print-options";
 import { canMergePdfs, findJpegByteRanges, hasAtLeastFiles } from "../shared/file-operations";
 import { printProfiles, printProfileById } from "../shared/print-profiles";
-import { hasBothIdFaces, isValidIpv4 } from "../shared/device-operations";
+import { canStartKyoceraScan, hasBothIdFaces, isValidIpv4 } from "../shared/device-operations";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -66,5 +66,7 @@ describe("PrintPilot ID card and device validation", () => {
     expect(hasBothIdFaces("front.jpg", "back.jpg")).toBe(true);
     expect(isValidIpv4("192.168.1.50")).toBe(true);
     expect(isValidIpv4("999.1.1.2")).toBe(false);
+    expect(canStartKyoceraScan("192.168.1.50", true)).toBe(true);
+    expect(canStartKyoceraScan("192.168.1.50", false)).toBe(false);
   });
 });
