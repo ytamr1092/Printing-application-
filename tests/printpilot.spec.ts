@@ -19,6 +19,7 @@ import {
 import { formatNumberValue, getNumberingPages } from "../shared/numbering";
 import { duplexEdgeLabel, isDuplexEdge } from "../shared/duplex-settings";
 import { hasPreviewContent, previewKinds } from "../shared/preview";
+import { canApplyPageOrder, parsePageOrder } from "../shared/pdf-pages";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -134,12 +135,22 @@ describe("PrintPilot separate previews", () => {
       "images",
       "extract",
       "numbering",
+      "pages",
       "id",
       "print",
     ]);
-    expect(new Set(previewKinds).size).toBe(6);
+    expect(new Set(previewKinds).size).toBe(7);
     expect(hasPreviewContent("print", ["document.pdf"], null, null)).toBe(true);
     expect(hasPreviewContent("id", [], "front.jpg", null)).toBe(true);
     expect(hasPreviewContent("id", [], null, null)).toBe(false);
+  });
+});
+
+describe("PrintPilot PDF page editor", () => {
+  it("parses, deduplicates, reorders, and removes invalid pages", () => {
+    expect(parsePageOrder("3, 1, 3, 9, 0, 2", 3)).toEqual([3, 1, 2]);
+    expect(canApplyPageOrder([3, 1, 2], 3)).toBe(true);
+    expect(canApplyPageOrder([], 3)).toBe(false);
+    expect(canApplyPageOrder([4], 3)).toBe(false);
   });
 });

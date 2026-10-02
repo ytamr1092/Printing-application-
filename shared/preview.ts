@@ -3,6 +3,7 @@ export const previewKinds = [
   "images",
   "extract",
   "numbering",
+  "pages",
   "id",
   "print",
 ] as const;

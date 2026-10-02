@@ -32,6 +32,7 @@ import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
 import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 import { duplexEdgeLabel } from "@/shared/duplex-settings";
+import { canApplyPageOrder, parsePageOrder } from "@/shared/pdf-pages";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 
 type Language = "ar" | "en";
@@ -224,6 +225,20 @@ const copy = {
     previewPrint: "معاينة الطباعة",
     previewEmpty: "لم تختر ملفًا لهذه الخانة بعد",
     previewContinue: "متابعة التنفيذ",
+    previewPages: "معاينة ترتيب صفحات PDF",
+    pageEditor: "ترتيب وحذف صفحات PDF",
+    pageEditorHint: "اختر الصفحات بالترتيب المطلوب، واحذف أي رقم لا تريده",
+    choosePageFile: "اختيار ملف PDF",
+    pageOrder: "ترتيب الصفحات",
+    pageOrderHint: "مثال: 3، 1، 2 — الأرقام المحذوفة لن تظهر في الناتج",
+    applyPageEdit: "إنشاء الملف المعدل",
+    pageEditNeedFile: "اختر ملف PDF أولًا",
+    pageEditNeedOrder: "اكتب أرقام صفحات صحيحة",
+    pageEditSuccess: "تم إنشاء PDF بالترتيب الجديد",
+    pageEditFailed: "تعذر تعديل ترتيب صفحات PDF",
+    results: "الملفات والنتائج",
+    resultsHint: "آخر الملفات التي أنشأها التطبيق",
+    noResults: "لا توجد نتائج بعد",
     coming: "سيتم ربط هذه الوظيفة في الإصدار التالي. الواجهة جاهزة لها.",
   },
   en: {
@@ -410,6 +425,21 @@ const copy = {
     previewPrint: "Print preview",
     previewEmpty: "No file has been selected for this section yet",
     previewContinue: "Continue",
+    previewPages: "PDF page order preview",
+    pageEditor: "Reorder & delete PDF pages",
+    pageEditorHint:
+      "Enter pages in the order you want; omitted numbers are removed",
+    choosePageFile: "Choose PDF file",
+    pageOrder: "Page order",
+    pageOrderHint: "Example: 3, 1, 2 — omitted pages will not be included",
+    applyPageEdit: "Create edited PDF",
+    pageEditNeedFile: "Choose a PDF file first",
+    pageEditNeedOrder: "Enter valid page numbers",
+    pageEditSuccess: "PDF created with the new order",
+    pageEditFailed: "Could not edit PDF page order",
+    results: "Files & results",
+    resultsHint: "Latest files created by the app",
+    noResults: "No results yet",
     coming:
       "This function will be connected in the next release. The UI is ready.",
   },
@@ -598,6 +628,13 @@ export default function HomeScreen() {
   const [numberBold, setNumberBold] = useState(false);
   const [previewKind, setPreviewKind] = useState<PreviewKind | null>(null);
   const [printUri, setPrintUri] = useState<string | null>(null);
+  const [pageEditorFile, setPageEditorFile] = useState<{
+    uri: string;
+    name: string;
+    pages: number;
+  } | null>(null);
+  const [pageOrder, setPageOrder] = useState("");
+  const [pageEditBusy, setPageEditBusy] = useState(false);
   const [numberMirror, setNumberMirror] = useState(false);
   const [tasks, setTasks] = useState<string[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
@@ -970,6 +1007,7 @@ export default function HomeScreen() {
       images: t.previewImages,
       extract: t.previewExtract,
       numbering: t.previewNumbering,
+      pages: t.previewPages,
       id: t.previewId,
       print: t.previewPrint,
     })[kind];
@@ -981,6 +1019,7 @@ export default function HomeScreen() {
     images: "photo-library",
     extract: "photo-filter",
     numbering: "format-list-numbered",
+    pages: "view-list",
     id: "badge",
     print: "print",
   };
@@ -989,6 +1028,7 @@ export default function HomeScreen() {
     images: t.previewImages,
     extract: t.previewExtract,
     numbering: t.previewNumbering,
+    pages: t.previewPages,
     id: t.previewId,
     print: t.previewPrint,
   };
@@ -1008,6 +1048,96 @@ export default function HomeScreen() {
       setErrorMessage(null);
     } catch {
       showError(t.printerUnavailable, t.printerUnavailableHint);
+    }
+  };
+
+  const choosePageEditorPdf = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const sourceBase64 = await FileSystem.readAsStringAsync(
+        result.assets[0].uri,
+        { encoding: FileSystem.EncodingType.Base64 },
+      );
+      const { PDFDocument } = await loadPdfLib();
+      const document = await PDFDocument.load(base64ToBytes(sourceBase64));
+      const pages = document.getPageCount();
+      setPageEditorFile({
+        uri: result.assets[0].uri,
+        name: result.assets[0].name,
+        pages,
+      });
+      setPageOrder(
+        Array.from({ length: pages }, (_, index) => String(index + 1)).join(
+          ", ",
+        ),
+      );
+      setSelectedFiles([result.assets[0].name]);
+      setPreviewKind("pages");
+      setErrorMessage(null);
+    } catch {
+      showError(t.pageEditFailed, t.pickerCancelledHint);
+    }
+  };
+
+  const applyPageEditor = async () => {
+    if (!pageEditorFile) {
+      showError(t.pageEditNeedFile, t.choosePageFile);
+      return;
+    }
+    const order = parsePageOrder(pageOrder, pageEditorFile.pages);
+    if (!canApplyPageOrder(order, pageEditorFile.pages)) {
+      showError(t.pageEditNeedOrder, t.pageOrderHint);
+      return;
+    }
+    setPageEditBusy(true);
+    try {
+      const sourceBase64 = await FileSystem.readAsStringAsync(
+        pageEditorFile.uri,
+        { encoding: FileSystem.EncodingType.Base64 },
+      );
+      const { PDFDocument } = await loadPdfLib();
+      const source = await PDFDocument.load(base64ToBytes(sourceBase64));
+      const output = await PDFDocument.create();
+      const copied = await output.copyPages(
+        source,
+        order.map((page) => page - 1),
+      );
+      copied.forEach((page: any) => output.addPage(page));
+      const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Pages-${Date.now()}.pdf`;
+      await FileSystem.writeAsStringAsync(
+        outputUri,
+        bytesToBase64(await output.save()),
+        { encoding: FileSystem.EncodingType.Base64 },
+      );
+      const outputName = outputUri.split("/").pop() ?? pageEditorFile.name;
+      setTasks((current) =>
+        [`${t.pageEditSuccess}: ${outputName}`, ...current].slice(0, 4),
+      );
+      setSelectedFiles([outputName]);
+      setPreviewKind(null);
+      setErrorMessage(null);
+      Alert.alert(t.pageEditSuccess, outputUri, [
+        { text: t.dismiss, style: "cancel" },
+        {
+          text: t.shareResult,
+          onPress: async () => {
+            if (await Sharing.isAvailableAsync())
+              await Sharing.shareAsync(outputUri, {
+                mimeType: "application/pdf",
+                dialogTitle: t.shareResult,
+              });
+          },
+        },
+      ]);
+    } catch {
+      showError(t.pageEditFailed, t.pageEditorHint);
+    } finally {
+      setPageEditBusy(false);
     }
   };
 
@@ -2097,6 +2227,114 @@ export default function HomeScreen() {
           >
             <Icon name="format-list-numbered" color="#fff" size={18} />
             <Text style={styles.printButtonText}>{t.runNumbering}</Text>
+          </Pressable>
+        </View>
+
+        <View
+          style={[
+            styles.pageEditorCard,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <View
+            style={[
+              styles.profileHeader,
+              { flexDirection: isArabic ? "row-reverse" : "row" },
+            ]}
+          >
+            <View
+              style={[
+                styles.phaseIcon,
+                { backgroundColor: colors.primary + "18" },
+              ]}
+            >
+              <Icon name="view-list" color={colors.primary} size={20} />
+            </View>
+            <View style={styles.phaseTitleBlock}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                {t.pageEditor}
+              </Text>
+              <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                {t.pageEditorHint}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={choosePageEditorPdf}
+            style={[styles.outlineAction, { borderColor: colors.primary }]}
+          >
+            <Icon name="folder-open" color={colors.primary} size={17} />
+            <Text style={[styles.outlineActionText, { color: colors.primary }]}>
+              {t.choosePageFile}
+            </Text>
+          </Pressable>
+          <Text
+            style={[styles.smallLabel, { color: colors.muted, marginTop: 10 }]}
+          >
+            {pageEditorFile
+              ? `${pageEditorFile.name} · ${pageEditorFile.pages} ${isArabic ? "صفحة" : "pages"}`
+              : t.pageOrderHint}
+          </Text>
+          <TextInput
+            value={pageOrder}
+            onChangeText={setPageOrder}
+            editable={Boolean(pageEditorFile)}
+            placeholder="1, 2, 3"
+            placeholderTextColor={colors.muted}
+            keyboardType="numbers-and-punctuation"
+            style={[
+              styles.pageOrderInput,
+              {
+                color: colors.foreground,
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                textAlign: isArabic ? "right" : "left",
+              },
+            ]}
+          />
+          <Pressable
+            onPress={() => setPreviewKind("pages")}
+            disabled={!pageEditorFile}
+            style={[
+              styles.outlineAction,
+              {
+                borderColor: pageEditorFile ? colors.primary : colors.border,
+                marginTop: 9,
+              },
+            ]}
+          >
+            <Icon
+              name="visibility"
+              color={pageEditorFile ? colors.primary : colors.muted}
+              size={17}
+            />
+            <Text
+              style={[
+                styles.outlineActionText,
+                { color: pageEditorFile ? colors.primary : colors.muted },
+              ]}
+            >
+              {t.previewPages}
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={pageEditBusy || !pageEditorFile}
+            onPress={applyPageEditor}
+            style={({ pressed }) => [
+              styles.printButton,
+              {
+                backgroundColor: pageEditorFile
+                  ? colors.primary
+                  : colors.border,
+                marginTop: 9,
+              },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Icon name="save" color="#fff" size={18} />
+            <Text style={styles.printButtonText}>
+              {pageEditBusy ? "…" : t.applyPageEdit}
+            </Text>
           </Pressable>
         </View>
 
@@ -3302,6 +3540,54 @@ export default function HomeScreen() {
           />
         </View>
 
+        <View
+          style={[
+            styles.resultsCard,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <View
+            style={[
+              styles.profileHeader,
+              { flexDirection: isArabic ? "row-reverse" : "row" },
+            ]}
+          >
+            <View
+              style={[
+                styles.phaseIcon,
+                { backgroundColor: colors.success + "18" },
+              ]}
+            >
+              <Icon name="folder-special" color={colors.success} size={20} />
+            </View>
+            <View style={styles.phaseTitleBlock}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                {t.results}
+              </Text>
+              <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                {t.resultsHint}
+              </Text>
+            </View>
+          </View>
+          {tasks.length ? (
+            tasks.map((task) => (
+              <View
+                key={task}
+                style={[styles.resultRow, { borderTopColor: colors.border }]}
+              >
+                <Icon name="description" color={colors.success} size={17} />
+                <Text style={[styles.resultText, { color: colors.foreground }]}>
+                  {task}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={[styles.phaseHint, { color: colors.muted }]}>
+              {t.noResults}
+            </Text>
+          )}
+        </View>
+
         {selectedFiles.length > 0 && (
           <View
             style={[
@@ -3447,6 +3733,18 @@ export default function HomeScreen() {
                 >
                   {t.numberingSettings}: {numberPosition} · {numberVertical} ·{" "}
                   {numberFormat} · {numberSize}pt
+                </Text>
+              </View>
+            )}
+            {previewKind === "pages" && (
+              <View style={styles.modalSummary}>
+                <Text
+                  style={[
+                    styles.modalSummaryText,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {t.pageOrder}: {pageOrder || t.previewEmpty}
                 </Text>
               </View>
             )}
@@ -3978,6 +4276,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
+  pageEditorCard: {
+    borderRadius: 17,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 16,
+  },
+  pageOrderInput: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    marginTop: 7,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  resultsCard: {
+    borderRadius: 17,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 16,
+  },
+  resultRow: {
+    minHeight: 42,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 7,
+  },
+  resultText: { flex: 1, fontSize: 11, fontWeight: "700" },
   selectedNotice: {
     borderWidth: 1,
     borderRadius: 12,
