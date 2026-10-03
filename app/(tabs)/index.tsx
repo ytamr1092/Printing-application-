@@ -34,6 +34,7 @@ import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 import { duplexEdgeLabel } from "@/shared/duplex-settings";
 import { canApplyPageOrder, parsePageOrder } from "@/shared/pdf-pages";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
+import { type WorkspaceKind } from "@/shared/workspaces";
 
 type Language = "ar" | "en";
 type NumberPosition = "left" | "center" | "right";
@@ -41,10 +42,11 @@ type NumberVertical = "top" | "middle" | "bottom";
 type NumberWhich = "all" | "odd" | "even";
 type NumberNumerals = "latin" | "indic" | "roman-l" | "roman-u";
 type NumberFont = "helvetica" | "times" | "courier";
+type Workspace = WorkspaceKind;
 const copy = {
   ar: {
     greeting: "مرحبًا بك في",
-    appName: "PrintPilot",
+    appName: "طباعة",
     subtitle: "مركزك الذكي للطباعة والمستندات",
     offline: "يعمل دون إنترنت",
     language: "EN",
@@ -240,10 +242,25 @@ const copy = {
     resultsHint: "آخر الملفات التي أنشأها التطبيق",
     noResults: "لا توجد نتائج بعد",
     coming: "سيتم ربط هذه الوظيفة في الإصدار التالي. الواجهة جاهزة لها.",
+    workspacePdf: "مساحة PDF",
+    workspacePdfHint: "الدمج، التحويل، الاستخراج، الترقيم وترتيب الصفحات",
+    workspacePrint: "مساحة الطباعة",
+    workspacePrintHint: "اختر الملف ثم اضبط الورق والألوان والوجهين",
+    workspaceScan: "مساحة السكانر",
+    workspaceScanHint: "إعداد Kyocera وفحص الاتصال والمعاينة",
+    workspaceId: "مساحة بطاقة الهوية",
+    workspaceIdHint: "الوجه الأمامي والخلفي في صفحتين منفصلتين",
+    workspaceResults: "مساحة النتائج",
+    workspaceResultsHint: "الملفات الناتجة وسجل العمليات",
+    workspaceAi: "المساعد الذكي",
+    workspaceAiHint: "اختياري ويظل مغلقًا افتراضيًا",
+    openWorkspace: "فتح المساحة",
+    backHome: "العودة للرئيسية",
+    workspaceActions: "أدوات هذه المساحة",
   },
   en: {
     greeting: "Welcome to",
-    appName: "PrintPilot",
+    appName: "طباعة",
     subtitle: "Your smart printing & document desk",
     offline: "Works offline",
     language: "ع",
@@ -442,6 +459,21 @@ const copy = {
     noResults: "No results yet",
     coming:
       "This function will be connected in the next release. The UI is ready.",
+    workspacePdf: "PDF workspace",
+    workspacePdfHint: "Merge, convert, extract, number and reorder pages",
+    workspacePrint: "Print workspace",
+    workspacePrintHint: "Choose a file, then set paper, color and duplex",
+    workspaceScan: "Scanner workspace",
+    workspaceScanHint: "Kyocera settings, connection test and preview",
+    workspaceId: "ID card workspace",
+    workspaceIdHint: "Front and back on two separate pages",
+    workspaceResults: "Results workspace",
+    workspaceResultsHint: "Generated files and activity history",
+    workspaceAi: "Smart assistant",
+    workspaceAiHint: "Optional and off by default",
+    openWorkspace: "Open workspace",
+    backHome: "Back to home",
+    workspaceActions: "Workspace tools",
   },
 } as const;
 
@@ -638,6 +670,7 @@ export default function HomeScreen() {
   const [numberMirror, setNumberMirror] = useState(false);
   const [tasks, setTasks] = useState<string[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
+  const [workspace, setWorkspace] = useState<Workspace>("home");
   const { colorScheme, setColorScheme } = useThemeContext();
   const colors = useColors();
   const isArabic = language === "ar";
@@ -1626,1760 +1659,250 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <View
-          style={[
-            styles.hero,
-            {
-              backgroundColor: colors.primary,
-              flexDirection: isArabic ? "row-reverse" : "row",
-            },
-          ]}
-        >
+        <View style={workspace === "home" ? undefined : { display: "none" }}>
           <View
             style={[
-              styles.heroCopy,
-              { alignItems: isArabic ? "flex-end" : "flex-start" },
-            ]}
-          >
-            <Text style={styles.heroKicker}>{t.ready}</Text>
-            <Text style={styles.heroTitle}>
-              {isArabic
-                ? "أنجز مستندك\nبثقة"
-                : "Finish your document\nwith confidence"}
-            </Text>
-            <Text style={styles.heroDescription}>
-              {isArabic
-                ? "طباعة، مسح، تنظيم — في مكان واحد."
-                : "Print, scan, organize — all in one place."}
-            </Text>
-          </View>
-          <View style={styles.heroArt}>
-            <Icon name="description" color="#fff" size={66} />
-            <View style={styles.heroArtBadge}>
-              <Icon name="check" color={colors.primary} size={17} />
-            </View>
-          </View>
-        </View>
-
-        <SectionTitle title={t.quick} colors={colors} />
-        <View style={styles.actionsGrid}>
-          <ActionCard
-            icon="merge-type"
-            title={t.merge}
-            hint={t.mergeHint}
-            color="#0A7EA4"
-            textColor={readableText}
-            mutedColor={readableMuted}
-            onPress={mergePdfs}
-          />
-          <ActionCard
-            icon="photo-library"
-            title={t.images}
-            hint={t.imagesHint}
-            color="#8B5CF6"
-            textColor={readableText}
-            mutedColor={readableMuted}
-            onPress={imagesToPdf}
-          />
-          <ActionCard
-            icon="photo-filter"
-            title={t.extract}
-            hint={t.extractHint}
-            color="#F59E0B"
-            textColor={readableText}
-            mutedColor={readableMuted}
-            onPress={extractImages}
-          />
-          <ActionCard
-            icon="document-scanner"
-            title={t.scan}
-            hint={t.scanHint}
-            color="#10B981"
-            textColor={readableText}
-            mutedColor={readableMuted}
-            onPress={scanForDevices}
-          />
-          <ActionCard
-            icon="format-list-numbered"
-            title={t.numbering}
-            hint={t.numberingHint}
-            color="#E45757"
-            textColor={readableText}
-            mutedColor={readableMuted}
-            onPress={chooseNumberingFile}
-          />
-        </View>
-
-        <View
-          style={[
-            styles.previewHub,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.profileHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
+              styles.hero,
+              {
+                backgroundColor: colors.primary,
+                flexDirection: isArabic ? "row-reverse" : "row",
+              },
             ]}
           >
             <View
               style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.primary + "18" },
+                styles.heroCopy,
+                { alignItems: isArabic ? "flex-end" : "flex-start" },
               ]}
             >
-              <Icon name="visibility" color={colors.primary} size={20} />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.previewTitle}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
+              <Text style={styles.heroKicker}>{t.ready}</Text>
+              <Text style={styles.heroTitle}>
                 {isArabic
-                  ? "كل وظيفة لها معاينتها الخاصة قبل المتابعة"
-                  : "Each function has its own preview before continuing"}
+                  ? "أنجز مستندك\nبثقة"
+                  : "Finish your document\nwith confidence"}
+              </Text>
+              <Text style={styles.heroDescription}>
+                {isArabic
+                  ? "طباعة، مسح، تنظيم — في مكان واحد."
+                  : "Print, scan, organize — all in one place."}
               </Text>
             </View>
-          </View>
-          {previewKinds.map((kind) => (
-            <Pressable
-              key={kind}
-              onPress={() => setPreviewKind(kind)}
-              style={({ pressed }) => [
-                styles.previewRow,
-                {
-                  borderTopColor: colors.border,
-                  flexDirection: isArabic ? "row-reverse" : "row",
-                },
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <View
-                style={[
-                  styles.previewIcon,
-                  { backgroundColor: colors.primary + "14" },
-                ]}
-              >
-                <Icon
-                  name={previewIcons[kind]}
-                  color={colors.primary}
-                  size={18}
-                />
-              </View>
-              <Text
-                style={[styles.previewRowText, { color: colors.foreground }]}
-              >
-                {previewLabels[kind]}
-              </Text>
-              <Icon name="chevron-right" color={colors.muted} size={18} />
-            </Pressable>
-          ))}
-        </View>
-
-        <View
-          style={[
-            styles.numberingCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.profileHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View
-              style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.error + "18" },
-              ]}
-            >
-              <Icon
-                name="format-list-numbered"
-                color={colors.error}
-                size={20}
-              />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.numberingSettings}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
-                {numberingFile
-                  ? `${numberingFile.name} · ${numberingFile.pages} ${isArabic ? "صفحة" : "pages"}`
-                  : t.chooseNumberingFile}
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            onPress={chooseNumberingFile}
-            style={[styles.outlineAction, { borderColor: colors.primary }]}
-          >
-            <Icon name="folder-open" color={colors.primary} size={17} />
-            <Text style={[styles.outlineActionText, { color: colors.primary }]}>
-              {t.chooseNumberingFile}
-            </Text>
-          </Pressable>
-          <Text
-            style={[styles.smallLabel, { color: colors.muted, marginTop: 10 }]}
-          >
-            {t.numberLeft} / {t.numberCenter} / {t.numberRight}
-          </Text>
-          <View
-            style={[styles.segmented, { backgroundColor: colors.background }]}
-          >
-            {(
-              [
-                ["left", t.numberLeft],
-                ["center", t.numberCenter],
-                ["right", t.numberRight],
-              ] as [NumberPosition, string][]
-            ).map(([value, label]) => (
-              <Pressable
-                key={value}
-                onPress={() => setNumberPosition(value)}
-                style={[
-                  styles.segment,
-                  numberPosition === value && {
-                    backgroundColor: colors.primary,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: numberPosition === value ? "#fff" : colors.muted },
-                  ]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text
-            style={[styles.smallLabel, { color: colors.muted, marginTop: 10 }]}
-          >
-            {t.numberTop} / {t.numberMiddle} / {t.numberBottom}
-          </Text>
-          <View
-            style={[styles.segmented, { backgroundColor: colors.background }]}
-          >
-            {(
-              [
-                ["top", t.numberTop],
-                ["middle", t.numberMiddle],
-                ["bottom", t.numberBottom],
-              ] as [NumberVertical, string][]
-            ).map(([value, label]) => (
-              <Pressable
-                key={value}
-                onPress={() => setNumberVertical(value)}
-                style={[
-                  styles.segment,
-                  numberVertical === value && {
-                    backgroundColor: colors.primary,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: numberVertical === value ? "#fff" : colors.muted },
-                  ]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <View
-            style={[
-              styles.numberFieldsRow,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View style={styles.numberField}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.numberMargin}
-              </Text>
-              <TextInput
-                value={numberMargin}
-                onChangeText={setNumberMargin}
-                keyboardType="numeric"
-                style={[
-                  styles.copiesInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              />
-            </View>
-            <View style={styles.numberField}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.numberFrom}
-              </Text>
-              <TextInput
-                value={numberFrom}
-                onChangeText={setNumberFrom}
-                keyboardType="numeric"
-                style={[
-                  styles.copiesInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              />
-            </View>
-            <View style={styles.numberField}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.numberTo}
-              </Text>
-              <TextInput
-                value={numberTo}
-                onChangeText={setNumberTo}
-                placeholder={numberingFile ? String(numberingFile.pages) : "—"}
-                placeholderTextColor={colors.muted}
-                keyboardType="numeric"
-                style={[
-                  styles.copiesInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-          <View
-            style={[
-              styles.numberFieldsRow,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View style={styles.numberField}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.numberStart}
-              </Text>
-              <TextInput
-                value={numberStart}
-                onChangeText={setNumberStart}
-                keyboardType="numeric"
-                style={[
-                  styles.copiesInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              />
-            </View>
-            <View style={[styles.numberField, { flex: 2 }]}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.numberFormat}
-              </Text>
-              <TextInput
-                value={numberFormat}
-                onChangeText={setNumberFormat}
-                style={[
-                  styles.copiesInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                    textAlign: isArabic ? "right" : "left",
-                  },
-                ]}
-              />
-            </View>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 7, paddingVertical: 8 }}
-          >
-            <Text
-              style={[
-                styles.smallLabel,
-                { color: colors.muted, alignSelf: "center" },
-              ]}
-            >
-              {t.numberWhich}
-            </Text>
-            {(
-              [
-                ["all", t.numberAll],
-                ["odd", t.numberOdd],
-                ["even", t.numberEven],
-              ] as [NumberWhich, string][]
-            ).map(([value, label]) => (
-              <Pressable
-                key={value}
-                onPress={() => setNumberWhich(value)}
-                style={[
-                  styles.pill,
-                  {
-                    backgroundColor:
-                      numberWhich === value
-                        ? colors.primary
-                        : colors.background,
-                    borderColor:
-                      numberWhich === value ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    {
-                      color: numberWhich === value ? "#fff" : colors.foreground,
-                    },
-                  ]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 7, paddingVertical: 2 }}
-          >
-            <Text
-              style={[
-                styles.smallLabel,
-                { color: colors.muted, alignSelf: "center" },
-              ]}
-            >
-              {t.numberNumerals}
-            </Text>
-            {(
-              [
-                ["latin", "1 2 3"],
-                ["indic", "١ ٢ ٣"],
-                ["roman-l", "i ii iii"],
-                ["roman-u", "I II III"],
-              ] as [NumberNumerals, string][]
-            ).map(([value, label]) => (
-              <Pressable
-                key={value}
-                onPress={() => setNumberNumerals(value)}
-                style={[
-                  styles.pill,
-                  {
-                    backgroundColor:
-                      numberNumerals === value
-                        ? colors.primary
-                        : colors.background,
-                    borderColor:
-                      numberNumerals === value ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    {
-                      color:
-                        numberNumerals === value ? "#fff" : colors.foreground,
-                    },
-                  ]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-          <View
-            style={[
-              styles.numberFieldsRow,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View style={styles.numberField}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.numberSize}
-              </Text>
-              <TextInput
-                value={numberSize}
-                onChangeText={setNumberSize}
-                keyboardType="numeric"
-                style={[
-                  styles.copiesInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              />
-            </View>
-            <View style={[styles.numberField, { flex: 2 }]}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.numberFont}
-              </Text>
-              <View
-                style={[
-                  styles.segmented,
-                  { backgroundColor: colors.background, marginTop: 0 },
-                ]}
-              >
-                {(
-                  [
-                    ["helvetica", "Helvetica"],
-                    ["times", "Times"],
-                    ["courier", "Courier"],
-                  ] as [NumberFont, string][]
-                ).map(([value, label]) => (
-                  <Pressable
-                    key={value}
-                    onPress={() => setNumberFont(value)}
-                    style={[
-                      styles.segment,
-                      numberFont === value && {
-                        backgroundColor: colors.primary,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.segmentText,
-                        { color: numberFont === value ? "#fff" : colors.muted },
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </Pressable>
-                ))}
+            <View style={styles.heroArt}>
+              <Icon name="description" color="#fff" size={66} />
+              <View style={styles.heroArtBadge}>
+                <Icon name="check" color={colors.primary} size={17} />
               </View>
             </View>
           </View>
-          <View
-            style={[
-              styles.numberToggleRow,
-              {
-                flexDirection: isArabic ? "row-reverse" : "row",
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.segmentText, { color: colors.foreground }]}>
-              {t.numberBold}
-            </Text>
-            <Switch
-              value={numberBold}
-              onValueChange={setNumberBold}
-              trackColor={{ false: colors.border, true: colors.primary + "66" }}
-              thumbColor={numberBold ? colors.primary : colors.muted}
-            />
-          </View>
-          <View
-            style={[
-              styles.numberToggleRow,
-              {
-                flexDirection: isArabic ? "row-reverse" : "row",
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.segmentText, { color: colors.foreground }]}>
-              {t.numberMirror}
-            </Text>
-            <Switch
-              value={numberMirror}
-              onValueChange={setNumberMirror}
-              trackColor={{ false: colors.border, true: colors.primary + "66" }}
-              thumbColor={numberMirror ? colors.primary : colors.muted}
-            />
-          </View>
-          <TextInput
-            value={numberColor}
-            onChangeText={setNumberColor}
-            autoCapitalize="none"
-            placeholder="#526270"
-            placeholderTextColor={colors.muted}
-            style={[
-              styles.colorInput,
-              {
-                color: colors.foreground,
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-              },
-            ]}
-          />
-          <Pressable
-            disabled={!numberingFile}
-            onPress={numberPdf}
-            style={({ pressed }) => [
-              styles.printButton,
-              {
-                backgroundColor: numberingFile ? colors.primary : colors.border,
-                marginTop: 10,
-              },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Icon name="format-list-numbered" color="#fff" size={18} />
-            <Text style={styles.printButtonText}>{t.runNumbering}</Text>
-          </Pressable>
-        </View>
 
-        <View
-          style={[
-            styles.pageEditorCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
+          <SectionTitle title={t.quick} colors={colors} />
+          <View style={styles.actionsGrid}>
+            <ActionCard
+              icon="picture-as-pdf"
+              title={t.workspacePdf}
+              hint={t.workspacePdfHint}
+              color="#0A7EA4"
+              textColor={readableText}
+              mutedColor={readableMuted}
+              onPress={() => setWorkspace("pdf")}
+            />
+            <ActionCard
+              icon="print"
+              title={t.workspacePrint}
+              hint={t.workspacePrintHint}
+              color="#8B5CF6"
+              textColor={readableText}
+              mutedColor={readableMuted}
+              onPress={() => setWorkspace("print")}
+            />
+            <ActionCard
+              icon="document-scanner"
+              title={t.workspaceScan}
+              hint={t.workspaceScanHint}
+              color="#F59E0B"
+              textColor={readableText}
+              mutedColor={readableMuted}
+              onPress={() => setWorkspace("scan")}
+            />
+            <ActionCard
+              icon="badge"
+              title={t.workspaceId}
+              hint={t.workspaceIdHint}
+              color="#10B981"
+              textColor={readableText}
+              mutedColor={readableMuted}
+              onPress={() => setWorkspace("id")}
+            />
+            <ActionCard
+              icon="folder-special"
+              title={t.workspaceResults}
+              hint={t.workspaceResultsHint}
+              color="#E45757"
+              textColor={readableText}
+              mutedColor={readableMuted}
+              onPress={() => setWorkspace("results")}
+            />
+            <ActionCard
+              icon="auto-awesome"
+              title={t.workspaceAi}
+              hint={t.workspaceAiHint}
+              color="#7C3AED"
+              textColor={readableText}
+              mutedColor={readableMuted}
+              onPress={() => setWorkspace("ai")}
+            />
+          </View>
+        </View>
+        <View style={{ display: "none" }}>
           <View
             style={[
-              styles.profileHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
+              styles.previewHub,
+              { backgroundColor: colors.surface, borderColor: colors.border },
             ]}
           >
             <View
               style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.primary + "18" },
-              ]}
-            >
-              <Icon name="view-list" color={colors.primary} size={20} />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.pageEditor}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
-                {t.pageEditorHint}
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            onPress={choosePageEditorPdf}
-            style={[styles.outlineAction, { borderColor: colors.primary }]}
-          >
-            <Icon name="folder-open" color={colors.primary} size={17} />
-            <Text style={[styles.outlineActionText, { color: colors.primary }]}>
-              {t.choosePageFile}
-            </Text>
-          </Pressable>
-          <Text
-            style={[styles.smallLabel, { color: colors.muted, marginTop: 10 }]}
-          >
-            {pageEditorFile
-              ? `${pageEditorFile.name} · ${pageEditorFile.pages} ${isArabic ? "صفحة" : "pages"}`
-              : t.pageOrderHint}
-          </Text>
-          <TextInput
-            value={pageOrder}
-            onChangeText={setPageOrder}
-            editable={Boolean(pageEditorFile)}
-            placeholder="1, 2, 3"
-            placeholderTextColor={colors.muted}
-            keyboardType="numbers-and-punctuation"
-            style={[
-              styles.pageOrderInput,
-              {
-                color: colors.foreground,
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-                textAlign: isArabic ? "right" : "left",
-              },
-            ]}
-          />
-          <Pressable
-            onPress={() => setPreviewKind("pages")}
-            disabled={!pageEditorFile}
-            style={[
-              styles.outlineAction,
-              {
-                borderColor: pageEditorFile ? colors.primary : colors.border,
-                marginTop: 9,
-              },
-            ]}
-          >
-            <Icon
-              name="visibility"
-              color={pageEditorFile ? colors.primary : colors.muted}
-              size={17}
-            />
-            <Text
-              style={[
-                styles.outlineActionText,
-                { color: pageEditorFile ? colors.primary : colors.muted },
-              ]}
-            >
-              {t.previewPages}
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={pageEditBusy || !pageEditorFile}
-            onPress={applyPageEditor}
-            style={({ pressed }) => [
-              styles.printButton,
-              {
-                backgroundColor: pageEditorFile
-                  ? colors.primary
-                  : colors.border,
-                marginTop: 9,
-              },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Icon name="save" color="#fff" size={18} />
-            <Text style={styles.printButtonText}>
-              {pageEditBusy ? "…" : t.applyPageEdit}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View
-          style={[
-            styles.idCardCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.profileHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View
-              style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.warning + "18" },
-              ]}
-            >
-              <Icon name="badge" color={colors.warning} size={20} />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.idWizard}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
-                {t.idWizardHint}
-              </Text>
-            </View>
-          </View>
-          <View
-            style={[
-              styles.idFacesRow,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            {[
-              { side: "front" as const, uri: idFrontUri, label: t.idFront },
-              { side: "back" as const, uri: idBackUri, label: t.idBack },
-            ].map((face) => (
-              <View key={face.side} style={styles.idFaceBlock}>
-                <View
-                  style={[
-                    styles.idPreview,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  {face.uri ? (
-                    <Image
-                      source={{ uri: face.uri }}
-                      style={styles.idPreviewImage}
-                    />
-                  ) : (
-                    <Icon name="scanner" color={colors.muted} size={28} />
-                  )}
-                </View>
-                <Text
-                  style={[styles.idFaceLabel, { color: colors.foreground }]}
-                >
-                  {face.label}
-                </Text>
-                <Pressable
-                  onPress={() => scanIdFaceFromKyocera(face.side)}
-                  style={[
-                    styles.miniButton,
-                    {
-                      borderColor: colors.primary,
-                      backgroundColor: colors.primary + "10",
-                    },
-                  ]}
-                >
-                  <Icon name="scanner" color={colors.primary} size={15} />
-                  <Text
-                    style={[styles.miniButtonText, { color: colors.primary }]}
-                  >
-                    {t.scanIdFace}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => chooseIdFace(face.side, "library")}
-                  style={[styles.miniButton, { borderColor: colors.border }]}
-                >
-                  <Icon name="photo-library" color={colors.muted} size={15} />
-                  <Text
-                    style={[styles.miniButtonText, { color: colors.muted }]}
-                  >
-                    {t.choosePhoto}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-          <Pressable
-            disabled={idBusy}
-            onPress={createIdCardPdf}
-            style={({ pressed }) => [
-              styles.printButton,
-              {
-                backgroundColor:
-                  idFrontUri && idBackUri ? colors.primary : colors.border,
-                marginTop: 12,
-              },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Icon name="picture-as-pdf" color="#fff" size={18} />
-            <Text style={styles.printButtonText}>
-              {idBusy ? "…" : t.makeIdPdf}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View
-          style={[
-            styles.sectionHeader,
-            { flexDirection: isArabic ? "row-reverse" : "row" },
-          ]}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            {t.recent}
-          </Text>
-          <Pressable onPress={actionComing}>
-            <Text style={[styles.viewAll, { color: colors.primary }]}>
-              {t.viewAll}
-            </Text>
-          </Pressable>
-        </View>
-        <View
-          style={[
-            styles.filesCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <FileRow
-            name={t.file1}
-            time={t.today}
-            icon="picture-as-pdf"
-            colors={colors}
-            onPress={openPrintDialog}
-          />
-          <FileRow
-            name={t.file2}
-            time={t.yesterday}
-            icon="picture-as-pdf"
-            colors={colors}
-            onPress={openPrintDialog}
-          />
-          <FileRow
-            name={t.file3}
-            time={t.yesterday}
-            icon="picture-as-pdf"
-            colors={colors}
-            onPress={openPrintDialog}
-          />
-        </View>
-
-        <View
-          style={[
-            styles.sectionHeader,
-            { flexDirection: isArabic ? "row-reverse" : "row" },
-          ]}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            {t.paper}
-          </Text>
-          <Icon name="tune" color={colors.primary} size={20} />
-        </View>
-        <View
-          style={[
-            styles.settingsCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <SettingLabel
-            title={t.format}
-            value={`${paper.ar} · ${paper.size}`}
-            colors={colors}
-          />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingVertical: 10 }}
-          >
-            {paperOptions.map((option) => (
-              <Pressable
-                key={option.id}
-                onPress={() => setSelectedPaper(option.id)}
-                style={[
-                  styles.pill,
-                  {
-                    backgroundColor:
-                      selectedPaper === option.id
-                        ? colors.primary
-                        : colors.background,
-                    borderColor:
-                      selectedPaper === option.id
-                        ? colors.primary
-                        : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    {
-                      color:
-                        selectedPaper === option.id
-                          ? "#fff"
-                          : colors.foreground,
-                    },
-                  ]}
-                >
-                  {isArabic ? option.ar : option.en}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingLabel
-            title={t.weight}
-            value={selectedWeight}
-            colors={colors}
-          />
-          <View
-            style={[
-              styles.weightRow,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            {[
-              ["70 g/m²", "خفيف"],
-              ["80 g/m²", "عادي"],
-              ["120 g/m²", "متوسط"],
-              ["200 g/m²", "شهادة"],
-            ].map(([value, label]) => (
-              <Pressable
-                key={value}
-                onPress={() => setSelectedWeight(value)}
-                style={[
-                  styles.weightItem,
-                  {
-                    backgroundColor:
-                      selectedWeight === value
-                        ? colors.primary + "16"
-                        : colors.background,
-                    borderColor:
-                      selectedWeight === value ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.weightValue,
-                    {
-                      color:
-                        selectedWeight === value
-                          ? colors.primary
-                          : colors.foreground,
-                    },
-                  ]}
-                >
-                  {value}
-                </Text>
-                <Text style={[styles.weightLabel, { color: colors.muted }]}>
-                  {isArabic
-                    ? label
-                    : value === "70 g/m²"
-                      ? "Light"
-                      : value === "80 g/m²"
-                        ? "Standard"
-                        : value === "120 g/m²"
-                          ? "Medium"
-                          : "Certificate"}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingLabel
-            title={t.orientation}
-            value={orientation === "portrait" ? t.portrait : t.landscape}
-            colors={colors}
-          />
-          <View
-            style={[styles.segmented, { backgroundColor: colors.background }]}
-          >
-            <Pressable
-              onPress={() => setOrientation("portrait")}
-              style={[
-                styles.segment,
-                orientation === "portrait" && {
-                  backgroundColor: colors.primary,
-                },
-              ]}
-            >
-              <Icon
-                name="crop-portrait"
-                color={orientation === "portrait" ? "#fff" : colors.muted}
-                size={18}
-              />
-              <Text
-                style={[
-                  styles.segmentText,
-                  { color: orientation === "portrait" ? "#fff" : colors.muted },
-                ]}
-              >
-                {t.portrait}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setOrientation("landscape")}
-              style={[
-                styles.segment,
-                orientation === "landscape" && {
-                  backgroundColor: colors.primary,
-                },
-              ]}
-            >
-              <Icon
-                name="crop-landscape"
-                color={orientation === "landscape" ? "#fff" : colors.muted}
-                size={18}
-              />
-              <Text
-                style={[
-                  styles.segmentText,
-                  {
-                    color: orientation === "landscape" ? "#fff" : colors.muted,
-                  },
-                ]}
-              >
-                {t.landscape}
-              </Text>
-            </Pressable>
-          </View>
-          <SettingLabel
-            title={t.colorMode}
-            value={colorMode === "color" ? t.color : t.bw}
-            colors={colors}
-          />
-          <View
-            style={[styles.segmented, { backgroundColor: colors.background }]}
-          >
-            <Pressable
-              onPress={() => setColorMode("color")}
-              style={[
-                styles.segment,
-                colorMode === "color" && { backgroundColor: colors.primary },
-              ]}
-            >
-              <Icon
-                name="palette"
-                color={colorMode === "color" ? "#fff" : colors.muted}
-                size={18}
-              />
-              <Text
-                style={[
-                  styles.segmentText,
-                  { color: colorMode === "color" ? "#fff" : colors.muted },
-                ]}
-              >
-                {t.color}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setColorMode("bw")}
-              style={[
-                styles.segment,
-                colorMode === "bw" && { backgroundColor: colors.primary },
-              ]}
-            >
-              <Icon
-                name="tonality"
-                color={colorMode === "bw" ? "#fff" : colors.muted}
-                size={18}
-              />
-              <Text
-                style={[
-                  styles.segmentText,
-                  { color: colorMode === "bw" ? "#fff" : colors.muted },
-                ]}
-              >
-                {t.bw}
-              </Text>
-            </Pressable>
-          </View>
-          <Pressable
-            onPress={() => setDuplex((value) => !value)}
-            style={[
-              styles.duplexToggle,
-              {
-                borderColor: duplex ? colors.primary : colors.border,
-                backgroundColor: duplex
-                  ? colors.primary + "14"
-                  : colors.background,
-                flexDirection: isArabic ? "row-reverse" : "row",
-              },
-            ]}
-          >
-            <Icon
-              name="flip"
-              color={duplex ? colors.primary : colors.muted}
-              size={18}
-            />
-            <Text
-              style={[
-                styles.segmentText,
-                { color: duplex ? colors.primary : colors.muted },
-              ]}
-            >
-              {duplex ? t.duplex : t.oneSided}
-            </Text>
-          </Pressable>
-          {duplex && (
-            <View style={styles.duplexEdgeBlock}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.duplexEdge}
-              </Text>
-              <View
-                style={[
-                  styles.segmented,
-                  { backgroundColor: colors.background, marginTop: 5 },
-                ]}
-              >
-                <Pressable
-                  onPress={() => setDuplexEdge("long")}
-                  style={[
-                    styles.segment,
-                    duplexEdge === "long" && {
-                      backgroundColor: colors.primary,
-                    },
-                  ]}
-                >
-                  <Icon
-                    name="flip-to-front"
-                    color={duplexEdge === "long" ? "#fff" : colors.muted}
-                    size={17}
-                  />
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      { color: duplexEdge === "long" ? "#fff" : colors.muted },
-                    ]}
-                  >
-                    {t.longEdge}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setDuplexEdge("short")}
-                  style={[
-                    styles.segment,
-                    duplexEdge === "short" && {
-                      backgroundColor: colors.primary,
-                    },
-                  ]}
-                >
-                  <Icon
-                    name="flip-to-back"
-                    color={duplexEdge === "short" ? "#fff" : colors.muted}
-                    size={17}
-                  />
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      { color: duplexEdge === "short" ? "#fff" : colors.muted },
-                    ]}
-                  >
-                    {t.shortEdge}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
-          <View
-            style={[
-              styles.printFooter,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View style={styles.copiesBlock}>
-              <Text style={[styles.smallLabel, { color: colors.muted }]}>
-                {t.copies}
-              </Text>
-              <TextInput
-                value={copies}
-                onChangeText={setCopies}
-                keyboardType="number-pad"
-                style={[
-                  styles.copiesInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              />
-            </View>
-            <Pressable
-              onPress={openPrintDialog}
-              style={({ pressed }) => [
-                styles.printButton,
-                { backgroundColor: colors.primary },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Icon name="print" color="#fff" size={19} />
-              <Text style={styles.printButtonText}>{t.openPrint}</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View
-          style={[
-            styles.profileCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.profileHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View
-              style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.primary + "18" },
-              ]}
-            >
-              <Icon name="bookmark" color={colors.primary} size={20} />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.profiles}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
-                {t.profilesHint}
-              </Text>
-            </View>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingTop: 10 }}
-          >
-            {printProfiles.map((profile) => (
-              <Pressable
-                key={profile.id}
-                onPress={() => applyProfile(profile.id)}
-                style={[
-                  styles.profilePill,
-                  {
-                    backgroundColor:
-                      selectedProfile === profile.id
-                        ? colors.primary
-                        : colors.background,
-                    borderColor:
-                      selectedProfile === profile.id
-                        ? colors.primary
-                        : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.profilePillText,
-                    {
-                      color:
-                        selectedProfile === profile.id
-                          ? "#fff"
-                          : colors.foreground,
-                    },
-                  ]}
-                >
-                  {isArabic ? profile.ar : profile.en}
-                </Text>
-                <Text
-                  style={[
-                    styles.profilePillHint,
-                    {
-                      color:
-                        selectedProfile === profile.id
-                          ? "#DDF6FA"
-                          : colors.muted,
-                    },
-                  ]}
-                >
-                  {profile.duplex
-                    ? t.duplex
-                    : profile.colorMode === "color"
-                      ? t.color
-                      : t.bw}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-
-        <View
-          style={[
-            styles.smartCard,
-            {
-              backgroundColor: colorScheme === "dark" ? "#1D2C3B" : "#EEF6FA",
-              borderColor: colors.primary + "38",
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.sectionHeader,
-              {
-                flexDirection: isArabic ? "row-reverse" : "row",
-                marginBottom: 4,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.aiTitle,
+                styles.profileHeader,
                 { flexDirection: isArabic ? "row-reverse" : "row" },
               ]}
             >
               <View
-                style={[styles.aiIcon, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.phaseIcon,
+                  { backgroundColor: colors.primary + "18" },
+                ]}
               >
-                <Icon name="auto-awesome" color="#fff" size={19} />
+                <Icon name="visibility" color={colors.primary} size={20} />
               </View>
-              <View>
+              <View style={styles.phaseTitleBlock}>
                 <Text
                   style={[styles.sectionTitle, { color: colors.foreground }]}
                 >
-                  {t.smart}
+                  {t.previewTitle}
                 </Text>
-                <Text style={[styles.aiHint, { color: colors.muted }]}>
-                  {t.smartHint}
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {isArabic
+                    ? "كل وظيفة لها معاينتها الخاصة قبل المتابعة"
+                    : "Each function has its own preview before continuing"}
                 </Text>
               </View>
             </View>
-            <Switch
-              value={aiEnabled}
-              onValueChange={setAiEnabled}
-              trackColor={{ false: colors.border, true: colors.primary + "66" }}
-              thumbColor={aiEnabled ? colors.primary : colors.muted}
-            />
-          </View>
-          {aiEnabled ? (
-            <View
-              style={[
-                styles.aiBody,
-                { flexDirection: isArabic ? "row-reverse" : "row" },
-              ]}
-            >
-              <TextInput
-                value={command}
-                onChangeText={setCommand}
-                placeholder={t.placeholder}
-                placeholderTextColor={colors.muted}
-                multiline
-                style={[
-                  styles.commandInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                    textAlign: isArabic ? "right" : "left",
-                  },
-                ]}
-              />
+            {previewKinds.map((kind) => (
               <Pressable
-                onPress={() => Alert.alert(t.smart, command || t.noInternet)}
+                key={kind}
+                onPress={() => setPreviewKind(kind)}
                 style={({ pressed }) => [
-                  styles.executeButton,
-                  { backgroundColor: colors.primary },
-                  pressed && styles.pressed,
+                  styles.previewRow,
+                  {
+                    borderTopColor: colors.border,
+                    flexDirection: isArabic ? "row-reverse" : "row",
+                  },
+                  pressed && styles.rowPressed,
                 ]}
               >
-                <Icon name="play-arrow" color="#fff" size={20} />
-                <Text style={styles.executeText}>{t.execute}</Text>
+                <View
+                  style={[
+                    styles.previewIcon,
+                    { backgroundColor: colors.primary + "14" },
+                  ]}
+                >
+                  <Icon
+                    name={previewIcons[kind]}
+                    color={colors.primary}
+                    size={18}
+                  />
+                </View>
+                <Text
+                  style={[styles.previewRowText, { color: colors.foreground }]}
+                >
+                  {previewLabels[kind]}
+                </Text>
+                <Icon name="chevron-right" color={colors.muted} size={18} />
               </Pressable>
-            </View>
-          ) : (
-            <Text
-              style={[
-                styles.aiOffText,
-                { color: colors.muted, textAlign: isArabic ? "right" : "left" },
-              ]}
-            >
-              {t.smartAction} · {t.noInternet}
-            </Text>
-          )}
-        </View>
+            ))}
+          </View>
 
-        <View
-          style={[
-            styles.roadmapCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
           <View
             style={[
-              styles.roadmapHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
+              styles.numberingCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
             ]}
           >
             <View
               style={[
-                styles.roadmapIcon,
-                { backgroundColor: colors.primary + "18" },
-              ]}
-            >
-              <Icon name="alt-route" color={colors.primary} size={21} />
-            </View>
-            <View style={styles.roadmapTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.roadmap}
-              </Text>
-              <Text style={[styles.roadmapHint, { color: colors.muted }]}>
-                {t.roadmapHint}
-              </Text>
-            </View>
-          </View>
-          {[
-            {
-              title: t.stage1,
-              hint: t.stage1Hint,
-              icon: "folder-special" as const,
-              done: true,
-            },
-            {
-              title: t.stage2,
-              hint: t.stage2Hint,
-              icon: "print" as const,
-              done: false,
-            },
-            {
-              title: t.stage3,
-              hint: t.stage3Hint,
-              icon: "security" as const,
-              done: false,
-            },
-            {
-              title: t.stage4,
-              hint: t.stage4Hint,
-              icon: "auto-awesome" as const,
-              done: false,
-            },
-          ].map((stage, index) => (
-            <View
-              key={stage.title}
-              style={[
-                styles.roadmapRow,
-                {
-                  flexDirection: isArabic ? "row-reverse" : "row",
-                  borderTopColor: colors.border,
-                },
+                styles.profileHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
               ]}
             >
               <View
                 style={[
-                  styles.roadmapStep,
-                  {
-                    backgroundColor: stage.done
-                      ? colors.success + "18"
-                      : colors.background,
-                    borderColor: stage.done ? colors.success : colors.border,
-                  },
+                  styles.phaseIcon,
+                  { backgroundColor: colors.error + "18" },
                 ]}
               >
                 <Icon
-                  name={stage.icon}
-                  color={stage.done ? colors.success : colors.muted}
-                  size={17}
+                  name="format-list-numbered"
+                  color={colors.error}
+                  size={20}
                 />
               </View>
-              <View style={styles.roadmapCopy}>
+              <View style={styles.phaseTitleBlock}>
                 <Text
-                  style={[styles.roadmapStage, { color: colors.foreground }]}
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
                 >
-                  {stage.title}
+                  {t.numberingSettings}
                 </Text>
-                <Text
-                  style={[styles.roadmapStageHint, { color: colors.muted }]}
-                >
-                  {stage.hint}
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {numberingFile
+                    ? `${numberingFile.name} · ${numberingFile.pages} ${isArabic ? "صفحة" : "pages"}`
+                    : t.chooseNumberingFile}
                 </Text>
               </View>
-              <Text
-                style={[
-                  styles.roadmapStatus,
-                  { color: stage.done ? colors.success : colors.muted },
-                ]}
-              >
-                {stage.done
-                  ? isArabic
-                    ? "جاهز"
-                    : "Ready"
-                  : isArabic
-                    ? "قادم"
-                    : "Next"}
-              </Text>
             </View>
-          ))}
-        </View>
-
-        <View
-          style={[
-            styles.phaseCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.phaseHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View
+            <Pressable
+              onPress={chooseNumberingFile}
+              style={[styles.outlineAction, { borderColor: colors.primary }]}
+            >
+              <Icon name="folder-open" color={colors.primary} size={17} />
+              <Text
+                style={[styles.outlineActionText, { color: colors.primary }]}
+              >
+                {t.chooseNumberingFile}
+              </Text>
+            </Pressable>
+            <Text
               style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.primary + "18" },
+                styles.smallLabel,
+                { color: colors.muted, marginTop: 10 },
               ]}
             >
-              <Icon name="devices" color={colors.primary} size={21} />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.phase2}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
-                {t.phase2Hint}
-              </Text>
-            </View>
-          </View>
-          <View
-            style={[
-              styles.deviceRow,
-              {
-                flexDirection: isArabic ? "row-reverse" : "row",
-                borderTopColor: colors.border,
-              },
-            ]}
-          >
-            <Icon name="print" color={colors.primary} size={19} />
-            <View style={styles.deviceCopy}>
-              <Text style={[styles.deviceName, { color: colors.foreground }]}>
-                {t.printerName}
-              </Text>
-              <Text
-                style={[
-                  styles.deviceState,
-                  {
-                    color:
-                      deviceMessage === "connected"
-                        ? colors.success
-                        : deviceMessage === "not-found"
-                          ? colors.error
-                          : colors.muted,
-                  },
-                ]}
-              >
-                {deviceMessage === "connected"
-                  ? t.connected
-                  : deviceChecked
-                    ? t.connectionFailed
-                    : t.notChecked}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.stateDot,
-                {
-                  backgroundColor:
-                    deviceMessage === "connected"
-                      ? colors.success
-                      : deviceMessage === "not-found"
-                        ? colors.error
-                        : colors.warning,
-                },
-              ]}
-            />
-          </View>
-          <View
-            style={[
-              styles.deviceRow,
-              {
-                flexDirection: isArabic ? "row-reverse" : "row",
-                borderTopColor: colors.border,
-              },
-            ]}
-          >
-            <Icon name="document-scanner" color={colors.primary} size={19} />
-            <View style={styles.deviceCopy}>
-              <Text style={[styles.deviceName, { color: colors.foreground }]}>
-                {t.scan}
-              </Text>
-              <Text
-                style={[
-                  styles.deviceState,
-                  {
-                    color:
-                      deviceMessage === "connected"
-                        ? colors.success
-                        : deviceMessage === "not-found"
-                          ? colors.error
-                          : colors.muted,
-                  },
-                ]}
-              >
-                {deviceMessage === "connected"
-                  ? t.connected
-                  : deviceChecked
-                    ? t.connectionFailed
-                    : t.notChecked}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.stateDot,
-                {
-                  backgroundColor:
-                    deviceMessage === "connected"
-                      ? colors.success
-                      : deviceMessage === "not-found"
-                        ? colors.error
-                        : colors.warning,
-                },
-              ]}
-            />
-          </View>
-          <Text
-            style={[styles.scannerSectionTitle, { color: colors.foreground }]}
-          >
-            {t.scannerSettings}
-          </Text>
-          <TextInput
-            value={printerIp}
-            onChangeText={setPrinterIp}
-            placeholder={t.scannerIpHint}
-            placeholderTextColor={colors.muted}
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-            style={[
-              styles.scannerInput,
-              {
-                color: colors.foreground,
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-                textAlign: isArabic ? "right" : "left",
-              },
-            ]}
-          />
-          <Text style={[styles.scannerNetworkText, { color: colors.muted }]}>
-            {t.networkAddress}: {phoneIp || "—"}
-          </Text>
-          <View
-            style={[
-              styles.scannerOptionRow,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <Text style={[styles.scannerLabel, { color: colors.muted }]}>
-              {t.dpi}
+              {t.numberLeft} / {t.numberCenter} / {t.numberRight}
             </Text>
             <View
-              style={[
-                styles.scannerPills,
-                { flexDirection: isArabic ? "row-reverse" : "row" },
-              ]}
+              style={[styles.segmented, { backgroundColor: colors.background }]}
             >
-              {["200", "300", "600"].map((value) => (
+              {(
+                [
+                  ["left", t.numberLeft],
+                  ["center", t.numberCenter],
+                  ["right", t.numberRight],
+                ] as [NumberPosition, string][]
+              ).map(([value, label]) => (
                 <Pressable
                   key={value}
-                  onPress={() => setScannerDpi(value)}
+                  onPress={() => setNumberPosition(value)}
                   style={[
-                    styles.scannerPill,
-                    {
-                      backgroundColor:
-                        scannerDpi === value
-                          ? colors.primary
-                          : colors.background,
-                      borderColor:
-                        scannerDpi === value ? colors.primary : colors.border,
+                    styles.segment,
+                    numberPosition === value && {
+                      backgroundColor: colors.primary,
                     },
                   ]}
                 >
                   <Text
                     style={[
-                      styles.scannerPillText,
+                      styles.segmentText,
                       {
-                        color:
-                          scannerDpi === value ? "#fff" : colors.foreground,
-                      },
-                    ]}
-                  >
-                    {value}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-          <View
-            style={[
-              styles.scannerOptionRow,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <Text style={[styles.scannerLabel, { color: colors.muted }]}>
-              {t.colorMode}
-            </Text>
-            <View
-              style={[
-                styles.scannerPills,
-                { flexDirection: isArabic ? "row-reverse" : "row" },
-              ]}
-            >
-              {[
-                ["color", t.scanColor],
-                ["bw", t.scanBw],
-              ].map(([value, label]) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setScannerColor(value as "color" | "bw")}
-                  style={[
-                    styles.scannerPill,
-                    {
-                      backgroundColor:
-                        scannerColor === value
-                          ? colors.primary
-                          : colors.background,
-                      borderColor:
-                        scannerColor === value ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.scannerPillText,
-                      {
-                        color:
-                          scannerColor === value ? "#fff" : colors.foreground,
+                        color: numberPosition === value ? "#fff" : colors.muted,
                       },
                     ]}
                   >
@@ -3388,222 +1911,2429 @@ export default function HomeScreen() {
                 </Pressable>
               ))}
             </View>
-          </View>
-          <Pressable
-            onPress={() => setScannerAdf((value) => !value)}
-            style={[
-              styles.scannerAdf,
-              {
-                borderColor: scannerAdf ? colors.primary : colors.border,
-                backgroundColor: scannerAdf
-                  ? colors.primary + "14"
-                  : colors.background,
-                flexDirection: isArabic ? "row-reverse" : "row",
-              },
-            ]}
-          >
-            <Icon
-              name="layers"
-              color={scannerAdf ? colors.primary : colors.muted}
-              size={17}
-            />
             <Text
               style={[
-                styles.scannerLabel,
-                { color: scannerAdf ? colors.primary : colors.muted },
+                styles.smallLabel,
+                { color: colors.muted, marginTop: 10 },
               ]}
             >
-              {t.adf}
+              {t.numberTop} / {t.numberMiddle} / {t.numberBottom}
             </Text>
-          </Pressable>
-          <Pressable
-            onPress={scanForDevices}
-            style={({ pressed }) => [
-              styles.outlineAction,
-              { borderColor: colors.primary },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Icon name="refresh" color={colors.primary} size={17} />
-            <Text style={[styles.outlineActionText, { color: colors.primary }]}>
-              {t.checkDevices}
-            </Text>
-          </Pressable>
-          <View
-            style={[
-              styles.taskHeader,
-              {
-                flexDirection: isArabic ? "row-reverse" : "row",
-                borderTopColor: colors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.taskTitle, { color: colors.foreground }]}>
-              {t.taskManager}
-            </Text>
-            <Text style={[styles.taskCount, { color: colors.muted }]}>
-              {tasks.length}
-            </Text>
-          </View>
-          {tasks.length ? (
-            tasks.map((task) => (
+            <View
+              style={[styles.segmented, { backgroundColor: colors.background }]}
+            >
+              {(
+                [
+                  ["top", t.numberTop],
+                  ["middle", t.numberMiddle],
+                  ["bottom", t.numberBottom],
+                ] as [NumberVertical, string][]
+              ).map(([value, label]) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setNumberVertical(value)}
+                  style={[
+                    styles.segment,
+                    numberVertical === value && {
+                      backgroundColor: colors.primary,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      {
+                        color: numberVertical === value ? "#fff" : colors.muted,
+                      },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View
+              style={[
+                styles.numberFieldsRow,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View style={styles.numberField}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.numberMargin}
+                </Text>
+                <TextInput
+                  value={numberMargin}
+                  onChangeText={setNumberMargin}
+                  keyboardType="numeric"
+                  style={[
+                    styles.copiesInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.numberField}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.numberFrom}
+                </Text>
+                <TextInput
+                  value={numberFrom}
+                  onChangeText={setNumberFrom}
+                  keyboardType="numeric"
+                  style={[
+                    styles.copiesInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.numberField}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.numberTo}
+                </Text>
+                <TextInput
+                  value={numberTo}
+                  onChangeText={setNumberTo}
+                  placeholder={
+                    numberingFile ? String(numberingFile.pages) : "—"
+                  }
+                  placeholderTextColor={colors.muted}
+                  keyboardType="numeric"
+                  style={[
+                    styles.copiesInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+            <View
+              style={[
+                styles.numberFieldsRow,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View style={styles.numberField}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.numberStart}
+                </Text>
+                <TextInput
+                  value={numberStart}
+                  onChangeText={setNumberStart}
+                  keyboardType="numeric"
+                  style={[
+                    styles.copiesInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={[styles.numberField, { flex: 2 }]}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.numberFormat}
+                </Text>
+                <TextInput
+                  value={numberFormat}
+                  onChangeText={setNumberFormat}
+                  style={[
+                    styles.copiesInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                      textAlign: isArabic ? "right" : "left",
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 7, paddingVertical: 8 }}
+            >
               <Text
-                key={task}
-                style={[styles.taskItem, { color: colors.muted }]}
+                style={[
+                  styles.smallLabel,
+                  { color: colors.muted, alignSelf: "center" },
+                ]}
               >
-                {task}
+                {t.numberWhich}
               </Text>
-            ))
-          ) : (
-            <Text style={[styles.taskEmpty, { color: colors.muted }]}>
-              {t.noTasks}
-            </Text>
-          )}
-          {tasks.length > 0 && (
+              {(
+                [
+                  ["all", t.numberAll],
+                  ["odd", t.numberOdd],
+                  ["even", t.numberEven],
+                ] as [NumberWhich, string][]
+              ).map(([value, label]) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setNumberWhich(value)}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor:
+                        numberWhich === value
+                          ? colors.primary
+                          : colors.background,
+                      borderColor:
+                        numberWhich === value ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.pillText,
+                      {
+                        color:
+                          numberWhich === value ? "#fff" : colors.foreground,
+                      },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 7, paddingVertical: 2 }}
+            >
+              <Text
+                style={[
+                  styles.smallLabel,
+                  { color: colors.muted, alignSelf: "center" },
+                ]}
+              >
+                {t.numberNumerals}
+              </Text>
+              {(
+                [
+                  ["latin", "1 2 3"],
+                  ["indic", "١ ٢ ٣"],
+                  ["roman-l", "i ii iii"],
+                  ["roman-u", "I II III"],
+                ] as [NumberNumerals, string][]
+              ).map(([value, label]) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setNumberNumerals(value)}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor:
+                        numberNumerals === value
+                          ? colors.primary
+                          : colors.background,
+                      borderColor:
+                        numberNumerals === value
+                          ? colors.primary
+                          : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.pillText,
+                      {
+                        color:
+                          numberNumerals === value ? "#fff" : colors.foreground,
+                      },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <View
+              style={[
+                styles.numberFieldsRow,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View style={styles.numberField}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.numberSize}
+                </Text>
+                <TextInput
+                  value={numberSize}
+                  onChangeText={setNumberSize}
+                  keyboardType="numeric"
+                  style={[
+                    styles.copiesInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={[styles.numberField, { flex: 2 }]}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.numberFont}
+                </Text>
+                <View
+                  style={[
+                    styles.segmented,
+                    { backgroundColor: colors.background, marginTop: 0 },
+                  ]}
+                >
+                  {(
+                    [
+                      ["helvetica", "Helvetica"],
+                      ["times", "Times"],
+                      ["courier", "Courier"],
+                    ] as [NumberFont, string][]
+                  ).map(([value, label]) => (
+                    <Pressable
+                      key={value}
+                      onPress={() => setNumberFont(value)}
+                      style={[
+                        styles.segment,
+                        numberFont === value && {
+                          backgroundColor: colors.primary,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentText,
+                          {
+                            color: numberFont === value ? "#fff" : colors.muted,
+                          },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </View>
+            <View
+              style={[
+                styles.numberToggleRow,
+                {
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.segmentText, { color: colors.foreground }]}>
+                {t.numberBold}
+              </Text>
+              <Switch
+                value={numberBold}
+                onValueChange={setNumberBold}
+                trackColor={{
+                  false: colors.border,
+                  true: colors.primary + "66",
+                }}
+                thumbColor={numberBold ? colors.primary : colors.muted}
+              />
+            </View>
+            <View
+              style={[
+                styles.numberToggleRow,
+                {
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.segmentText, { color: colors.foreground }]}>
+                {t.numberMirror}
+              </Text>
+              <Switch
+                value={numberMirror}
+                onValueChange={setNumberMirror}
+                trackColor={{
+                  false: colors.border,
+                  true: colors.primary + "66",
+                }}
+                thumbColor={numberMirror ? colors.primary : colors.muted}
+              />
+            </View>
+            <TextInput
+              value={numberColor}
+              onChangeText={setNumberColor}
+              autoCapitalize="none"
+              placeholder="#526270"
+              placeholderTextColor={colors.muted}
+              style={[
+                styles.colorInput,
+                {
+                  color: colors.foreground,
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                },
+              ]}
+            />
             <Pressable
-              onPress={cancelAllTasks}
+              disabled={!numberingFile}
+              onPress={numberPdf}
               style={({ pressed }) => [
-                styles.cancelTasksButton,
-                { borderColor: colors.error },
+                styles.printButton,
+                {
+                  backgroundColor: numberingFile
+                    ? colors.primary
+                    : colors.border,
+                  marginTop: 10,
+                },
                 pressed && styles.pressed,
               ]}
             >
-              <Icon name="cancel" color={colors.error} size={17} />
-              <Text style={[styles.outlineActionText, { color: colors.error }]}>
-                {t.cancelAll}
-              </Text>
+              <Icon name="format-list-numbered" color="#fff" size={18} />
+              <Text style={styles.printButtonText}>{t.runNumbering}</Text>
             </Pressable>
-          )}
-        </View>
+          </View>
 
-        <View
-          style={[
-            styles.phaseCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
           <View
             style={[
-              styles.phaseHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
+              styles.pageEditorCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
             ]}
           >
             <View
               style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.success + "18" },
+                styles.profileHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
               ]}
             >
-              <Icon name="shield" color={colors.success} size={21} />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.phase3}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
-                {t.phase3Hint}
-              </Text>
-            </View>
-          </View>
-          <PrivacyRow
-            icon="backup"
-            title={t.backup}
-            hint={t.backupHint}
-            colors={colors}
-            onPress={createLocalBackup}
-          />
-          <PrivacyRow
-            icon="restore"
-            title={t.restoreBackup}
-            hint={t.restoreHint}
-            colors={colors}
-            onPress={restoreLocalBackup}
-          />
-          <PrivacyRow
-            icon="lock-outline"
-            title={t.passwords}
-            hint={t.passwordsHint}
-            colors={colors}
-            onPress={() => showError(t.errorTitle, t.passwordsHint)}
-          />
-          <PrivacyRow
-            icon="history"
-            title={t.history}
-            hint={t.historyHint}
-            colors={colors}
-            onPress={() =>
-              Alert.alert(
-                t.history,
-                tasks.length ? tasks.join("\n") : t.noTasks,
-              )
-            }
-          />
-        </View>
-
-        <View
-          style={[
-            styles.resultsCard,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.profileHeader,
-              { flexDirection: isArabic ? "row-reverse" : "row" },
-            ]}
-          >
-            <View
-              style={[
-                styles.phaseIcon,
-                { backgroundColor: colors.success + "18" },
-              ]}
-            >
-              <Icon name="folder-special" color={colors.success} size={20} />
-            </View>
-            <View style={styles.phaseTitleBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {t.results}
-              </Text>
-              <Text style={[styles.phaseHint, { color: colors.muted }]}>
-                {t.resultsHint}
-              </Text>
-            </View>
-          </View>
-          {tasks.length ? (
-            tasks.map((task) => (
               <View
-                key={task}
-                style={[styles.resultRow, { borderTopColor: colors.border }]}
+                style={[
+                  styles.phaseIcon,
+                  { backgroundColor: colors.primary + "18" },
+                ]}
               >
-                <Icon name="description" color={colors.success} size={17} />
-                <Text style={[styles.resultText, { color: colors.foreground }]}>
-                  {task}
+                <Icon name="view-list" color={colors.primary} size={20} />
+              </View>
+              <View style={styles.phaseTitleBlock}>
+                <Text
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
+                >
+                  {t.pageEditor}
+                </Text>
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {t.pageEditorHint}
                 </Text>
               </View>
-            ))
-          ) : (
-            <Text style={[styles.phaseHint, { color: colors.muted }]}>
-              {t.noResults}
+            </View>
+            <Pressable
+              onPress={choosePageEditorPdf}
+              style={[styles.outlineAction, { borderColor: colors.primary }]}
+            >
+              <Icon name="folder-open" color={colors.primary} size={17} />
+              <Text
+                style={[styles.outlineActionText, { color: colors.primary }]}
+              >
+                {t.choosePageFile}
+              </Text>
+            </Pressable>
+            <Text
+              style={[
+                styles.smallLabel,
+                { color: colors.muted, marginTop: 10 },
+              ]}
+            >
+              {pageEditorFile
+                ? `${pageEditorFile.name} · ${pageEditorFile.pages} ${isArabic ? "صفحة" : "pages"}`
+                : t.pageOrderHint}
             </Text>
-          )}
-        </View>
+            <TextInput
+              value={pageOrder}
+              onChangeText={setPageOrder}
+              editable={Boolean(pageEditorFile)}
+              placeholder="1, 2, 3"
+              placeholderTextColor={colors.muted}
+              keyboardType="numbers-and-punctuation"
+              style={[
+                styles.pageOrderInput,
+                {
+                  color: colors.foreground,
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  textAlign: isArabic ? "right" : "left",
+                },
+              ]}
+            />
+            <Pressable
+              onPress={() => setPreviewKind("pages")}
+              disabled={!pageEditorFile}
+              style={[
+                styles.outlineAction,
+                {
+                  borderColor: pageEditorFile ? colors.primary : colors.border,
+                  marginTop: 9,
+                },
+              ]}
+            >
+              <Icon
+                name="visibility"
+                color={pageEditorFile ? colors.primary : colors.muted}
+                size={17}
+              />
+              <Text
+                style={[
+                  styles.outlineActionText,
+                  { color: pageEditorFile ? colors.primary : colors.muted },
+                ]}
+              >
+                {t.previewPages}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={pageEditBusy || !pageEditorFile}
+              onPress={applyPageEditor}
+              style={({ pressed }) => [
+                styles.printButton,
+                {
+                  backgroundColor: pageEditorFile
+                    ? colors.primary
+                    : colors.border,
+                  marginTop: 9,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Icon name="save" color="#fff" size={18} />
+              <Text style={styles.printButtonText}>
+                {pageEditBusy ? "…" : t.applyPageEdit}
+              </Text>
+            </Pressable>
+          </View>
 
-        {selectedFiles.length > 0 && (
           <View
             style={[
-              styles.selectedNotice,
+              styles.idCardCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.profileHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.phaseIcon,
+                  { backgroundColor: colors.warning + "18" },
+                ]}
+              >
+                <Icon name="badge" color={colors.warning} size={20} />
+              </View>
+              <View style={styles.phaseTitleBlock}>
+                <Text
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
+                >
+                  {t.idWizard}
+                </Text>
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {t.idWizardHint}
+                </Text>
+              </View>
+            </View>
+            <View
+              style={[
+                styles.idFacesRow,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              {[
+                { side: "front" as const, uri: idFrontUri, label: t.idFront },
+                { side: "back" as const, uri: idBackUri, label: t.idBack },
+              ].map((face) => (
+                <View key={face.side} style={styles.idFaceBlock}>
+                  <View
+                    style={[
+                      styles.idPreview,
+                      {
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    {face.uri ? (
+                      <Image
+                        source={{ uri: face.uri }}
+                        style={styles.idPreviewImage}
+                      />
+                    ) : (
+                      <Icon name="scanner" color={colors.muted} size={28} />
+                    )}
+                  </View>
+                  <Text
+                    style={[styles.idFaceLabel, { color: colors.foreground }]}
+                  >
+                    {face.label}
+                  </Text>
+                  <Pressable
+                    onPress={() => scanIdFaceFromKyocera(face.side)}
+                    style={[
+                      styles.miniButton,
+                      {
+                        borderColor: colors.primary,
+                        backgroundColor: colors.primary + "10",
+                      },
+                    ]}
+                  >
+                    <Icon name="scanner" color={colors.primary} size={15} />
+                    <Text
+                      style={[styles.miniButtonText, { color: colors.primary }]}
+                    >
+                      {t.scanIdFace}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => chooseIdFace(face.side, "library")}
+                    style={[styles.miniButton, { borderColor: colors.border }]}
+                  >
+                    <Icon name="photo-library" color={colors.muted} size={15} />
+                    <Text
+                      style={[styles.miniButtonText, { color: colors.muted }]}
+                    >
+                      {t.choosePhoto}
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+            <Pressable
+              disabled={idBusy}
+              onPress={createIdCardPdf}
+              style={({ pressed }) => [
+                styles.printButton,
+                {
+                  backgroundColor:
+                    idFrontUri && idBackUri ? colors.primary : colors.border,
+                  marginTop: 12,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Icon name="picture-as-pdf" color="#fff" size={18} />
+              <Text style={styles.printButtonText}>
+                {idBusy ? "…" : t.makeIdPdf}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View
+            style={[
+              styles.sectionHeader,
+              { flexDirection: isArabic ? "row-reverse" : "row" },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              {t.recent}
+            </Text>
+            <Pressable onPress={actionComing}>
+              <Text style={[styles.viewAll, { color: colors.primary }]}>
+                {t.viewAll}
+              </Text>
+            </Pressable>
+          </View>
+          <View
+            style={[
+              styles.filesCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <FileRow
+              name={t.file1}
+              time={t.today}
+              icon="picture-as-pdf"
+              colors={colors}
+              onPress={openPrintDialog}
+            />
+            <FileRow
+              name={t.file2}
+              time={t.yesterday}
+              icon="picture-as-pdf"
+              colors={colors}
+              onPress={openPrintDialog}
+            />
+            <FileRow
+              name={t.file3}
+              time={t.yesterday}
+              icon="picture-as-pdf"
+              colors={colors}
+              onPress={openPrintDialog}
+            />
+          </View>
+
+          <View
+            style={[
+              styles.sectionHeader,
+              { flexDirection: isArabic ? "row-reverse" : "row" },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              {t.paper}
+            </Text>
+            <Icon name="tune" color={colors.primary} size={20} />
+          </View>
+          <View
+            style={[
+              styles.settingsCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <SettingLabel
+              title={t.format}
+              value={`${paper.ar} · ${paper.size}`}
+              colors={colors}
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingVertical: 10 }}
+            >
+              {paperOptions.map((option) => (
+                <Pressable
+                  key={option.id}
+                  onPress={() => setSelectedPaper(option.id)}
+                  style={[
+                    styles.pill,
+                    {
+                      backgroundColor:
+                        selectedPaper === option.id
+                          ? colors.primary
+                          : colors.background,
+                      borderColor:
+                        selectedPaper === option.id
+                          ? colors.primary
+                          : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.pillText,
+                      {
+                        color:
+                          selectedPaper === option.id
+                            ? "#fff"
+                            : colors.foreground,
+                      },
+                    ]}
+                  >
+                    {isArabic ? option.ar : option.en}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <View
+              style={[styles.divider, { backgroundColor: colors.border }]}
+            />
+            <SettingLabel
+              title={t.weight}
+              value={selectedWeight}
+              colors={colors}
+            />
+            <View
+              style={[
+                styles.weightRow,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              {[
+                ["70 g/m²", "خفيف"],
+                ["80 g/m²", "عادي"],
+                ["120 g/m²", "متوسط"],
+                ["200 g/m²", "شهادة"],
+              ].map(([value, label]) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setSelectedWeight(value)}
+                  style={[
+                    styles.weightItem,
+                    {
+                      backgroundColor:
+                        selectedWeight === value
+                          ? colors.primary + "16"
+                          : colors.background,
+                      borderColor:
+                        selectedWeight === value
+                          ? colors.primary
+                          : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.weightValue,
+                      {
+                        color:
+                          selectedWeight === value
+                            ? colors.primary
+                            : colors.foreground,
+                      },
+                    ]}
+                  >
+                    {value}
+                  </Text>
+                  <Text style={[styles.weightLabel, { color: colors.muted }]}>
+                    {isArabic
+                      ? label
+                      : value === "70 g/m²"
+                        ? "Light"
+                        : value === "80 g/m²"
+                          ? "Standard"
+                          : value === "120 g/m²"
+                            ? "Medium"
+                            : "Certificate"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View
+              style={[styles.divider, { backgroundColor: colors.border }]}
+            />
+            <SettingLabel
+              title={t.orientation}
+              value={orientation === "portrait" ? t.portrait : t.landscape}
+              colors={colors}
+            />
+            <View
+              style={[styles.segmented, { backgroundColor: colors.background }]}
+            >
+              <Pressable
+                onPress={() => setOrientation("portrait")}
+                style={[
+                  styles.segment,
+                  orientation === "portrait" && {
+                    backgroundColor: colors.primary,
+                  },
+                ]}
+              >
+                <Icon
+                  name="crop-portrait"
+                  color={orientation === "portrait" ? "#fff" : colors.muted}
+                  size={18}
+                />
+                <Text
+                  style={[
+                    styles.segmentText,
+                    {
+                      color: orientation === "portrait" ? "#fff" : colors.muted,
+                    },
+                  ]}
+                >
+                  {t.portrait}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setOrientation("landscape")}
+                style={[
+                  styles.segment,
+                  orientation === "landscape" && {
+                    backgroundColor: colors.primary,
+                  },
+                ]}
+              >
+                <Icon
+                  name="crop-landscape"
+                  color={orientation === "landscape" ? "#fff" : colors.muted}
+                  size={18}
+                />
+                <Text
+                  style={[
+                    styles.segmentText,
+                    {
+                      color:
+                        orientation === "landscape" ? "#fff" : colors.muted,
+                    },
+                  ]}
+                >
+                  {t.landscape}
+                </Text>
+              </Pressable>
+            </View>
+            <SettingLabel
+              title={t.colorMode}
+              value={colorMode === "color" ? t.color : t.bw}
+              colors={colors}
+            />
+            <View
+              style={[styles.segmented, { backgroundColor: colors.background }]}
+            >
+              <Pressable
+                onPress={() => setColorMode("color")}
+                style={[
+                  styles.segment,
+                  colorMode === "color" && { backgroundColor: colors.primary },
+                ]}
+              >
+                <Icon
+                  name="palette"
+                  color={colorMode === "color" ? "#fff" : colors.muted}
+                  size={18}
+                />
+                <Text
+                  style={[
+                    styles.segmentText,
+                    { color: colorMode === "color" ? "#fff" : colors.muted },
+                  ]}
+                >
+                  {t.color}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setColorMode("bw")}
+                style={[
+                  styles.segment,
+                  colorMode === "bw" && { backgroundColor: colors.primary },
+                ]}
+              >
+                <Icon
+                  name="tonality"
+                  color={colorMode === "bw" ? "#fff" : colors.muted}
+                  size={18}
+                />
+                <Text
+                  style={[
+                    styles.segmentText,
+                    { color: colorMode === "bw" ? "#fff" : colors.muted },
+                  ]}
+                >
+                  {t.bw}
+                </Text>
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={() => setDuplex((value) => !value)}
+              style={[
+                styles.duplexToggle,
+                {
+                  borderColor: duplex ? colors.primary : colors.border,
+                  backgroundColor: duplex
+                    ? colors.primary + "14"
+                    : colors.background,
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                },
+              ]}
+            >
+              <Icon
+                name="flip"
+                color={duplex ? colors.primary : colors.muted}
+                size={18}
+              />
+              <Text
+                style={[
+                  styles.segmentText,
+                  { color: duplex ? colors.primary : colors.muted },
+                ]}
+              >
+                {duplex ? t.duplex : t.oneSided}
+              </Text>
+            </Pressable>
+            {duplex && (
+              <View style={styles.duplexEdgeBlock}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.duplexEdge}
+                </Text>
+                <View
+                  style={[
+                    styles.segmented,
+                    { backgroundColor: colors.background, marginTop: 5 },
+                  ]}
+                >
+                  <Pressable
+                    onPress={() => setDuplexEdge("long")}
+                    style={[
+                      styles.segment,
+                      duplexEdge === "long" && {
+                        backgroundColor: colors.primary,
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name="flip-to-front"
+                      color={duplexEdge === "long" ? "#fff" : colors.muted}
+                      size={17}
+                    />
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        {
+                          color: duplexEdge === "long" ? "#fff" : colors.muted,
+                        },
+                      ]}
+                    >
+                      {t.longEdge}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setDuplexEdge("short")}
+                    style={[
+                      styles.segment,
+                      duplexEdge === "short" && {
+                        backgroundColor: colors.primary,
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name="flip-to-back"
+                      color={duplexEdge === "short" ? "#fff" : colors.muted}
+                      size={17}
+                    />
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        {
+                          color: duplexEdge === "short" ? "#fff" : colors.muted,
+                        },
+                      ]}
+                    >
+                      {t.shortEdge}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+            <View
+              style={[
+                styles.printFooter,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View style={styles.copiesBlock}>
+                <Text style={[styles.smallLabel, { color: colors.muted }]}>
+                  {t.copies}
+                </Text>
+                <TextInput
+                  value={copies}
+                  onChangeText={setCopies}
+                  keyboardType="number-pad"
+                  style={[
+                    styles.copiesInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+              </View>
+              <Pressable
+                onPress={openPrintDialog}
+                style={({ pressed }) => [
+                  styles.printButton,
+                  { backgroundColor: colors.primary },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Icon name="print" color="#fff" size={19} />
+                <Text style={styles.printButtonText}>{t.openPrint}</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.profileCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.profileHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.phaseIcon,
+                  { backgroundColor: colors.primary + "18" },
+                ]}
+              >
+                <Icon name="bookmark" color={colors.primary} size={20} />
+              </View>
+              <View style={styles.phaseTitleBlock}>
+                <Text
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
+                >
+                  {t.profiles}
+                </Text>
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {t.profilesHint}
+                </Text>
+              </View>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingTop: 10 }}
+            >
+              {printProfiles.map((profile) => (
+                <Pressable
+                  key={profile.id}
+                  onPress={() => applyProfile(profile.id)}
+                  style={[
+                    styles.profilePill,
+                    {
+                      backgroundColor:
+                        selectedProfile === profile.id
+                          ? colors.primary
+                          : colors.background,
+                      borderColor:
+                        selectedProfile === profile.id
+                          ? colors.primary
+                          : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.profilePillText,
+                      {
+                        color:
+                          selectedProfile === profile.id
+                            ? "#fff"
+                            : colors.foreground,
+                      },
+                    ]}
+                  >
+                    {isArabic ? profile.ar : profile.en}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.profilePillHint,
+                      {
+                        color:
+                          selectedProfile === profile.id
+                            ? "#DDF6FA"
+                            : colors.muted,
+                      },
+                    ]}
+                  >
+                    {profile.duplex
+                      ? t.duplex
+                      : profile.colorMode === "color"
+                        ? t.color
+                        : t.bw}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View
+            style={[
+              styles.smartCard,
               {
-                backgroundColor: colors.success + "12",
-                borderColor: colors.success + "35",
+                backgroundColor: colorScheme === "dark" ? "#1D2C3B" : "#EEF6FA",
+                borderColor: colors.primary + "38",
               },
             ]}
           >
-            <Icon name="attach-file" color={colors.success} size={18} />
-            <Text
-              style={[styles.selectedNoticeText, { color: colors.success }]}
+            <View
+              style={[
+                styles.sectionHeader,
+                {
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                  marginBottom: 4,
+                },
+              ]}
             >
-              {selectedFiles.length} {t.selected}: {selectedFiles.join("، ")}
+              <View
+                style={[
+                  styles.aiTitle,
+                  { flexDirection: isArabic ? "row-reverse" : "row" },
+                ]}
+              >
+                <View
+                  style={[styles.aiIcon, { backgroundColor: colors.primary }]}
+                >
+                  <Icon name="auto-awesome" color="#fff" size={19} />
+                </View>
+                <View>
+                  <Text
+                    style={[styles.sectionTitle, { color: colors.foreground }]}
+                  >
+                    {t.smart}
+                  </Text>
+                  <Text style={[styles.aiHint, { color: colors.muted }]}>
+                    {t.smartHint}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={aiEnabled}
+                onValueChange={setAiEnabled}
+                trackColor={{
+                  false: colors.border,
+                  true: colors.primary + "66",
+                }}
+                thumbColor={aiEnabled ? colors.primary : colors.muted}
+              />
+            </View>
+            {aiEnabled ? (
+              <View
+                style={[
+                  styles.aiBody,
+                  { flexDirection: isArabic ? "row-reverse" : "row" },
+                ]}
+              >
+                <TextInput
+                  value={command}
+                  onChangeText={setCommand}
+                  placeholder={t.placeholder}
+                  placeholderTextColor={colors.muted}
+                  multiline
+                  style={[
+                    styles.commandInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                      textAlign: isArabic ? "right" : "left",
+                    },
+                  ]}
+                />
+                <Pressable
+                  onPress={() => Alert.alert(t.smart, command || t.noInternet)}
+                  style={({ pressed }) => [
+                    styles.executeButton,
+                    { backgroundColor: colors.primary },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Icon name="play-arrow" color="#fff" size={20} />
+                  <Text style={styles.executeText}>{t.execute}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text
+                style={[
+                  styles.aiOffText,
+                  {
+                    color: colors.muted,
+                    textAlign: isArabic ? "right" : "left",
+                  },
+                ]}
+              >
+                {t.smartAction} · {t.noInternet}
+              </Text>
+            )}
+          </View>
+
+          <View
+            style={[
+              styles.roadmapCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.roadmapHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.roadmapIcon,
+                  { backgroundColor: colors.primary + "18" },
+                ]}
+              >
+                <Icon name="alt-route" color={colors.primary} size={21} />
+              </View>
+              <View style={styles.roadmapTitleBlock}>
+                <Text
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
+                >
+                  {t.roadmap}
+                </Text>
+                <Text style={[styles.roadmapHint, { color: colors.muted }]}>
+                  {t.roadmapHint}
+                </Text>
+              </View>
+            </View>
+            {[
+              {
+                title: t.stage1,
+                hint: t.stage1Hint,
+                icon: "folder-special" as const,
+                done: true,
+              },
+              {
+                title: t.stage2,
+                hint: t.stage2Hint,
+                icon: "print" as const,
+                done: false,
+              },
+              {
+                title: t.stage3,
+                hint: t.stage3Hint,
+                icon: "security" as const,
+                done: false,
+              },
+              {
+                title: t.stage4,
+                hint: t.stage4Hint,
+                icon: "auto-awesome" as const,
+                done: false,
+              },
+            ].map((stage, index) => (
+              <View
+                key={stage.title}
+                style={[
+                  styles.roadmapRow,
+                  {
+                    flexDirection: isArabic ? "row-reverse" : "row",
+                    borderTopColor: colors.border,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.roadmapStep,
+                    {
+                      backgroundColor: stage.done
+                        ? colors.success + "18"
+                        : colors.background,
+                      borderColor: stage.done ? colors.success : colors.border,
+                    },
+                  ]}
+                >
+                  <Icon
+                    name={stage.icon}
+                    color={stage.done ? colors.success : colors.muted}
+                    size={17}
+                  />
+                </View>
+                <View style={styles.roadmapCopy}>
+                  <Text
+                    style={[styles.roadmapStage, { color: colors.foreground }]}
+                  >
+                    {stage.title}
+                  </Text>
+                  <Text
+                    style={[styles.roadmapStageHint, { color: colors.muted }]}
+                  >
+                    {stage.hint}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.roadmapStatus,
+                    { color: stage.done ? colors.success : colors.muted },
+                  ]}
+                >
+                  {stage.done
+                    ? isArabic
+                      ? "جاهز"
+                      : "Ready"
+                    : isArabic
+                      ? "قادم"
+                      : "Next"}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <View
+            style={[
+              styles.phaseCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.phaseHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.phaseIcon,
+                  { backgroundColor: colors.primary + "18" },
+                ]}
+              >
+                <Icon name="devices" color={colors.primary} size={21} />
+              </View>
+              <View style={styles.phaseTitleBlock}>
+                <Text
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
+                >
+                  {t.phase2}
+                </Text>
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {t.phase2Hint}
+                </Text>
+              </View>
+            </View>
+            <View
+              style={[
+                styles.deviceRow,
+                {
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <Icon name="print" color={colors.primary} size={19} />
+              <View style={styles.deviceCopy}>
+                <Text style={[styles.deviceName, { color: colors.foreground }]}>
+                  {t.printerName}
+                </Text>
+                <Text
+                  style={[
+                    styles.deviceState,
+                    {
+                      color:
+                        deviceMessage === "connected"
+                          ? colors.success
+                          : deviceMessage === "not-found"
+                            ? colors.error
+                            : colors.muted,
+                    },
+                  ]}
+                >
+                  {deviceMessage === "connected"
+                    ? t.connected
+                    : deviceChecked
+                      ? t.connectionFailed
+                      : t.notChecked}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.stateDot,
+                  {
+                    backgroundColor:
+                      deviceMessage === "connected"
+                        ? colors.success
+                        : deviceMessage === "not-found"
+                          ? colors.error
+                          : colors.warning,
+                  },
+                ]}
+              />
+            </View>
+            <View
+              style={[
+                styles.deviceRow,
+                {
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <Icon name="document-scanner" color={colors.primary} size={19} />
+              <View style={styles.deviceCopy}>
+                <Text style={[styles.deviceName, { color: colors.foreground }]}>
+                  {t.scan}
+                </Text>
+                <Text
+                  style={[
+                    styles.deviceState,
+                    {
+                      color:
+                        deviceMessage === "connected"
+                          ? colors.success
+                          : deviceMessage === "not-found"
+                            ? colors.error
+                            : colors.muted,
+                    },
+                  ]}
+                >
+                  {deviceMessage === "connected"
+                    ? t.connected
+                    : deviceChecked
+                      ? t.connectionFailed
+                      : t.notChecked}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.stateDot,
+                  {
+                    backgroundColor:
+                      deviceMessage === "connected"
+                        ? colors.success
+                        : deviceMessage === "not-found"
+                          ? colors.error
+                          : colors.warning,
+                  },
+                ]}
+              />
+            </View>
+            <Text
+              style={[styles.scannerSectionTitle, { color: colors.foreground }]}
+            >
+              {t.scannerSettings}
             </Text>
+            <TextInput
+              value={printerIp}
+              onChangeText={setPrinterIp}
+              placeholder={t.scannerIpHint}
+              placeholderTextColor={colors.muted}
+              keyboardType="numbers-and-punctuation"
+              autoCapitalize="none"
+              style={[
+                styles.scannerInput,
+                {
+                  color: colors.foreground,
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  textAlign: isArabic ? "right" : "left",
+                },
+              ]}
+            />
+            <Text style={[styles.scannerNetworkText, { color: colors.muted }]}>
+              {t.networkAddress}: {phoneIp || "—"}
+            </Text>
+            <View
+              style={[
+                styles.scannerOptionRow,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <Text style={[styles.scannerLabel, { color: colors.muted }]}>
+                {t.dpi}
+              </Text>
+              <View
+                style={[
+                  styles.scannerPills,
+                  { flexDirection: isArabic ? "row-reverse" : "row" },
+                ]}
+              >
+                {["200", "300", "600"].map((value) => (
+                  <Pressable
+                    key={value}
+                    onPress={() => setScannerDpi(value)}
+                    style={[
+                      styles.scannerPill,
+                      {
+                        backgroundColor:
+                          scannerDpi === value
+                            ? colors.primary
+                            : colors.background,
+                        borderColor:
+                          scannerDpi === value ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.scannerPillText,
+                        {
+                          color:
+                            scannerDpi === value ? "#fff" : colors.foreground,
+                        },
+                      ]}
+                    >
+                      {value}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <View
+              style={[
+                styles.scannerOptionRow,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <Text style={[styles.scannerLabel, { color: colors.muted }]}>
+                {t.colorMode}
+              </Text>
+              <View
+                style={[
+                  styles.scannerPills,
+                  { flexDirection: isArabic ? "row-reverse" : "row" },
+                ]}
+              >
+                {[
+                  ["color", t.scanColor],
+                  ["bw", t.scanBw],
+                ].map(([value, label]) => (
+                  <Pressable
+                    key={value}
+                    onPress={() => setScannerColor(value as "color" | "bw")}
+                    style={[
+                      styles.scannerPill,
+                      {
+                        backgroundColor:
+                          scannerColor === value
+                            ? colors.primary
+                            : colors.background,
+                        borderColor:
+                          scannerColor === value
+                            ? colors.primary
+                            : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.scannerPillText,
+                        {
+                          color:
+                            scannerColor === value ? "#fff" : colors.foreground,
+                        },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <Pressable
+              onPress={() => setScannerAdf((value) => !value)}
+              style={[
+                styles.scannerAdf,
+                {
+                  borderColor: scannerAdf ? colors.primary : colors.border,
+                  backgroundColor: scannerAdf
+                    ? colors.primary + "14"
+                    : colors.background,
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                },
+              ]}
+            >
+              <Icon
+                name="layers"
+                color={scannerAdf ? colors.primary : colors.muted}
+                size={17}
+              />
+              <Text
+                style={[
+                  styles.scannerLabel,
+                  { color: scannerAdf ? colors.primary : colors.muted },
+                ]}
+              >
+                {t.adf}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={scanForDevices}
+              style={({ pressed }) => [
+                styles.outlineAction,
+                { borderColor: colors.primary },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Icon name="refresh" color={colors.primary} size={17} />
+              <Text
+                style={[styles.outlineActionText, { color: colors.primary }]}
+              >
+                {t.checkDevices}
+              </Text>
+            </Pressable>
+            <View
+              style={[
+                styles.taskHeader,
+                {
+                  flexDirection: isArabic ? "row-reverse" : "row",
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.taskTitle, { color: colors.foreground }]}>
+                {t.taskManager}
+              </Text>
+              <Text style={[styles.taskCount, { color: colors.muted }]}>
+                {tasks.length}
+              </Text>
+            </View>
+            {tasks.length ? (
+              tasks.map((task) => (
+                <Text
+                  key={task}
+                  style={[styles.taskItem, { color: colors.muted }]}
+                >
+                  {task}
+                </Text>
+              ))
+            ) : (
+              <Text style={[styles.taskEmpty, { color: colors.muted }]}>
+                {t.noTasks}
+              </Text>
+            )}
+            {tasks.length > 0 && (
+              <Pressable
+                onPress={cancelAllTasks}
+                style={({ pressed }) => [
+                  styles.cancelTasksButton,
+                  { borderColor: colors.error },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Icon name="cancel" color={colors.error} size={17} />
+                <Text
+                  style={[styles.outlineActionText, { color: colors.error }]}
+                >
+                  {t.cancelAll}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
+          <View
+            style={[
+              styles.phaseCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.phaseHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.phaseIcon,
+                  { backgroundColor: colors.success + "18" },
+                ]}
+              >
+                <Icon name="shield" color={colors.success} size={21} />
+              </View>
+              <View style={styles.phaseTitleBlock}>
+                <Text
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
+                >
+                  {t.phase3}
+                </Text>
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {t.phase3Hint}
+                </Text>
+              </View>
+            </View>
+            <PrivacyRow
+              icon="backup"
+              title={t.backup}
+              hint={t.backupHint}
+              colors={colors}
+              onPress={createLocalBackup}
+            />
+            <PrivacyRow
+              icon="restore"
+              title={t.restoreBackup}
+              hint={t.restoreHint}
+              colors={colors}
+              onPress={restoreLocalBackup}
+            />
+            <PrivacyRow
+              icon="lock-outline"
+              title={t.passwords}
+              hint={t.passwordsHint}
+              colors={colors}
+              onPress={() => showError(t.errorTitle, t.passwordsHint)}
+            />
+            <PrivacyRow
+              icon="history"
+              title={t.history}
+              hint={t.historyHint}
+              colors={colors}
+              onPress={() =>
+                Alert.alert(
+                  t.history,
+                  tasks.length ? tasks.join("\n") : t.noTasks,
+                )
+              }
+            />
+          </View>
+
+          <View
+            style={[
+              styles.resultsCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.profileHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.phaseIcon,
+                  { backgroundColor: colors.success + "18" },
+                ]}
+              >
+                <Icon name="folder-special" color={colors.success} size={20} />
+              </View>
+              <View style={styles.phaseTitleBlock}>
+                <Text
+                  style={[styles.sectionTitle, { color: colors.foreground }]}
+                >
+                  {t.results}
+                </Text>
+                <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                  {t.resultsHint}
+                </Text>
+              </View>
+            </View>
+            {tasks.length ? (
+              tasks.map((task) => (
+                <View
+                  key={task}
+                  style={[styles.resultRow, { borderTopColor: colors.border }]}
+                >
+                  <Icon name="description" color={colors.success} size={17} />
+                  <Text
+                    style={[styles.resultText, { color: colors.foreground }]}
+                  >
+                    {task}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={[styles.phaseHint, { color: colors.muted }]}>
+                {t.noResults}
+              </Text>
+            )}
+          </View>
+
+          {selectedFiles.length > 0 && (
+            <View
+              style={[
+                styles.selectedNotice,
+                {
+                  backgroundColor: colors.success + "12",
+                  borderColor: colors.success + "35",
+                },
+              ]}
+            >
+              <Icon name="attach-file" color={colors.success} size={18} />
+              <Text
+                style={[styles.selectedNoticeText, { color: colors.success }]}
+              >
+                {selectedFiles.length} {t.selected}: {selectedFiles.join("، ")}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {workspace !== "home" && (
+          <View style={styles.workspaceShell}>
+            <View
+              style={[
+                styles.workspaceHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <Pressable
+                onPress={() => setWorkspace("home")}
+                style={[styles.backButton, { borderColor: colors.border }]}
+              >
+                <Icon
+                  name={isArabic ? "arrow-forward" : "arrow-back"}
+                  color={colors.foreground}
+                  size={19}
+                />
+                <Text
+                  style={[styles.backButtonText, { color: colors.foreground }]}
+                >
+                  {t.backHome}
+                </Text>
+              </Pressable>
+              <View style={styles.workspaceHeading}>
+                <Text
+                  style={[styles.workspaceTitle, { color: colors.foreground }]}
+                >
+                  {workspace === "pdf"
+                    ? t.workspacePdf
+                    : workspace === "print"
+                      ? t.workspacePrint
+                      : workspace === "scan"
+                        ? t.workspaceScan
+                        : workspace === "id"
+                          ? t.workspaceId
+                          : workspace === "results"
+                            ? t.workspaceResults
+                            : t.workspaceAi}
+                </Text>
+                <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                  {workspace === "pdf"
+                    ? t.workspacePdfHint
+                    : workspace === "print"
+                      ? t.workspacePrintHint
+                      : workspace === "scan"
+                        ? t.workspaceScanHint
+                        : workspace === "id"
+                          ? t.workspaceIdHint
+                          : workspace === "results"
+                            ? t.workspaceResultsHint
+                            : t.workspaceAiHint}
+                </Text>
+              </View>
+            </View>
+
+            <Text
+              style={[
+                styles.workspaceSectionLabel,
+                { color: colors.foreground },
+              ]}
+            >
+              {t.workspaceActions}
+            </Text>
+            {workspace === "pdf" && (
+              <View style={styles.workspaceGrid}>
+                <WorkspaceTile
+                  icon="merge-type"
+                  title={t.merge}
+                  hint={t.mergeHint}
+                  color="#0A7EA4"
+                  onPress={mergePdfs}
+                  colors={colors}
+                />
+                <WorkspaceTile
+                  icon="photo-library"
+                  title={t.images}
+                  hint={t.imagesHint}
+                  color="#8B5CF6"
+                  onPress={imagesToPdf}
+                  colors={colors}
+                />
+                <WorkspaceTile
+                  icon="photo-filter"
+                  title={t.extract}
+                  hint={t.extractHint}
+                  color="#F59E0B"
+                  onPress={extractImages}
+                  colors={colors}
+                />
+                <WorkspaceTile
+                  icon="format-list-numbered"
+                  title={t.numbering}
+                  hint={t.numberingHint}
+                  color="#E45757"
+                  onPress={chooseNumberingFile}
+                  colors={colors}
+                />
+                <WorkspaceTile
+                  icon="view-list"
+                  title={t.pageEditor}
+                  hint={t.pageEditorHint}
+                  color="#2563EB"
+                  onPress={choosePageEditorPdf}
+                  colors={colors}
+                />
+              </View>
+            )}
+            {workspace === "pdf" && numberingFile && (
+              <View
+                style={[
+                  styles.workspacePreviewCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.workspacePreviewTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {t.numberingSettings}
+                </Text>
+                <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                  {numberingFile.name} · {numberingFile.pages}{" "}
+                  {isArabic ? "صفحة" : "pages"}
+                </Text>
+                <TextInput
+                  value={numberFormat}
+                  onChangeText={setNumberFormat}
+                  style={[
+                    styles.workspaceInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+                <View style={styles.workspaceSegmentRow}>
+                  {(["left", "center", "right"] as NumberPosition[]).map(
+                    (value) => (
+                      <Pressable
+                        key={value}
+                        onPress={() => setNumberPosition(value)}
+                        style={[
+                          styles.workspaceSegment,
+                          {
+                            backgroundColor:
+                              numberPosition === value
+                                ? colors.primary
+                                : colors.background,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              numberPosition === value
+                                ? "#fff"
+                                : colors.foreground,
+                            fontSize: 11,
+                            fontWeight: "800",
+                          }}
+                        >
+                          {value === "left"
+                            ? t.numberLeft
+                            : value === "center"
+                              ? t.numberCenter
+                              : t.numberRight}
+                        </Text>
+                      </Pressable>
+                    ),
+                  )}
+                </View>
+                <Pressable
+                  onPress={() => setPreviewKind("numbering")}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Icon name="visibility" color="#fff" size={18} />
+                  <Text style={styles.printButtonText}>
+                    {t.previewNumbering}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={numberPdf}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Icon name="format-list-numbered" color="#fff" size={18} />
+                  <Text style={styles.printButtonText}>{t.runNumbering}</Text>
+                </Pressable>
+              </View>
+            )}
+            {workspace === "print" && (
+              <View style={styles.workspacePanel}>
+                <WorkspaceTile
+                  icon="folder-open"
+                  title={t.chooseFile}
+                  hint={t.printHint}
+                  color={colors.primary}
+                  onPress={openPrintDialog}
+                  colors={colors}
+                />
+                <Text
+                  style={[
+                    styles.workspacePreviewTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {t.paper}
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 7 }}
+                >
+                  {paperOptions.map((option) => (
+                    <Pressable
+                      key={option.id}
+                      onPress={() => setSelectedPaper(option.id)}
+                      style={[
+                        styles.workspaceSegment,
+                        {
+                          backgroundColor:
+                            selectedPaper === option.id
+                              ? colors.primary
+                              : colors.surface,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            selectedPaper === option.id
+                              ? "#fff"
+                              : colors.foreground,
+                          fontSize: 10,
+                          fontWeight: "800",
+                        }}
+                      >
+                        {isArabic ? option.ar : option.en}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <View style={styles.workspaceSegmentRow}>
+                  {["70 g/m²", "80 g/m²", "120 g/m²", "200 g/m²"].map(
+                    (value) => (
+                      <Pressable
+                        key={value}
+                        onPress={() => setSelectedWeight(value)}
+                        style={[
+                          styles.workspaceSegment,
+                          {
+                            backgroundColor:
+                              selectedWeight === value
+                                ? colors.primary
+                                : colors.surface,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              selectedWeight === value
+                                ? "#fff"
+                                : colors.foreground,
+                            fontSize: 10,
+                            fontWeight: "800",
+                          }}
+                        >
+                          {value}
+                        </Text>
+                      </Pressable>
+                    ),
+                  )}
+                </View>
+                <View style={styles.workspaceSegmentRow}>
+                  {(["portrait", "landscape"] as const).map((value) => (
+                    <Pressable
+                      key={value}
+                      onPress={() => setOrientation(value)}
+                      style={[
+                        styles.workspaceSegment,
+                        {
+                          backgroundColor:
+                            orientation === value
+                              ? colors.primary
+                              : colors.surface,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            orientation === value ? "#fff" : colors.foreground,
+                          fontSize: 10,
+                          fontWeight: "800",
+                        }}
+                      >
+                        {value === "portrait" ? t.portrait : t.landscape}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable
+                  onPress={() => setDuplex((value) => !value)}
+                  style={[
+                    styles.workspaceSegment,
+                    {
+                      backgroundColor: duplex ? colors.primary : colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: duplex ? "#fff" : colors.foreground,
+                      fontSize: 11,
+                      fontWeight: "800",
+                      textAlign: "center",
+                    }}
+                  >
+                    {duplex ? t.duplex : t.oneSided}
+                  </Text>
+                </Pressable>
+                <View
+                  style={[
+                    styles.workspacePreviewCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Icon name="visibility" color={colors.primary} size={24} />
+                  <Text
+                    style={[
+                      styles.workspacePreviewTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {t.previewPrint}
+                  </Text>
+                  <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                    {paper.ar} · {selectedWeight} ·{" "}
+                    {colorMode === "color" ? t.color : t.bw} ·{" "}
+                    {duplex ? t.duplex : t.oneSided}
+                  </Text>
+                  <Pressable
+                    onPress={() => setPreviewKind("print")}
+                    style={[
+                      styles.workspacePrimary,
+                      { backgroundColor: colors.primary },
+                    ]}
+                  >
+                    <Text style={styles.printButtonText}>{t.previewPrint}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+            {workspace === "scan" && (
+              <View style={styles.workspacePanel}>
+                <TextInput
+                  value={printerIp}
+                  onChangeText={setPrinterIp}
+                  placeholder={t.scannerIpHint}
+                  placeholderTextColor={colors.muted}
+                  style={[
+                    styles.workspaceInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+                <Pressable
+                  onPress={scanForDevices}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Icon name="wifi" color="#fff" size={18} />
+                  <Text style={styles.printButtonText}>{t.checkDevices}</Text>
+                </Pressable>
+                <View
+                  style={[
+                    styles.workspacePreviewCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Icon
+                    name="document-scanner"
+                    color={colors.success}
+                    size={26}
+                  />
+                  <Text
+                    style={[
+                      styles.workspacePreviewTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {t.scannerSettings}
+                  </Text>
+                  <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                    {t.dpi}: {scannerDpi} ·{" "}
+                    {scannerColor === "color" ? t.scanColor : t.scanBw} ·{" "}
+                    {t.adf}: {scannerAdf ? "ON" : "OFF"}
+                  </Text>
+                </View>
+              </View>
+            )}
+            {workspace === "id" && (
+              <View style={styles.workspacePanel}>
+                <View
+                  style={[
+                    styles.workspacePreviewCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Icon name="badge" color={colors.warning} size={28} />
+                  <Text
+                    style={[
+                      styles.workspacePreviewTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {t.idWizard}
+                  </Text>
+                  <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                    {t.idWizardHint}
+                  </Text>
+                </View>
+                <View style={styles.workspaceSegmentRow}>
+                  <Pressable
+                    onPress={() => chooseIdFace("front", "library")}
+                    style={[
+                      styles.workspacePrimary,
+                      {
+                        backgroundColor: colors.surface,
+                        borderColor: colors.border,
+                        borderWidth: 1,
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name="photo-library"
+                      color={colors.primary}
+                      size={18}
+                    />
+                    <Text
+                      style={[
+                        styles.backButtonText,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {t.idFront}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => chooseIdFace("back", "library")}
+                    style={[
+                      styles.workspacePrimary,
+                      {
+                        backgroundColor: colors.surface,
+                        borderColor: colors.border,
+                        borderWidth: 1,
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name="photo-library"
+                      color={colors.primary}
+                      size={18}
+                    />
+                    <Text
+                      style={[
+                        styles.backButtonText,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {t.idBack}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Pressable
+                  onPress={() => setPreviewKind("id")}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Icon name="visibility" color="#fff" size={18} />
+                  <Text style={styles.printButtonText}>{t.previewId}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={createIdCardPdf}
+                  disabled={!idFrontUri || !idBackUri}
+                  style={[
+                    styles.workspacePrimary,
+                    {
+                      backgroundColor:
+                        idFrontUri && idBackUri
+                          ? colors.primary
+                          : colors.border,
+                    },
+                  ]}
+                >
+                  <Icon name="picture-as-pdf" color="#fff" size={18} />
+                  <Text style={styles.printButtonText}>{t.makeIdPdf}</Text>
+                </Pressable>
+              </View>
+            )}
+            {workspace === "results" && (
+              <View
+                style={[
+                  styles.workspacePreviewCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                {tasks.length ? (
+                  tasks.map((task) => (
+                    <Text
+                      key={task}
+                      style={[styles.resultText, { color: colors.foreground }]}
+                    >
+                      {task}
+                    </Text>
+                  ))
+                ) : (
+                  <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                    {t.noResults}
+                  </Text>
+                )}
+              </View>
+            )}
+            {workspace === "ai" && (
+              <View
+                style={[
+                  styles.workspacePreviewCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.workspacePreviewTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {t.smart}
+                </Text>
+                <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                  {t.smartHint}
+                </Text>
+                <TextInput
+                  value={command}
+                  onChangeText={setCommand}
+                  placeholder={t.placeholder}
+                  placeholderTextColor={colors.muted}
+                  style={[
+                    styles.workspaceInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+                <Pressable
+                  onPress={actionComing}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Text style={styles.printButtonText}>{t.execute}</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -3854,6 +4584,49 @@ function SettingLabel({
   );
 }
 
+function WorkspaceTile({
+  icon,
+  title,
+  hint,
+  color,
+  onPress,
+  colors,
+}: {
+  icon: React.ComponentProps<typeof MaterialIcons>["name"];
+  title: string;
+  hint: string;
+  color: string;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.workspaceTile,
+        { backgroundColor: color + "16", borderColor: color + "35" },
+        pressed && styles.pressed,
+      ]}
+    >
+      <View
+        style={[styles.workspaceTileIcon, { backgroundColor: color + "22" }]}
+      >
+        <Icon name={icon} color={color} size={22} />
+      </View>
+      <Text style={[styles.workspaceTileTitle, { color: colors.foreground }]}>
+        {title}
+      </Text>
+      <Text
+        style={[styles.workspaceTileHint, { color: colors.muted }]}
+        numberOfLines={2}
+      >
+        {hint}
+      </Text>
+      <Icon name="chevron-right" color={colors.muted} size={18} />
+    </Pressable>
+  );
+}
+
 function PrivacyRow({
   icon,
   title,
@@ -3939,6 +4712,88 @@ const styles = StyleSheet.create({
   errorCopy: { flex: 1 },
   errorTitle: { fontSize: 12, fontWeight: "800" },
   errorHint: { fontSize: 10.5, marginTop: 3, lineHeight: 15 },
+  workspaceShell: { paddingTop: 6, paddingBottom: 24, gap: 14 },
+  workspaceHeader: { alignItems: "center", gap: 10, marginBottom: 4 },
+  backButton: {
+    minHeight: 40,
+    borderRadius: 11,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  backButtonText: { fontSize: 11, fontWeight: "800" },
+  workspaceHeading: { flex: 1, alignItems: "flex-end", gap: 3 },
+  workspaceTitle: { fontSize: 22, fontWeight: "900" },
+  workspaceHint: { fontSize: 11, lineHeight: 17 },
+  workspaceSectionLabel: {
+    fontSize: 15,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+  workspaceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  workspaceTile: {
+    width: "47%",
+    minHeight: 142,
+    borderRadius: 17,
+    borderWidth: 1,
+    padding: 12,
+    gap: 7,
+  },
+  workspaceTileIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  workspaceTileTitle: { fontSize: 13, fontWeight: "900", textAlign: "right" },
+  workspaceTileHint: {
+    flex: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: "right",
+  },
+  workspacePanel: { gap: 12 },
+  workspaceSegmentRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  workspaceSegment: {
+    minHeight: 36,
+    borderRadius: 9,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+  },
+  workspacePreviewCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 15,
+    gap: 9,
+  },
+  workspacePreviewTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+  workspaceInput: {
+    minHeight: 44,
+    borderRadius: 11,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 12,
+    textAlign: "right",
+  },
+  workspacePrimary: {
+    minHeight: 44,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+    paddingHorizontal: 13,
+  },
   hero: {
     borderRadius: 22,
     padding: 18,

@@ -28,7 +28,7 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "PrintPilot Smart",
+  appName: "طباعة",
   appSlug: "printpilot-smart",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
@@ -50,9 +50,9 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -91,14 +91,16 @@ const config: ExpoConfig = {
     [
       "expo-image-picker",
       {
-        photosPermission: "اسمح لـ PrintPilot باختيار صور بطاقات الهوية والمستندات.",
+        photosPermission:
+          "اسمح لـ PrintPilot باختيار صور بطاقات الهوية والمستندات.",
         cameraPermission: "اسمح لـ PrintPilot بالتقاط صور بطاقات الهوية.",
       },
     ],
     [
       "expo-audio",
       {
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
+        microphonePermission:
+          "Allow $(PRODUCT_NAME) to access your microphone.",
       },
     ],
     [

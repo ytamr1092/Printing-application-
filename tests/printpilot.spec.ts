@@ -20,6 +20,7 @@ import { formatNumberValue, getNumberingPages } from "../shared/numbering";
 import { duplexEdgeLabel, isDuplexEdge } from "../shared/duplex-settings";
 import { hasPreviewContent, previewKinds } from "../shared/preview";
 import { canApplyPageOrder, parsePageOrder } from "../shared/pdf-pages";
+import { workspaceKinds } from "../shared/workspaces";
 import { themeColors } from "../theme.config";
 
 describe("PrintPilot paper presets", () => {
@@ -152,5 +153,20 @@ describe("PrintPilot PDF page editor", () => {
     expect(canApplyPageOrder([3, 1, 2], 3)).toBe(true);
     expect(canApplyPageOrder([], 3)).toBe(false);
     expect(canApplyPageOrder([4], 3)).toBe(false);
+  });
+});
+
+describe("PrintPilot widget workspaces", () => {
+  it("keeps the dashboard and every dedicated workspace available", () => {
+    expect(workspaceKinds).toEqual([
+      "home",
+      "pdf",
+      "print",
+      "scan",
+      "id",
+      "results",
+      "ai",
+    ]);
+    expect(new Set(workspaceKinds).size).toBe(7);
   });
 });
