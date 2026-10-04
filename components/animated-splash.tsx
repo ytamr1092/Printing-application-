@@ -11,6 +11,7 @@ export function AnimatedSplash() {
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const titleOpacity = useRef(new Animated.Value(0)).current;
   const progress = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0.86)).current;
 
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => undefined);
@@ -42,11 +43,29 @@ export function AnimatedSplash() {
       ]),
       Animated.delay(180),
     ]);
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1.08,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.86,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    pulseAnimation.start();
     animation.start(({ finished }) => {
       if (finished) setVisible(false);
     });
-    return () => animation.stop();
-  }, [logoOpacity, logoScale, progress, titleOpacity]);
+    return () => {
+      animation.stop();
+      pulseAnimation.stop();
+    };
+  }, [logoOpacity, logoScale, progress, pulse, titleOpacity]);
 
   if (!visible) return null;
 
@@ -58,6 +77,9 @@ export function AnimatedSplash() {
           { opacity: logoOpacity, transform: [{ scale: logoScale }] },
         ]}
       >
+        <Animated.View
+          style={[styles.pulseRing, { transform: [{ scale: pulse }] }]}
+        />
         <View style={styles.logoHalo}>
           <MaterialIcons name="print" size={52} color="#FFFFFF" />
         </View>
@@ -95,6 +117,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#0C1725",
   },
   logo: { alignItems: "center", justifyContent: "center" },
+  pulseRing: {
+    position: "absolute",
+    width: 132,
+    height: 132,
+    borderRadius: 42,
+    borderWidth: 2,
+    borderColor: "#42C4D9",
+    opacity: 0.45,
+  },
   logoHalo: {
     width: 112,
     height: 112,
