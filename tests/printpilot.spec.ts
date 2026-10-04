@@ -19,7 +19,15 @@ import {
 import { formatNumberValue, getNumberingPages } from "../shared/numbering";
 import { duplexEdgeLabel, isDuplexEdge } from "../shared/duplex-settings";
 import { hasPreviewContent, previewKinds } from "../shared/preview";
-import { canApplyPageOrder, parsePageOrder } from "../shared/pdf-pages";
+import {
+  canApplyPageOrder,
+  createPageEdits,
+  movePage,
+  pageOrientation,
+  parsePageOrder,
+  rotatePage,
+  togglePageOrientation,
+} from "../shared/pdf-pages";
 import { workspaceKinds } from "../shared/workspaces";
 import { themeColors } from "../theme.config";
 
@@ -153,6 +161,18 @@ describe("PrintPilot PDF page editor", () => {
     expect(canApplyPageOrder([3, 1, 2], 3)).toBe(true);
     expect(canApplyPageOrder([], 3)).toBe(false);
     expect(canApplyPageOrder([4], 3)).toBe(false);
+  });
+
+  it("supports drag-like moves and page orientation transforms", () => {
+    const edits = createPageEdits(3);
+    expect(movePage(edits, 0, 2).map((page) => page.sourcePage)).toEqual([
+      2, 3, 1,
+    ]);
+    expect(rotatePage(0)).toBe(90);
+    expect(rotatePage(270)).toBe(0);
+    expect(togglePageOrientation(0)).toBe(90);
+    expect(pageOrientation(90)).toBe("landscape");
+    expect(pageOrientation(180)).toBe("portrait");
   });
 });
 

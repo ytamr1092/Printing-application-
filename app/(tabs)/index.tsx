@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -32,7 +33,16 @@ import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
 import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 import { duplexEdgeLabel } from "@/shared/duplex-settings";
-import { canApplyPageOrder, parsePageOrder } from "@/shared/pdf-pages";
+import {
+  canApplyPageOrder,
+  createPageEdits,
+  movePage,
+  pageOrientation,
+  parsePageOrder,
+  rotatePage,
+  togglePageOrientation,
+  type PdfPageEdit,
+} from "@/shared/pdf-pages";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 import { type WorkspaceKind } from "@/shared/workspaces";
 
@@ -257,6 +267,32 @@ const copy = {
     openWorkspace: "فتح المساحة",
     backHome: "العودة للرئيسية",
     workspaceActions: "أدوات هذه المساحة",
+    advanced: "إعدادات متقدمة",
+    pageRange: "نطاق الصفحات",
+    scale: "التحجيم",
+    fitPage: "ملاءمة الصفحة",
+    actualSize: "الحجم الفعلي",
+    fillPage: "ملء الصفحة",
+    margins: "الهوامش (مم)",
+    collate: "تجميع النسخ",
+    scanSource: "مصدر المسح",
+    glass: "الزجاج",
+    scanDuplex: "مسح الوجهين",
+    outputFormat: "صيغة الناتج",
+    deskew: "تصحيح الميل",
+    removeBlanks: "تجاهل الصفحات الفارغة",
+    idSize: "حجم البطاقة",
+    idFit: "ملاءمة داخل الصفحة",
+    idActual: "الحجم الفعلي",
+    idMargin: "هامش البطاقة (مم)",
+    quality: "الجودة",
+    standard: "قياسية",
+    high: "عالية",
+    imageFit: "ملاءمة الصور",
+    contain: "إظهار الصورة كاملة",
+    fill: "ملء المساحة",
+    extractFormat: "صيغة الصور المستخرجة",
+    longPressDrag: "اضغط مطولًا واسحب الصفحة لتغيير مكانها",
   },
   en: {
     greeting: "Welcome to",
@@ -474,6 +510,32 @@ const copy = {
     openWorkspace: "Open workspace",
     backHome: "Back to home",
     workspaceActions: "Workspace tools",
+    advanced: "Advanced settings",
+    pageRange: "Page range",
+    scale: "Scaling",
+    fitPage: "Fit page",
+    actualSize: "Actual size",
+    fillPage: "Fill page",
+    margins: "Margins (mm)",
+    collate: "Collate copies",
+    scanSource: "Scan source",
+    glass: "Glass",
+    scanDuplex: "Scan both sides",
+    outputFormat: "Output format",
+    deskew: "Deskew pages",
+    removeBlanks: "Skip blank pages",
+    idSize: "Card size",
+    idFit: "Fit inside page",
+    idActual: "Actual size",
+    idMargin: "Card margin (mm)",
+    quality: "Quality",
+    standard: "Standard",
+    high: "High",
+    imageFit: "Image fit",
+    contain: "Show full image",
+    fill: "Fill area",
+    extractFormat: "Extracted image format",
+    longPressDrag: "Long-press and drag a page to move it",
   },
 } as const;
 
@@ -570,6 +632,135 @@ function FileRow({
   );
 }
 
+function PdfPageTile({
+  edit,
+  index,
+  active,
+  colors,
+  isArabic,
+  onLongPress,
+  onDrag,
+  onRotate,
+  onToggleOrientation,
+  onDelete,
+}: {
+  edit: PdfPageEdit;
+  index: number;
+  active: boolean;
+  colors: ReturnType<typeof useColors>;
+  isArabic: boolean;
+  onLongPress: () => void;
+  onDrag: (deltaY: number) => void;
+  onRotate: () => void;
+  onToggleOrientation: () => void;
+  onDelete: () => void;
+}) {
+  const startY = useRef(0);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => {
+          startY.current = event.nativeEvent.pageY;
+        },
+        onPanResponderMove: (event) =>
+          onDrag(event.nativeEvent.pageY - startY.current),
+        onPanResponderRelease: () => undefined,
+        onPanResponderTerminate: () => undefined,
+      }),
+    [active, onDrag],
+  );
+  const orientation = pageOrientation(edit.rotation);
+  return (
+    <View
+      {...panResponder.panHandlers}
+      style={[
+        styles.pdfPageTile,
+        {
+          backgroundColor: colors.surface,
+          borderColor: active ? colors.primary : colors.border,
+          borderWidth: active ? 2 : 1,
+        },
+      ]}
+    >
+      <Pressable
+        onLongPress={onLongPress}
+        delayLongPress={320}
+        style={styles.pdfPagePreview}
+      >
+        <Icon name="description" color={colors.primary} size={25} />
+        <Text style={[styles.pdfPageNumber, { color: colors.foreground }]}>
+          #{edit.sourcePage}
+        </Text>
+        <Text style={[styles.pdfPageMeta, { color: colors.muted }]}>
+          #{index + 1} · {edit.rotation}°
+        </Text>
+      </Pressable>
+      <View style={styles.pdfPageControls}>
+        <Text style={[styles.pdfPageOrientation, { color: colors.muted }]}>
+          {isArabic
+            ? orientation === "portrait"
+              ? "رأسي"
+              : "أفقي"
+            : orientation}
+        </Text>
+        <Pressable onPress={onRotate} style={styles.pdfPageButton}>
+          <Icon name="rotate-90-degrees-ccw" color={colors.primary} size={18} />
+        </Pressable>
+        <Pressable onPress={onToggleOrientation} style={styles.pdfPageButton}>
+          <Icon name="screen-rotation" color={colors.primary} size={18} />
+        </Pressable>
+        <Pressable onPress={onDelete} style={styles.pdfPageButton}>
+          <Icon name="delete-outline" color={colors.error} size={18} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function SettingPills({
+  values,
+  selected,
+  colors,
+  onSelect,
+}: {
+  values: { value: string; label: string }[];
+  selected: string;
+  colors: ReturnType<typeof useColors>;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <View style={styles.settingPills}>
+      {values.map((item) => (
+        <Pressable
+          key={item.value}
+          onPress={() => onSelect(item.value)}
+          style={[
+            styles.settingPill,
+            {
+              backgroundColor:
+                selected === item.value ? colors.primary : colors.background,
+              borderColor:
+                selected === item.value ? colors.primary : colors.border,
+            },
+          ]}
+        >
+          <Text
+            style={{
+              color: selected === item.value ? "#fff" : colors.foreground,
+              fontSize: 10,
+              fontWeight: "800",
+            }}
+          >
+            {item.label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 function base64ToBytes(base64: string): Uint8Array {
   const binary = globalThis.atob
     ? globalThis.atob(base64)
@@ -615,6 +806,12 @@ export default function HomeScreen() {
     "portrait",
   );
   const [copies, setCopies] = useState("1");
+  const [printPages, setPrintPages] = useState("");
+  const [printScale, setPrintScale] = useState<"fit" | "actual" | "fill">(
+    "fit",
+  );
+  const [printMargins, setPrintMargins] = useState("5");
+  const [printCollate, setPrintCollate] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState("certificate");
   const [colorMode, setColorMode] = useState<"color" | "bw">("color");
   const [duplex, setDuplex] = useState(false);
@@ -635,9 +832,19 @@ export default function HomeScreen() {
   const [scannerDpi, setScannerDpi] = useState("300");
   const [scannerColor, setScannerColor] = useState<"color" | "bw">("color");
   const [scannerAdf, setScannerAdf] = useState(true);
+  const [scannerSource, setScannerSource] = useState<"glass" | "adf">("adf");
+  const [scannerDuplex, setScannerDuplex] = useState(false);
+  const [scannerFormat, setScannerFormat] = useState<"pdf" | "jpg" | "png">(
+    "pdf",
+  );
+  const [scannerDeskew, setScannerDeskew] = useState(true);
+  const [scannerBlankPages, setScannerBlankPages] = useState(true);
   const [idFrontUri, setIdFrontUri] = useState<string | null>(null);
   const [idBackUri, setIdBackUri] = useState<string | null>(null);
   const [idBusy, setIdBusy] = useState(false);
+  const [idSize, setIdSize] = useState<"fit" | "actual">("fit");
+  const [idMargin, setIdMargin] = useState("12");
+  const [idQuality, setIdQuality] = useState<"standard" | "high">("high");
   const [numberingFile, setNumberingFile] = useState<{
     uri: string;
     name: string;
@@ -666,8 +873,14 @@ export default function HomeScreen() {
     pages: number;
   } | null>(null);
   const [pageOrder, setPageOrder] = useState("");
+  const [pageEdits, setPageEdits] = useState<PdfPageEdit[]>([]);
+  const [selectedPageIndex, setSelectedPageIndex] = useState<number | null>(
+    null,
+  );
   const [pageEditBusy, setPageEditBusy] = useState(false);
   const [numberMirror, setNumberMirror] = useState(false);
+  const [imageFit, setImageFit] = useState<"contain" | "fill">("contain");
+  const [extractFormat, setExtractFormat] = useState<"jpg" | "png">("jpg");
   const [tasks, setTasks] = useState<string[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>("home");
@@ -747,6 +960,12 @@ export default function HomeScreen() {
     duplex,
     duplexEdge,
   ]);
+
+  useEffect(() => {
+    if (pageEdits.length) {
+      setPageOrder(pageEdits.map((page) => String(page.sourcePage)).join(", "));
+    }
+  }, [pageEdits]);
 
   const showError = (title: string, hint: string) =>
     setErrorMessage({ title, hint });
@@ -951,11 +1170,13 @@ export default function HomeScreen() {
           return `data:image/jpeg;base64,${base64}`;
         }),
       );
-      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.page{width:210mm;height:297mm;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.card{width:85.6mm;height:54mm;border:0.4mm solid #555;border-radius:2mm;object-fit:cover}.label{font:12px Arial;color:#334155;margin-top:5mm}</style></head><body><main class="page"><img class="card" src="${front}"/><div class="label">${isArabic ? "الوجه الأمامي — الصفحة الأولى" : "Front — page 1"}</div></main><main class="page"><img class="card" src="${back}"/><div class="label">${isArabic ? "الوجه الخلفي — الصفحة الثانية" : "Back — page 2"}</div></main></body></html>`;
+      const cardWidth = idSize === "actual" ? "85.6mm" : "76mm";
+      const cardHeight = idSize === "actual" ? "54mm" : "48mm";
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.page{box-sizing:border-box;width:210mm;height:297mm;padding:${Math.max(0, Number(idMargin) || 12)}mm;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.card{width:${cardWidth};height:${cardHeight};border:0.4mm solid #555;border-radius:2mm;object-fit:cover}.label{font:12px Arial;color:#334155;margin-top:5mm}</style></head><body><main class="page"><img class="card" src="${front}"/><div class="label">${isArabic ? "الوجه الأمامي — الصفحة الأولى" : "Front — page 1"}</div></main><main class="page"><img class="card" src="${back}"/><div class="label">${isArabic ? "الوجه الخلفي — الصفحة الثانية" : "Back — page 2"}</div></main></body></html>`;
       const generated = await Print.printToFileAsync({
         html,
-        width: 794,
-        height: 1123,
+        width: idQuality === "high" ? 1588 : 794,
+        height: idQuality === "high" ? 2246 : 1123,
       });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-ID-Card-${Date.now()}.pdf`;
       await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
@@ -1109,6 +1330,8 @@ export default function HomeScreen() {
           ", ",
         ),
       );
+      setPageEdits(createPageEdits(pages));
+      setSelectedPageIndex(null);
       setSelectedFiles([result.assets[0].name]);
       setPreviewKind("pages");
       setErrorMessage(null);
@@ -1122,7 +1345,7 @@ export default function HomeScreen() {
       showError(t.pageEditNeedFile, t.choosePageFile);
       return;
     }
-    const order = parsePageOrder(pageOrder, pageEditorFile.pages);
+    const order = pageEdits.map((page) => page.sourcePage);
     if (!canApplyPageOrder(order, pageEditorFile.pages)) {
       showError(t.pageEditNeedOrder, t.pageOrderHint);
       return;
@@ -1140,7 +1363,11 @@ export default function HomeScreen() {
         source,
         order.map((page) => page - 1),
       );
-      copied.forEach((page: any) => output.addPage(page));
+      copied.forEach((page: any, index: number) => {
+        const edit = pageEdits[index];
+        if (edit?.rotation) page.setRotation({ angle: edit.rotation });
+        output.addPage(page);
+      });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Pages-${Date.now()}.pdf`;
       await FileSystem.writeAsStringAsync(
         outputUri,
@@ -3836,6 +4063,49 @@ export default function HomeScreen() {
                 />
               </View>
             )}
+            {workspace === "pdf" && (
+              <View
+                style={[
+                  styles.advancedCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.advancedTitle, { color: colors.foreground }]}
+                >
+                  {t.advanced}
+                </Text>
+                <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                  {t.imageFit}
+                </Text>
+                <SettingPills
+                  values={[
+                    { value: "contain", label: t.contain },
+                    { value: "fill", label: t.fill },
+                  ]}
+                  selected={imageFit}
+                  colors={colors}
+                  onSelect={(value) => setImageFit(value as typeof imageFit)}
+                />
+                <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                  {t.extractFormat}
+                </Text>
+                <SettingPills
+                  values={[
+                    { value: "jpg", label: "JPG" },
+                    { value: "png", label: "PNG" },
+                  ]}
+                  selected={extractFormat}
+                  colors={colors}
+                  onSelect={(value) =>
+                    setExtractFormat(value as typeof extractFormat)
+                  }
+                />
+              </View>
+            )}
             {workspace === "pdf" && numberingFile && (
               <View
                 style={[
@@ -3907,6 +4177,187 @@ export default function HomeScreen() {
                     ),
                   )}
                 </View>
+                <View
+                  style={[
+                    styles.advancedCard,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[styles.advancedTitle, { color: colors.foreground }]}
+                  >
+                    {t.advanced}
+                  </Text>
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.orientation}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "top", label: t.numberTop },
+                      { value: "middle", label: t.numberMiddle },
+                      { value: "bottom", label: t.numberBottom },
+                    ]}
+                    selected={numberVertical}
+                    colors={colors}
+                    onSelect={(value) =>
+                      setNumberVertical(value as NumberVertical)
+                    }
+                  />
+                  <View style={styles.settingsInputRow}>
+                    <TextInput
+                      value={numberMargin}
+                      onChangeText={setNumberMargin}
+                      keyboardType="decimal-pad"
+                      placeholder={t.numberMargin}
+                      placeholderTextColor={colors.muted}
+                      style={[
+                        styles.workspaceInput,
+                        styles.settingsInputHalf,
+                        {
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                    <TextInput
+                      value={numberSize}
+                      onChangeText={setNumberSize}
+                      keyboardType="decimal-pad"
+                      placeholder={t.numberSize}
+                      placeholderTextColor={colors.muted}
+                      style={[
+                        styles.workspaceInput,
+                        styles.settingsInputHalf,
+                        {
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.settingsInputRow}>
+                    <TextInput
+                      value={numberFrom}
+                      onChangeText={setNumberFrom}
+                      keyboardType="number-pad"
+                      placeholder={t.numberFrom}
+                      placeholderTextColor={colors.muted}
+                      style={[
+                        styles.workspaceInput,
+                        styles.settingsInputHalf,
+                        {
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                    <TextInput
+                      value={numberTo}
+                      onChangeText={setNumberTo}
+                      keyboardType="number-pad"
+                      placeholder={t.numberTo}
+                      placeholderTextColor={colors.muted}
+                      style={[
+                        styles.workspaceInput,
+                        styles.settingsInputHalf,
+                        {
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <TextInput
+                    value={numberStart}
+                    onChangeText={setNumberStart}
+                    keyboardType="number-pad"
+                    placeholder={t.numberStart}
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.workspaceInput,
+                      { color: colors.foreground, borderColor: colors.border },
+                    ]}
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.numberWhich}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "all", label: t.numberAll },
+                      { value: "odd", label: t.numberOdd },
+                      { value: "even", label: t.numberEven },
+                    ]}
+                    selected={numberWhich}
+                    colors={colors}
+                    onSelect={(value) => setNumberWhich(value as NumberWhich)}
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.numberNumerals}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "latin", label: "123" },
+                      { value: "indic", label: "١٢٣" },
+                      { value: "roman-u", label: "I II" },
+                      { value: "roman-l", label: "i ii" },
+                    ]}
+                    selected={numberNumerals}
+                    colors={colors}
+                    onSelect={(value) =>
+                      setNumberNumerals(value as NumberNumerals)
+                    }
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.numberFont}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "helvetica", label: "Helvetica" },
+                      { value: "times", label: "Times" },
+                      { value: "courier", label: "Courier" },
+                    ]}
+                    selected={numberFont}
+                    colors={colors}
+                    onSelect={(value) => setNumberFont(value as NumberFont)}
+                  />
+                  <Pressable
+                    onPress={() => setNumberBold((value) => !value)}
+                    style={[
+                      styles.settingToggle,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: numberBold ? colors.primary : colors.muted,
+                        fontWeight: "800",
+                        fontSize: 11,
+                      }}
+                    >
+                      {t.numberBold}: {numberBold ? "ON" : "OFF"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setNumberMirror((value) => !value)}
+                    style={[
+                      styles.settingToggle,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: numberMirror ? colors.primary : colors.muted,
+                        fontWeight: "800",
+                        fontSize: 11,
+                      }}
+                    >
+                      {t.numberMirror}: {numberMirror ? "ON" : "OFF"}
+                    </Text>
+                  </Pressable>
+                </View>
                 <Pressable
                   onPress={() => setPreviewKind("numbering")}
                   style={[
@@ -3928,6 +4379,103 @@ export default function HomeScreen() {
                 >
                   <Icon name="format-list-numbered" color="#fff" size={18} />
                   <Text style={styles.printButtonText}>{t.runNumbering}</Text>
+                </Pressable>
+              </View>
+            )}
+            {workspace === "pdf" && pageEditorFile && (
+              <View
+                style={[
+                  styles.workspacePreviewCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.workspacePreviewTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {t.pageEditor}
+                </Text>
+                <Text style={[styles.workspaceHint, { color: colors.muted }]}>
+                  {pageEditorFile.name} · {pageEdits.length}{" "}
+                  {isArabic ? "صفحة" : "pages"}
+                </Text>
+                <Text style={[styles.workspaceHint, { color: colors.primary }]}>
+                  {isArabic
+                    ? "اضغط مطولًا على الصفحة ثم اسحبها لأعلى أو لأسفل. استخدم الأزرار للتدوير أو تغيير الاتجاه أو الحذف."
+                    : "Long-press a page, then drag it up or down. Use the controls to rotate, change orientation, or delete."}
+                </Text>
+                <View style={styles.pdfPagesList}>
+                  {pageEdits.map((edit, index) => (
+                    <PdfPageTile
+                      key={edit.sourcePage}
+                      edit={edit}
+                      index={index}
+                      active={selectedPageIndex === index}
+                      colors={colors}
+                      isArabic={isArabic}
+                      onLongPress={() => setSelectedPageIndex(index)}
+                      onDrag={(deltaY) => {
+                        if (Math.abs(deltaY) < 42) return;
+                        const direction = deltaY > 0 ? 1 : -1;
+                        const target = index + direction;
+                        if (target < 0 || target >= pageEdits.length) return;
+                        setPageEdits((current) =>
+                          movePage(current, index, target),
+                        );
+                        setSelectedPageIndex(target);
+                      }}
+                      onRotate={() =>
+                        setPageEdits((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, rotation: rotatePage(item.rotation) }
+                              : item,
+                          ),
+                        )
+                      }
+                      onToggleOrientation={() =>
+                        setPageEdits((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...item,
+                                  rotation: togglePageOrientation(
+                                    item.rotation,
+                                  ),
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                      onDelete={() => {
+                        setPageEdits((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        );
+                        setSelectedPageIndex(null);
+                      }}
+                    />
+                  ))}
+                </View>
+                <Pressable
+                  disabled={pageEditBusy || !pageEdits.length}
+                  onPress={applyPageEditor}
+                  style={[
+                    styles.workspacePrimary,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pageEdits.length ? 1 : 0.5,
+                    },
+                  ]}
+                >
+                  <Icon name="save" color="#fff" size={18} />
+                  <Text style={styles.printButtonText}>
+                    {pageEditBusy ? "…" : t.applyPageEdit}
+                  </Text>
                 </Pressable>
               </View>
             )}
@@ -4069,6 +4617,111 @@ export default function HomeScreen() {
                 </Pressable>
                 <View
                   style={[
+                    styles.advancedCard,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[styles.advancedTitle, { color: colors.foreground }]}
+                  >
+                    {t.advanced}
+                  </Text>
+                  <TextInput
+                    value={copies}
+                    onChangeText={setCopies}
+                    keyboardType="number-pad"
+                    placeholder={t.copies}
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.workspaceInput,
+                      { color: colors.foreground, borderColor: colors.border },
+                    ]}
+                  />
+                  <TextInput
+                    value={printPages}
+                    onChangeText={setPrintPages}
+                    placeholder={`${t.pageRange} — 1-3,5`}
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.workspaceInput,
+                      { color: colors.foreground, borderColor: colors.border },
+                    ]}
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.colorMode}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "color", label: t.color },
+                      { value: "bw", label: t.bw },
+                    ]}
+                    selected={colorMode}
+                    colors={colors}
+                    onSelect={(value) => setColorMode(value as "color" | "bw")}
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.scale}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "fit", label: t.fitPage },
+                      { value: "actual", label: t.actualSize },
+                      { value: "fill", label: t.fillPage },
+                    ]}
+                    selected={printScale}
+                    colors={colors}
+                    onSelect={(value) =>
+                      setPrintScale(value as typeof printScale)
+                    }
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.duplexEdge}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "long", label: t.longEdge },
+                      { value: "short", label: t.shortEdge },
+                    ]}
+                    selected={duplexEdge}
+                    colors={colors}
+                    onSelect={(value) =>
+                      setDuplexEdge(value as "long" | "short")
+                    }
+                  />
+                  <TextInput
+                    value={printMargins}
+                    onChangeText={setPrintMargins}
+                    keyboardType="decimal-pad"
+                    placeholder={t.margins}
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.workspaceInput,
+                      { color: colors.foreground, borderColor: colors.border },
+                    ]}
+                  />
+                  <Pressable
+                    onPress={() => setPrintCollate((value) => !value)}
+                    style={[
+                      styles.settingToggle,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: printCollate ? colors.primary : colors.muted,
+                        fontWeight: "800",
+                        fontSize: 11,
+                      }}
+                    >
+                      {t.collate}: {printCollate ? "ON" : "OFF"}
+                    </Text>
+                  </Pressable>
+                </View>
+                <View
+                  style={[
                     styles.workspacePreviewCard,
                     {
                       backgroundColor: colors.surface,
@@ -4128,6 +4781,105 @@ export default function HomeScreen() {
                   <Icon name="wifi" color="#fff" size={18} />
                   <Text style={styles.printButtonText}>{t.checkDevices}</Text>
                 </Pressable>
+                <View
+                  style={[
+                    styles.advancedCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[styles.advancedTitle, { color: colors.foreground }]}
+                  >
+                    {t.advanced}
+                  </Text>
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.scanSource}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "glass", label: t.glass },
+                      { value: "adf", label: t.adf },
+                    ]}
+                    selected={scannerSource}
+                    colors={colors}
+                    onSelect={(value) => {
+                      const source = value as "glass" | "adf";
+                      setScannerSource(source);
+                      setScannerAdf(source === "adf");
+                    }}
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.outputFormat}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "pdf", label: "PDF" },
+                      { value: "jpg", label: "JPG" },
+                      { value: "png", label: "PNG" },
+                    ]}
+                    selected={scannerFormat}
+                    colors={colors}
+                    onSelect={(value) =>
+                      setScannerFormat(value as typeof scannerFormat)
+                    }
+                  />
+                  <Pressable
+                    onPress={() => setScannerDuplex((value) => !value)}
+                    style={[
+                      styles.settingToggle,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: scannerDuplex ? colors.primary : colors.muted,
+                        fontWeight: "800",
+                        fontSize: 11,
+                      }}
+                    >
+                      {t.scanDuplex}: {scannerDuplex ? "ON" : "OFF"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setScannerDeskew((value) => !value)}
+                    style={[
+                      styles.settingToggle,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: scannerDeskew ? colors.primary : colors.muted,
+                        fontWeight: "800",
+                        fontSize: 11,
+                      }}
+                    >
+                      {t.deskew}: {scannerDeskew ? "ON" : "OFF"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setScannerBlankPages((value) => !value)}
+                    style={[
+                      styles.settingToggle,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: scannerBlankPages
+                          ? colors.primary
+                          : colors.muted,
+                        fontWeight: "800",
+                        fontSize: 11,
+                      }}
+                    >
+                      {t.removeBlanks}: {scannerBlankPages ? "ON" : "OFF"}
+                    </Text>
+                  </Pressable>
+                </View>
                 <View
                   style={[
                     styles.workspacePreviewCard,
@@ -4233,6 +4985,58 @@ export default function HomeScreen() {
                       {t.idBack}
                     </Text>
                   </Pressable>
+                </View>
+                <View
+                  style={[
+                    styles.advancedCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[styles.advancedTitle, { color: colors.foreground }]}
+                  >
+                    {t.advanced}
+                  </Text>
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.idSize}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "fit", label: t.idFit },
+                      { value: "actual", label: t.idActual },
+                    ]}
+                    selected={idSize}
+                    colors={colors}
+                    onSelect={(value) => setIdSize(value as typeof idSize)}
+                  />
+                  <TextInput
+                    value={idMargin}
+                    onChangeText={setIdMargin}
+                    keyboardType="decimal-pad"
+                    placeholder={t.idMargin}
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.workspaceInput,
+                      { color: colors.foreground, borderColor: colors.border },
+                    ]}
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.quality}
+                  </Text>
+                  <SettingPills
+                    values={[
+                      { value: "standard", label: t.standard },
+                      { value: "high", label: t.high },
+                    ]}
+                    selected={idQuality}
+                    colors={colors}
+                    onSelect={(value) =>
+                      setIdQuality(value as typeof idQuality)
+                    }
+                  />
                 </View>
                 <Pressable
                   onPress={() => setPreviewKind("id")}
@@ -4756,6 +5560,55 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   workspacePanel: { gap: 12 },
+  pdfPagesList: { gap: 8, maxHeight: 430 },
+  advancedCard: { borderRadius: 14, borderWidth: 1, padding: 12, gap: 9 },
+  advancedTitle: { fontSize: 14, fontWeight: "900", textAlign: "right" },
+  settingLabel: { fontSize: 10, fontWeight: "800", textAlign: "right", gap: 3 },
+  settingPills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  settingPill: {
+    minHeight: 32,
+    borderRadius: 9,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingToggle: {
+    minHeight: 36,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsInputRow: { flexDirection: "row", gap: 7 },
+  settingsInputHalf: { flex: 1 },
+  pdfPageTile: {
+    minHeight: 78,
+    borderRadius: 14,
+    padding: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pdfPagePreview: {
+    flex: 1,
+    minHeight: 60,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  pdfPageNumber: { fontSize: 14, fontWeight: "900" },
+  pdfPageMeta: { fontSize: 9, fontWeight: "700" },
+  pdfPageControls: { alignItems: "center", gap: 4 },
+  pdfPageOrientation: { fontSize: 9, fontWeight: "800", marginBottom: 2 },
+  pdfPageButton: {
+    width: 30,
+    height: 27,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   workspaceSegmentRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   workspaceSegment: {
     minHeight: 36,
@@ -4953,7 +5806,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
   },
-  settingLabel: { gap: 3 },
   smallLabel: { fontSize: 11, fontWeight: "600" },
   settingValue: { fontSize: 13, fontWeight: "800" },
   pill: {
