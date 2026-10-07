@@ -8,6 +8,7 @@ import {
 import {
   canMergePdfs,
   findJpegByteRanges,
+  findPngByteRanges,
   hasAtLeastFiles,
 } from "../shared/file-operations";
 import { printProfiles, printProfileById } from "../shared/print-profiles";
@@ -30,6 +31,11 @@ import {
 } from "../shared/pdf-pages";
 import { workspaceKinds } from "../shared/workspaces";
 import { themeColors } from "../theme.config";
+import {
+  advancedSettingsStorageKey,
+  defaultAdvancedSettings,
+  normalizeAdvancedSettings,
+} from "../shared/advanced-settings";
 
 describe("PrintPilot paper presets", () => {
   it("includes certificate stock with A4 dimensions", () => {
@@ -84,6 +90,32 @@ describe("PrintPilot file operations", () => {
       { start: 1, end: 7 },
       { start: 8, end: 13 },
     ]);
+  });
+
+  it("finds complete PNG byte ranges for PNG extraction", () => {
+    const png = [
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 0x49, 0x45, 0x4e,
+      0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    expect(findPngByteRanges(new Uint8Array([9, ...png, 8]))).toEqual([
+      { start: 1, end: 20 },
+    ]);
+  });
+});
+
+describe("PrintPilot advanced settings", () => {
+  it("normalizes invalid persisted values to safe defaults", () => {
+    const settings = normalizeAdvancedSettings({
+      printScale: "broken",
+      numberBold: true,
+    });
+    expect(settings.printScale).toBe(defaultAdvancedSettings.printScale);
+    expect(settings.numberBold).toBe(true);
+    expect(settings.scannerFormat).toBe("pdf");
+  });
+
+  it("uses a dedicated storage key", () => {
+    expect(advancedSettingsStorageKey).toBe("printpilot.advanced-settings.v1");
   });
 });
 

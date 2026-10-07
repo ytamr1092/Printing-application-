@@ -26,6 +26,7 @@ import { useThemeContext } from "@/lib/theme-provider";
 import {
   canMergePdfs,
   findJpegByteRanges,
+  findPngByteRanges,
   hasAtLeastFiles,
 } from "@/shared/file-operations";
 import { paperOptions, paperPresetById } from "@/shared/print-options";
@@ -45,6 +46,11 @@ import {
 } from "@/shared/pdf-pages";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 import { type WorkspaceKind } from "@/shared/workspaces";
+import {
+  advancedSettingsStorageKey,
+  normalizeAdvancedSettings,
+  type AdvancedSettings,
+} from "@/shared/advanced-settings";
 
 type Language = "ar" | "en";
 type NumberPosition = "left" | "center" | "right";
@@ -891,6 +897,68 @@ export default function HomeScreen() {
   const readableText = colorScheme === "dark" ? "#F3F8FC" : "#071A2B";
   const readableMuted = colorScheme === "dark" ? "#B7C8D8" : "#4B6377";
   const paper = useMemo(() => paperPresetById(selectedPaper), [selectedPaper]);
+  const advancedSettings = useMemo<AdvancedSettings>(
+    () => ({
+      printPages,
+      printScale,
+      printMargins,
+      printCollate,
+      scannerSource,
+      scannerDuplex,
+      scannerFormat,
+      scannerDeskew,
+      scannerBlankPages,
+      idSize,
+      idMargin,
+      idQuality,
+      numberPosition,
+      numberVertical,
+      numberMargin,
+      numberFrom,
+      numberTo,
+      numberStart,
+      numberWhich,
+      numberFormat,
+      numberNumerals,
+      numberSize,
+      numberColor,
+      numberFont,
+      numberBold,
+      numberMirror,
+      imageFit,
+      extractFormat,
+    }),
+    [
+      printPages,
+      printScale,
+      printMargins,
+      printCollate,
+      scannerSource,
+      scannerDuplex,
+      scannerFormat,
+      scannerDeskew,
+      scannerBlankPages,
+      idSize,
+      idMargin,
+      idQuality,
+      numberPosition,
+      numberVertical,
+      numberMargin,
+      numberFrom,
+      numberTo,
+      numberStart,
+      numberWhich,
+      numberFormat,
+      numberNumerals,
+      numberSize,
+      numberColor,
+      numberFont,
+      numberBold,
+      numberMirror,
+      imageFit,
+      extractFormat,
+    ],
+  );
 
   useEffect(() => {
     AsyncStorage.getItem("printpilot.activity.v1")
@@ -937,6 +1005,44 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    AsyncStorage.getItem(advancedSettingsStorageKey)
+      .then((stored) => {
+        if (!stored) return;
+        const settings = normalizeAdvancedSettings(JSON.parse(stored));
+        setPrintPages(settings.printPages);
+        setPrintScale(settings.printScale);
+        setPrintMargins(settings.printMargins);
+        setPrintCollate(settings.printCollate);
+        setScannerSource(settings.scannerSource);
+        setScannerAdf(settings.scannerSource === "adf");
+        setScannerDuplex(settings.scannerDuplex);
+        setScannerFormat(settings.scannerFormat);
+        setScannerDeskew(settings.scannerDeskew);
+        setScannerBlankPages(settings.scannerBlankPages);
+        setIdSize(settings.idSize);
+        setIdMargin(settings.idMargin);
+        setIdQuality(settings.idQuality);
+        setNumberPosition(settings.numberPosition);
+        setNumberVertical(settings.numberVertical);
+        setNumberMargin(settings.numberMargin);
+        setNumberFrom(settings.numberFrom);
+        setNumberTo(settings.numberTo);
+        setNumberStart(settings.numberStart);
+        setNumberWhich(settings.numberWhich);
+        setNumberFormat(settings.numberFormat);
+        setNumberNumerals(settings.numberNumerals);
+        setNumberSize(settings.numberSize);
+        setNumberColor(settings.numberColor);
+        setNumberFont(settings.numberFont);
+        setNumberBold(settings.numberBold);
+        setNumberMirror(settings.numberMirror);
+        setImageFit(settings.imageFit);
+        setExtractFormat(settings.extractFormat);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     AsyncStorage.setItem(
       "printpilot.settings.v1",
       JSON.stringify({
@@ -960,6 +1066,13 @@ export default function HomeScreen() {
     duplex,
     duplexEdge,
   ]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      advancedSettingsStorageKey,
+      JSON.stringify(advancedSettings),
+    ).catch(() => undefined);
+  }, [advancedSettings]);
 
   useEffect(() => {
     if (pageEdits.length) {
@@ -1002,7 +1115,7 @@ export default function HomeScreen() {
         onPress: async () => {
           try {
             const backup = {
-              version: 1,
+              version: 2,
               createdAt: new Date().toISOString(),
               settings: {
                 selectedPaper,
@@ -1013,6 +1126,7 @@ export default function HomeScreen() {
                 colorMode,
                 duplex,
                 duplexEdge,
+                advanced: advancedSettings,
               },
               activity: tasks,
             };
@@ -1071,10 +1185,11 @@ export default function HomeScreen() {
           colorMode: "color" | "bw";
           duplex: boolean;
           duplexEdge: "long" | "short";
+          advanced: Partial<AdvancedSettings>;
         }>;
         activity?: string[];
       };
-      if (backup.version !== 1 || !backup.settings) {
+      if (![1, 2].includes(backup.version ?? 0) || !backup.settings) {
         showError(t.invalidBackup, t.restoreHint);
         return;
       }
@@ -1088,6 +1203,38 @@ export default function HomeScreen() {
       if (settings.colorMode) setColorMode(settings.colorMode);
       if (typeof settings.duplex === "boolean") setDuplex(settings.duplex);
       if (settings.duplexEdge) setDuplexEdge(settings.duplexEdge);
+      if (settings.advanced) {
+        const advanced = normalizeAdvancedSettings(settings.advanced);
+        setPrintPages(advanced.printPages);
+        setPrintScale(advanced.printScale);
+        setPrintMargins(advanced.printMargins);
+        setPrintCollate(advanced.printCollate);
+        setScannerSource(advanced.scannerSource);
+        setScannerAdf(advanced.scannerSource === "adf");
+        setScannerDuplex(advanced.scannerDuplex);
+        setScannerFormat(advanced.scannerFormat);
+        setScannerDeskew(advanced.scannerDeskew);
+        setScannerBlankPages(advanced.scannerBlankPages);
+        setIdSize(advanced.idSize);
+        setIdMargin(advanced.idMargin);
+        setIdQuality(advanced.idQuality);
+        setNumberPosition(advanced.numberPosition);
+        setNumberVertical(advanced.numberVertical);
+        setNumberMargin(advanced.numberMargin);
+        setNumberFrom(advanced.numberFrom);
+        setNumberTo(advanced.numberTo);
+        setNumberStart(advanced.numberStart);
+        setNumberWhich(advanced.numberWhich);
+        setNumberFormat(advanced.numberFormat);
+        setNumberNumerals(advanced.numberNumerals);
+        setNumberSize(advanced.numberSize);
+        setNumberColor(advanced.numberColor);
+        setNumberFont(advanced.numberFont);
+        setNumberBold(advanced.numberBold);
+        setNumberMirror(advanced.numberMirror);
+        setImageFit(advanced.imageFit);
+        setExtractFormat(advanced.extractFormat);
+      }
       if (Array.isArray(backup.activity)) setTasks(backup.activity.slice(0, 4));
       setErrorMessage(null);
       Alert.alert(t.restoreSuccess, result.assets[0].name);
@@ -1500,7 +1647,8 @@ export default function HomeScreen() {
           return `<section><img src="data:${mime};base64,${base64}" /></section>`;
         }),
       );
-      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{margin:0}body{margin:0;background:#fff}section{page-break-after:always;width:100%;height:100vh;display:flex;align-items:center;justify-content:center}section:last-child{page-break-after:auto}img{max-width:100%;max-height:100%;object-fit:contain}</style></head><body>${imageMarkup.join("")}</body></html>`;
+      const objectFit = imageFit === "fill" ? "cover" : "contain";
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{margin:0}body{margin:0;background:#fff}section{page-break-after:always;width:100%;height:100vh;display:flex;align-items:center;justify-content:center}section:last-child{page-break-after:auto}img{width:100%;height:100%;object-fit:${objectFit}}</style></head><body>${imageMarkup.join("")}</body></html>`;
       const generated = await Print.printToFileAsync({
         html,
         width: 794,
@@ -1671,14 +1819,18 @@ export default function HomeScreen() {
         { encoding: FileSystem.EncodingType.Base64 },
       );
       const sourceBytes = base64ToBytes(sourceBase64);
-      const ranges = findJpegByteRanges(sourceBytes);
+      const isPng = extractFormat === "png";
+      const ranges = isPng
+        ? findPngByteRanges(sourceBytes)
+        : findJpegByteRanges(sourceBytes);
       if (!ranges.length) {
         showError(t.extractNone, t.extractNone);
         return;
       }
       const outputUris: string[] = [];
       for (const [index, range] of ranges.entries()) {
-        const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Image-${Date.now()}-${String(index + 1).padStart(2, "0")}.jpg`;
+        const extension = isPng ? "png" : "jpg";
+        const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Image-${Date.now()}-${String(index + 1).padStart(2, "0")}.${extension}`;
         await FileSystem.writeAsStringAsync(
           outputUri,
           bytesToBase64(sourceBytes.slice(range.start, range.end)),
@@ -1691,14 +1843,15 @@ export default function HomeScreen() {
         [`${t.extractSuccess}: ${outputUris.length}`, ...current].slice(0, 4),
       );
       setErrorMessage(null);
-      Alert.alert(t.extractSuccess, `${outputUris.length} JPG`, [
+      const outputType = extractFormat.toUpperCase();
+      Alert.alert(t.extractSuccess, `${outputUris.length} ${outputType}`, [
         { text: t.dismiss, style: "cancel" },
         {
           text: t.shareResult,
           onPress: async () => {
             if (await Sharing.isAvailableAsync())
               await Sharing.shareAsync(outputUris[0], {
-                mimeType: "image/jpeg",
+                mimeType: isPng ? "image/png" : "image/jpeg",
                 dialogTitle: t.shareResult,
               });
             else showError(t.errorTitle, t.printerUnavailableHint);
