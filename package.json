@@ -1,6 +1,6 @@
 {
   "name": "printpilot-smart",
-  "version": "1.0.3",
+  "version": "1.2.4",
   "description": "Arabic-first local document printing and PDF workspace built with Expo",
   "private": true,
   "main": "expo-router/entry",

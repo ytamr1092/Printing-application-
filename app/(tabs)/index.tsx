@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  ActivityIndicator,
   Image,
   Modal,
   PanResponder,
@@ -46,6 +47,10 @@ import {
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 import { type WorkspaceKind } from "@/shared/workspaces";
 import {
+  createIdCardLayout,
+  normalizeIdCopies,
+} from "@/shared/id-card";
+import {
   advancedSettingsStorageKey,
   normalizeAdvancedSettings,
   type AdvancedSettings,
@@ -58,6 +63,12 @@ type NumberWhich = "all" | "odd" | "even";
 type NumberNumerals = "latin" | "indic" | "roman-l" | "roman-u";
 type NumberFont = "helvetica" | "times" | "courier";
 type Workspace = WorkspaceKind;
+type PickedAsset = {
+  uri: string;
+  name: string;
+  size?: number;
+  mimeType?: string;
+};
 const copy = {
   ar: {
     greeting: "مرحبًا بك في",
@@ -831,6 +842,8 @@ export default function HomeScreen() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [command, setCommand] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [pendingAssets, setPendingAssets] = useState<PickedAsset[]>([]);
+  const [processing, setProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<{
     title: string;
     hint: string;
@@ -857,6 +870,7 @@ export default function HomeScreen() {
   const [idSize, setIdSize] = useState<"fit" | "actual">("fit");
   const [idMargin, setIdMargin] = useState("12");
   const [idQuality, setIdQuality] = useState<"standard" | "high">("high");
+  const [idCopies, setIdCopies] = useState("1");
   const [numberingFile, setNumberingFile] = useState<{
     uri: string;
     name: string;
@@ -923,6 +937,7 @@ export default function HomeScreen() {
       idSize,
       idMargin,
       idQuality,
+      idCopies,
       numberPosition,
       numberVertical,
       numberMargin,
@@ -953,6 +968,7 @@ export default function HomeScreen() {
       idSize,
       idMargin,
       idQuality,
+      idCopies,
       numberPosition,
       numberVertical,
       numberMargin,
@@ -1034,6 +1050,7 @@ export default function HomeScreen() {
         setIdSize(settings.idSize);
         setIdMargin(settings.idMargin);
         setIdQuality(settings.idQuality);
+        setIdCopies(settings.idCopies);
         setNumberPosition(settings.numberPosition);
         setNumberVertical(settings.numberVertical);
         setNumberMargin(settings.numberMargin);
@@ -1329,9 +1346,12 @@ export default function HomeScreen() {
           return `data:image/jpeg;base64,${base64}`;
         }),
       );
-      const cardWidth = idSize === "actual" ? "85.6mm" : "76mm";
-      const cardHeight = idSize === "actual" ? "54mm" : "48mm";
-      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.page{box-sizing:border-box;width:210mm;height:297mm;padding:${Math.max(0, Number(idMargin) || 12)}mm;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.card{width:${cardWidth};height:${cardHeight};border:0.4mm solid #555;border-radius:2mm;object-fit:cover}.label{font:12px Arial;color:#334155;margin-top:5mm}</style></head><body><main class="page"><img class="card" src="${front}"/><div class="label">${isArabic ? "الوجه الأمامي — الصفحة الأولى" : "Front — page 1"}</div></main><main class="page"><img class="card" src="${back}"/><div class="label">${isArabic ? "الوجه الخلفي — الصفحة الثانية" : "Back — page 2"}</div></main></body></html>`;
+      const layout = createIdCardLayout(normalizeIdCopies(idCopies), idMargin, duplexEdge);
+      const cards = (uri: string, transform = "none") =>
+        Array.from({ length: layout.copies }, () =>
+          `<div class="card"><img style="transform:${transform}" src="${uri}"/></div>`,
+        ).join("");
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.page{box-sizing:border-box;width:210mm;height:297mm;padding:${layout.marginMm}mm;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.grid{width:100%;height:100%;display:grid;grid-template-columns:repeat(${layout.columns},${layout.cardWidthMm}mm);grid-auto-rows:${layout.cardHeightMm}mm;align-content:center;justify-content:center;gap:0}.card{width:${layout.cardWidthMm}mm;height:${layout.cardHeightMm}mm;display:flex;align-items:center;justify-content:center;border:0.4mm solid #555;border-radius:2mm;overflow:hidden}.card img{width:100%;height:100%;object-fit:cover}.label{font:10px Arial;color:#334155;margin-top:2mm}</style></head><body><main class="page"><div class="grid">${cards(front)}</div><div class="label">${isArabic ? `الوجه الأمامي — ${layout.copies} نسخة` : `Front — ${layout.copies} copies`}</div></main><main class="page"><div class="grid">${cards(back, layout.backTransform)}</div><div class="label">${isArabic ? `الوجه الخلفي — ${layout.copies} نسخة` : `Back — ${layout.copies} copies`}</div></main></body></html>`;
       const generated = await Print.printToFileAsync({
         html,
         width: idQuality === "high" ? 1588 : 794,
@@ -1340,7 +1360,7 @@ export default function HomeScreen() {
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-ID-Card-${Date.now()}.pdf`;
       await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
       setTasks((current) =>
-        [`${t.idSuccess}: ${outputUri.split("/").pop()}`, ...current].slice(
+        [`${t.idSuccess}: ${layout.copies} · ${outputUri.split("/").pop()}`, ...current].slice(
           0,
           4,
         ),
@@ -1464,6 +1484,22 @@ export default function HomeScreen() {
     }
   };
 
+  const movePendingAsset = (from: number, to: number) => {
+    if (from < 0 || to < 0 || from >= pendingAssets.length || to >= pendingAssets.length) return;
+    const next = pendingAssets.slice();
+    const [item] = next.splice(from, 1);
+    if (!item) return;
+    next.splice(to, 0, item);
+    setPendingAssets(next);
+    setSelectedFiles(next.map((asset) => asset.name));
+  };
+
+  const continuePreviewAction = async () => {
+    if (previewKind === "merge") return executeMergePdfs();
+    if (previewKind === "images") return executeImagesToPdf();
+    if (previewKind === "print") return continuePrint();
+  };
+
   const choosePageEditorPdf = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1560,11 +1596,10 @@ export default function HomeScreen() {
     }
   };
 
-  const mergePdfs = async () => {
+  const selectFilesFor = async (kind: "merge" | "images") => {
     try {
-      const { PDFDocument } = await loadPdfLib();
       const result = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
+        type: kind === "merge" ? "application/pdf" : "image/*",
         multiple: true,
         copyToCacheDirectory: true,
       });
@@ -1572,12 +1607,39 @@ export default function HomeScreen() {
         showError(t.pickerCancelled, t.pickerCancelledHint);
         return;
       }
-      if (!canMergePdfs(result.assets.length)) {
+      if (kind === "merge" && !canMergePdfs(result.assets.length)) {
         showError(t.mergeNeedTwo, t.mergeNeedTwo);
         return;
       }
+      const assets = result.assets.map((asset) => ({
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size,
+        mimeType: asset.mimeType,
+      }));
+      setPendingAssets(assets);
+      setSelectedFiles(assets.map((asset) => asset.name));
+      setPreviewAsset(kind === "images" ? assets[0] : null);
+      setPreviewKind(kind);
+      setErrorMessage(null);
+    } catch {
+      showError(t.errorTitle, t.pickerCancelledHint);
+    }
+  };
+
+  const mergePdfs = () => selectFilesFor("merge");
+  const imagesToPdf = () => selectFilesFor("images");
+
+  const executeMergePdfs = async () => {
+    if (!canMergePdfs(pendingAssets.length)) {
+      showError(t.mergeNeedTwo, t.mergeNeedTwo);
+      return;
+    }
+    setProcessing(true);
+    try {
+      const { PDFDocument } = await loadPdfLib();
       const merged = await PDFDocument.create();
-      for (const asset of result.assets) {
+      for (const asset of pendingAssets) {
         const base64 = await FileSystem.readAsStringAsync(asset.uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -1585,15 +1647,15 @@ export default function HomeScreen() {
         const pages = await merged.copyPages(source, source.getPageIndices());
         pages.forEach((page: any) => merged.addPage(page));
       }
-      const mergedBase64 = bytesToBase64(await merged.save());
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Merged-${Date.now()}.pdf`;
-      await FileSystem.writeAsStringAsync(outputUri, mergedBase64, {
+      await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await merged.save()), {
         encoding: FileSystem.EncodingType.Base64,
       });
-      setSelectedFiles(result.assets.map((asset) => asset.name));
       setTasks((current) =>
-        [`${t.mergeSuccess}: ${result.assets.length}`, ...current].slice(0, 4),
+        [`${t.mergeSuccess}: ${pendingAssets.length}`, ...current].slice(0, 4),
       );
+      setSelectedFiles([outputUri.split("/").pop() ?? t.mergeSuccess]);
+      setPreviewKind(null);
       setErrorMessage(null);
       Alert.alert(t.mergeSuccess, outputUri, [
         { text: t.dismiss, style: "cancel" },
@@ -1601,63 +1663,40 @@ export default function HomeScreen() {
           text: t.shareResult,
           onPress: async () => {
             if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUri, {
-                mimeType: "application/pdf",
-                dialogTitle: t.shareResult,
-              });
-            else showError(t.errorTitle, t.printerUnavailableHint);
+              await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
           },
         },
       ]);
     } catch {
       showError(t.mergeFailed, t.coming);
+    } finally {
+      setProcessing(false);
     }
   };
 
-  const imagesToPdf = async () => {
+  const executeImagesToPdf = async () => {
+    if (!hasAtLeastFiles(pendingAssets.length)) {
+      showError(t.imagesNeedOne, t.imagesNeedOne);
+      return;
+    }
+    setProcessing(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "image/*",
-        multiple: true,
-        copyToCacheDirectory: true,
-      });
-      if (
-        result.canceled ||
-        !result.assets?.length ||
-        !hasAtLeastFiles(result.assets.length)
-      ) {
-        showError(t.imagesNeedOne, t.imagesNeedOne);
-        return;
-      }
       const imageMarkup = await Promise.all(
-        result.assets.map(async (asset) => {
-          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const mime = asset.mimeType || "image/jpeg";
-          return `<section><img src="data:${mime};base64,${base64}" /></section>`;
+        pendingAssets.map(async (asset) => {
+          const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+          return `<section><img src="data:${asset.mimeType || "image/jpeg"};base64,${base64}" /></section>`;
         }),
       );
       const objectFit = imageFit === "fill" ? "cover" : "contain";
       const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{margin:0}body{margin:0;background:#fff}section{page-break-after:always;width:100%;height:100vh;display:flex;align-items:center;justify-content:center}section:last-child{page-break-after:auto}img{width:100%;height:100%;object-fit:${objectFit}}</style></head><body>${imageMarkup.join("")}</body></html>`;
-      const generated = await Print.printToFileAsync({
-        html,
-        width: 794,
-        height: 1123,
-      });
+      const generated = await Print.printToFileAsync({ html, width: 794, height: 1123 });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Images-${Date.now()}.pdf`;
       await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
-      setSelectedFiles(result.assets.map((asset) => asset.name));
-      const firstImage = result.assets[0];
-      setPreviewAsset({
-        uri: firstImage.uri,
-        name: firstImage.name,
-        size: firstImage.size,
-        mimeType: firstImage.mimeType,
-      });
       setTasks((current) =>
-        [`${t.imagesSuccess}: ${result.assets.length}`, ...current].slice(0, 4),
+        [`${t.imagesSuccess}: ${pendingAssets.length}`, ...current].slice(0, 4),
       );
+      setSelectedFiles([outputUri.split("/").pop() ?? t.imagesSuccess]);
+      setPreviewKind(null);
       setErrorMessage(null);
       Alert.alert(t.imagesSuccess, outputUri, [
         { text: t.dismiss, style: "cancel" },
@@ -1665,16 +1704,14 @@ export default function HomeScreen() {
           text: t.shareResult,
           onPress: async () => {
             if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUri, {
-                mimeType: "application/pdf",
-                dialogTitle: t.shareResult,
-              });
-            else showError(t.errorTitle, t.printerUnavailableHint);
+              await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
           },
         },
       ]);
     } catch {
       showError(t.imagesFailed, t.coming);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -5192,7 +5229,18 @@ export default function HomeScreen() {
                       { color: colors.foreground, borderColor: colors.border },
                     ]}
                   />
-                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                  <TextInput
+                    value={idCopies}
+                    onChangeText={(value) => setIdCopies(value.replace(/\D/g, ""))}
+                    keyboardType="number-pad"
+                    placeholder={t.copies}
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.workspaceInput,
+                      { color: colors.foreground, borderColor: colors.border },
+                    ]}
+                  />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}> 
                     {t.quality}
                   </Text>
                   <SettingPills
@@ -5405,25 +5453,30 @@ export default function HomeScreen() {
                   },
                 ]}
               >
-                {previewFileNames.map((name) => (
-                  <View
-                    key={name}
-                    style={[
-                      styles.previewListItem,
-                      { borderBottomColor: colors.border },
-                    ]}
-                  >
-                    <Icon name="description" color={colors.primary} size={17} />
-                    <Text
-                      style={[
-                        styles.previewListText,
-                        { color: colors.foreground },
-                      ]}
-                    >
-                      {name}
-                    </Text>
-                  </View>
-                ))}
+                {(previewKind === "merge" || previewKind === "images") && pendingAssets.length
+                  ? pendingAssets.map((asset, index) => (
+                      <View
+                        key={`${asset.uri}-${index}`}
+                        style={[styles.previewListItem, { borderBottomColor: colors.border }]}
+                      >
+                        <Icon name={previewKind === "images" ? "image" : "description"} color={colors.primary} size={17} />
+                        <Text style={[styles.previewListText, { color: colors.foreground }]} numberOfLines={1}>
+                          {index + 1}. {asset.name}
+                        </Text>
+                        <Pressable disabled={index === 0 || processing} onPress={() => movePendingAsset(index, index - 1)}>
+                          <Icon name="keyboard-arrow-up" color={index === 0 ? colors.border : colors.primary} size={21} />
+                        </Pressable>
+                        <Pressable disabled={index === pendingAssets.length - 1 || processing} onPress={() => movePendingAsset(index, index + 1)}>
+                          <Icon name="keyboard-arrow-down" color={index === pendingAssets.length - 1 ? colors.border : colors.primary} size={21} />
+                        </Pressable>
+                      </View>
+                    ))
+                  : previewFileNames.map((name) => (
+                      <View key={name} style={[styles.previewListItem, { borderBottomColor: colors.border }]}>
+                        <Icon name="description" color={colors.primary} size={17} />
+                        <Text style={[styles.previewListText, { color: colors.foreground }]}>{name}</Text>
+                      </View>
+                    ))}
               </View>
             )}
             {previewAsset &&
@@ -5533,17 +5586,18 @@ export default function HomeScreen() {
                   {t.dismiss}
                 </Text>
               </Pressable>
-              {previewKind === "print" && (
+              {(previewKind === "print" || previewKind === "merge" || previewKind === "images") && (
                 <Pressable
-                  onPress={continuePrint}
+                  onPress={continuePreviewAction}
+                  disabled={processing}
                   style={[
                     styles.modalPrimary,
                     { backgroundColor: colors.primary },
                   ]}
                 >
-                  <Icon name="print" color="#fff" size={17} />
+                  {processing ? <ActivityIndicator color="#fff" size="small" /> : <Icon name={previewKind === "print" ? "print" : "play-arrow"} color="#fff" size={17} />}
                   <Text style={styles.printButtonText}>
-                    {t.previewContinue}
+                    {processing ? (isArabic ? "جارٍ المعالجة…" : "Processing…") : t.previewContinue}
                   </Text>
                 </Pressable>
               )}

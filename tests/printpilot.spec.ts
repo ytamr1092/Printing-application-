@@ -30,6 +30,12 @@ import {
   togglePageOrientation,
 } from "../shared/pdf-pages";
 import { workspaceKinds } from "../shared/workspaces";
+import {
+  createIdCardLayout,
+  normalizeIdCopies,
+  CR80_CARD_HEIGHT_MM,
+  CR80_CARD_WIDTH_MM,
+} from "../shared/id-card";
 import { themeColors } from "../theme.config";
 import {
   advancedSettingsStorageKey,
@@ -220,5 +226,22 @@ describe("PrintPilot widget workspaces", () => {
       "ai",
     ]);
     expect(new Set(workspaceKinds).size).toBe(7);
+  });
+});
+
+describe("PrintPilot CR80 ID card layout", () => {
+  it("normalizes copy counts and fits natural-size cards on A4", () => {
+    expect(normalizeIdCopies("0")).toBe(1);
+    expect(normalizeIdCopies("12")).toBe(12);
+    expect(normalizeIdCopies("999")).toBe(100);
+    const layout = createIdCardLayout(12, 5, "long");
+    expect(layout.cardWidthMm).toBe(CR80_CARD_WIDTH_MM);
+    expect(layout.cardHeightMm).toBe(CR80_CARD_HEIGHT_MM);
+    expect(layout.cardsPerPage).toBeGreaterThanOrEqual(10);
+    expect(layout.backTransform).toBe("scaleX(-1)");
+  });
+
+  it("mirrors the back vertically for short-edge duplex printing", () => {
+    expect(createIdCardLayout(1, 5, "short").backTransform).toBe("scaleY(-1)");
   });
 });

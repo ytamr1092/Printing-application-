@@ -19,6 +19,7 @@ export interface AdvancedSettings {
   idSize: IdSize;
   idMargin: string;
   idQuality: IdQuality;
+  idCopies: string;
   numberPosition: "left" | "center" | "right";
   numberVertical: "top" | "middle" | "bottom";
   numberMargin: string;
@@ -49,9 +50,10 @@ export const defaultAdvancedSettings: AdvancedSettings = {
   scannerFormat: "pdf",
   scannerDeskew: true,
   scannerBlankPages: true,
-  idSize: "fit",
+  idSize: "actual",
   idMargin: "12",
   idQuality: "high",
+  idCopies: "1",
   numberPosition: "center",
   numberVertical: "bottom",
   numberMargin: "10",
@@ -135,6 +137,7 @@ export function normalizeAdvancedSettings(input: unknown): AdvancedSettings {
       source.idQuality,
       defaultAdvancedSettings.idQuality,
     ),
+    idCopies: text(source.idCopies, defaultAdvancedSettings.idCopies),
     numberPosition: values(
       ["left", "center", "right"] as const,
       source.numberPosition,
