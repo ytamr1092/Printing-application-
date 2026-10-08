@@ -786,6 +786,13 @@ function bytesToBase64(bytes: Uint8Array): string {
     : Buffer.from(binary, "binary").toString("base64");
 }
 
+function formatFileSize(bytes?: number): string {
+  if (!Number.isFinite(bytes) || !bytes || bytes < 1) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function getNumberFont(
   StandardFonts: Record<string, string>,
   font: NumberFont,
@@ -873,6 +880,12 @@ export default function HomeScreen() {
   const [numberBold, setNumberBold] = useState(false);
   const [previewKind, setPreviewKind] = useState<PreviewKind | null>(null);
   const [printUri, setPrintUri] = useState<string | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<{
+    uri: string;
+    name: string;
+    size?: number;
+    mimeType?: string;
+  } | null>(null);
   const [pageEditorFile, setPageEditorFile] = useState<{
     uri: string;
     name: string;
@@ -1657,6 +1670,13 @@ export default function HomeScreen() {
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Images-${Date.now()}.pdf`;
       await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
       setSelectedFiles(result.assets.map((asset) => asset.name));
+      const firstImage = result.assets[0];
+      setPreviewAsset({
+        uri: firstImage.uri,
+        name: firstImage.name,
+        size: firstImage.size,
+        mimeType: firstImage.mimeType,
+      });
       setTasks((current) =>
         [`${t.imagesSuccess}: ${result.assets.length}`, ...current].slice(0, 4),
       );
@@ -1698,6 +1718,12 @@ export default function HomeScreen() {
         uri: result.assets[0].uri,
         name: result.assets[0].name,
         pages: document.getPageCount(),
+      });
+      setPreviewAsset({
+        uri: result.assets[0].uri,
+        name: result.assets[0].name,
+        size: result.assets[0].size,
+        mimeType: result.assets[0].mimeType,
       });
       setErrorMessage(null);
     } catch {
@@ -1819,6 +1845,12 @@ export default function HomeScreen() {
         { encoding: FileSystem.EncodingType.Base64 },
       );
       const sourceBytes = base64ToBytes(sourceBase64);
+      setPreviewAsset({
+        uri: result.assets[0].uri,
+        name: result.assets[0].name,
+        size: result.assets[0].size,
+        mimeType: result.assets[0].mimeType,
+      });
       const isPng = extractFormat === "png";
       const ranges = isPng
         ? findPngByteRanges(sourceBytes)
@@ -1877,6 +1909,12 @@ export default function HomeScreen() {
       const asset = result.assets[0];
       setSelectedFiles([asset.name]);
       setPrintUri(asset.uri);
+      setPreviewAsset({
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size,
+        mimeType: asset.mimeType,
+      });
       setPreviewKind("print");
     } catch {
       showError(t.printerUnavailable, t.printerUnavailableHint);
@@ -5410,6 +5448,40 @@ export default function HomeScreen() {
                 ))}
               </View>
             )}
+            {previewAsset &&
+            (previewKind === "images" || previewKind === "print") &&
+            previewAsset.mimeType?.startsWith("image/") ? (
+              <View
+                style={[
+                  styles.previewImageFrame,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Image
+                  source={{ uri: previewAsset.uri }}
+                  style={styles.previewImageContent}
+                />
+              </View>
+            ) : null}
+            {previewAsset && (
+              <Text
+                style={[
+                  styles.modalSummaryText,
+                  {
+                    color: colors.muted,
+                    textAlign: isArabic ? "right" : "left",
+                  },
+                ]}
+              >
+                {previewAsset.mimeType || "file"}
+                {formatFileSize(previewAsset.size)
+                  ? ` · ${formatFileSize(previewAsset.size)}`
+                  : ""}
+              </Text>
+            )}
             {previewKind === "numbering" && (
               <View style={styles.modalSummary}>
                 <Text
@@ -6107,6 +6179,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   modalImageContent: { width: "100%", height: "100%", resizeMode: "contain" },
+  previewImageFrame: {
+    height: 170,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewImageContent: { width: "100%", height: "100%", resizeMode: "contain" },
   previewList: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 11 },
   previewListItem: {
     minHeight: 42,
