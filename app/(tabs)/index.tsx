@@ -39,7 +39,6 @@ import {
   createPageEdits,
   movePage,
   pageOrientation,
-  parsePageOrder,
   rotatePage,
   togglePageOrientation,
   type PdfPageEdit,
@@ -675,7 +674,7 @@ function PdfPageTile({
         onPanResponderRelease: () => undefined,
         onPanResponderTerminate: () => undefined,
       }),
-    [active, onDrag],
+    [onDrag],
   );
   const orientation = pageOrientation(edit.rotation);
   return (
@@ -1558,27 +1557,6 @@ export default function HomeScreen() {
       showError(t.pageEditFailed, t.pageEditorHint);
     } finally {
       setPageEditBusy(false);
-    }
-  };
-
-  const chooseFiles = async (type: string | string[]) => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type,
-        multiple: true,
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets?.length) {
-        showError(t.pickerCancelled, t.pickerCancelledHint);
-        return;
-      }
-      setSelectedFiles(result.assets.map((asset) => asset.name));
-      setTasks((current) =>
-        [`${t.picked}: ${result.assets.length}`, ...current].slice(0, 4),
-      );
-      Alert.alert(t.picked, `${result.assets.length} ${t.selected}`);
-    } catch {
-      showError(t.errorTitle, t.pickerCancelledHint);
     }
   };
 
