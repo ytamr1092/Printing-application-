@@ -30,6 +30,21 @@ export function createPageEdits(pageCount: number): PdfPageEdit[] {
   }));
 }
 
+export function synchronizePageOrder(
+  edits: PdfPageEdit[],
+  input: string,
+  pageCount: number,
+): PdfPageEdit[] {
+  const editsByPage = new Map(edits.map((edit) => [edit.sourcePage, edit]));
+  return parsePageOrder(input, pageCount).map(
+    (sourcePage) =>
+      editsByPage.get(sourcePage) ?? {
+        sourcePage,
+        rotation: 0 as PageRotation,
+      },
+  );
+}
+
 export function movePage<T>(items: T[], from: number, to: number): T[] {
   if (
     from < 0 ||
@@ -44,6 +59,17 @@ export function movePage<T>(items: T[], from: number, to: number): T[] {
   const [item] = next.splice(from, 1);
   next.splice(to, 0, item);
   return next;
+}
+
+export function dragDirection(
+  delta: number,
+  threshold = 40,
+): -1 | 0 | 1 {
+  if (!Number.isFinite(delta) || !Number.isFinite(threshold) || threshold < 0) {
+    return 0;
+  }
+  if (Math.abs(delta) < threshold) return 0;
+  return delta > 0 ? 1 : delta < 0 ? -1 : 0;
 }
 
 export function rotatePage(rotation: PageRotation): PageRotation {

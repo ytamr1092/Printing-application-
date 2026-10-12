@@ -3,6 +3,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
   PanResponder,
   Platform,
@@ -21,9 +22,11 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
+import { PdfDocumentPreview } from "@/components/pdf-document-preview";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext } from "@/lib/theme-provider";
+import { generatePdfPageThumbnail } from "@/shared/pdf-thumbnail";
 import {
   canMergePdfs,
   findJpegByteRanges,
@@ -38,9 +41,11 @@ import { duplexEdgeLabel } from "@/shared/duplex-settings";
 import {
   canApplyPageOrder,
   createPageEdits,
+  dragDirection,
   movePage,
   pageOrientation,
   rotatePage,
+  synchronizePageOrder,
   togglePageOrientation,
   type PdfPageEdit,
 } from "@/shared/pdf-pages";
@@ -69,6 +74,8 @@ type PickedAsset = {
   size?: number;
   mimeType?: string;
 };
+type PreviewDocument = PickedAsset & { sourcePage?: number };
+type OperationProgress = { label: string; stage: 1 | 2 | 3; complete?: boolean };
 const copy = {
   ar: {
     greeting: "مرحبًا بك في",
@@ -253,6 +260,7 @@ const copy = {
     previewPrint: "معاينة الطباعة",
     previewEmpty: "لم تختر ملفًا لهذه الخانة بعد",
     previewContinue: "متابعة التنفيذ",
+    previewOpenSelectedFile: "فتح معاينة الملف",
     previewPages: "معاينة ترتيب صفحات PDF",
     pageEditor: "ترتيب وحذف صفحات PDF",
     pageEditorHint: "اختر الصفحات بالترتيب المطلوب، واحذف أي رقم لا تريده",
@@ -264,6 +272,23 @@ const copy = {
     pageEditNeedOrder: "اكتب أرقام صفحات صحيحة",
     pageEditSuccess: "تم إنشاء PDF بالترتيب الجديد",
     pageEditFailed: "تعذر تعديل ترتيب صفحات PDF",
+    progressReading: "جارٍ فتح الملف وقراءته محليًا",
+    progressPreparing: "جارٍ تجهيز المعاينة",
+    progressProcessing: "جارٍ معالجة المحتوى",
+    progressSaving: "جارٍ حفظ الملف الناتج",
+    progressDone: "اكتملت العملية بنجاح",
+    progressApprox: "المعالجة محلية؛ يعرض الشريط المرحلة الحالية فقط دون نسبة مئوية",
+    progressStage1: "تجهيز الملف",
+    progressStage2: "معالجة المحتوى",
+    progressStage3: "حفظ النتيجة",
+    progressDismiss: "إخفاء مؤشر التقدم",
+    pagePreviewHint: "معاينة الصفحة وإعادة ترتيبها أو تدويرها أو حذفها",
+    dragPageHint: "اسحب المقبض لتحريك الصفحة، أو استخدم الأسهم",
+    movePageUp: "تحريك الصفحة لأعلى",
+    movePageDown: "تحريك الصفحة لأسفل",
+    imagePreviewHint: "معاينة الصور المختارة قبل التحويل",
+    previewUnavailable: "تعذرت المعاينة المضمنة لهذا الملف على هذا الجهاز.",
+    previewOpenExternal: "فتح/مشاركة في تطبيق آخر",
     results: "الملفات والنتائج",
     resultsHint: "آخر الملفات التي أنشأها التطبيق",
     noResults: "لا توجد نتائج بعد",
@@ -494,6 +519,7 @@ const copy = {
     previewPrint: "Print preview",
     previewEmpty: "No file has been selected for this section yet",
     previewContinue: "Continue",
+    previewOpenSelectedFile: "Preview file",
     previewPages: "PDF page order preview",
     pageEditor: "Reorder & delete PDF pages",
     pageEditorHint:
@@ -506,6 +532,23 @@ const copy = {
     pageEditNeedOrder: "Enter valid page numbers",
     pageEditSuccess: "PDF created with the new order",
     pageEditFailed: "Could not edit PDF page order",
+    progressReading: "Opening and reading file locally",
+    progressPreparing: "Preparing the preview",
+    progressProcessing: "Processing content",
+    progressSaving: "Saving the output file",
+    progressDone: "Operation completed successfully",
+    progressApprox: "Files stay local; this shows the current stage, not a percentage",
+    progressStage1: "Prepare file",
+    progressStage2: "Process content",
+    progressStage3: "Save result",
+    progressDismiss: "Hide progress indicator",
+    pagePreviewHint: "Preview, reorder, rotate, or remove pages",
+    dragPageHint: "Drag the handle to move a page, or use the arrows",
+    movePageUp: "Move page up",
+    movePageDown: "Move page down",
+    imagePreviewHint: "Preview selected images before conversion",
+    previewUnavailable: "This file could not be previewed in the app on this device.",
+    previewOpenExternal: "Open/share with another app",
     results: "Files & results",
     resultsHint: "Latest files created by the app",
     noResults: "No results yet",
@@ -654,8 +697,15 @@ function PdfPageTile({
   active,
   colors,
   isArabic,
-  onLongPress,
+  pdfUri,
+  canMoveUp,
+  canMoveDown,
+  onSelect,
+  onPreview,
+  onOpenExternal,
   onDrag,
+  onMoveUp,
+  onMoveDown,
   onRotate,
   onToggleOrientation,
   onDelete,
@@ -665,32 +715,48 @@ function PdfPageTile({
   active: boolean;
   colors: ReturnType<typeof useColors>;
   isArabic: boolean;
-  onLongPress: () => void;
-  onDrag: (deltaY: number) => void;
+  pdfUri: string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onSelect: () => void;
+  onPreview: () => void;
+  onOpenExternal: () => void;
+  onDrag: (direction: -1 | 1) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onRotate: () => void;
   onToggleOrientation: () => void;
   onDelete: () => void;
 }) {
-  const startY = useRef(0);
+  const lastDragY = useRef(0);
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => {
-          startY.current = event.nativeEvent.pageY;
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 6,
+        onPanResponderGrant: () => {
+          lastDragY.current = 0;
+          onSelect();
         },
-        onPanResponderMove: (event) =>
-          onDrag(event.nativeEvent.pageY - startY.current),
-        onPanResponderRelease: () => undefined,
-        onPanResponderTerminate: () => undefined,
+        onPanResponderMove: (_, gesture) => {
+          const delta = gesture.dy - lastDragY.current;
+          const direction = dragDirection(delta, 46);
+          if (!direction) return;
+          onDrag(direction);
+          lastDragY.current = gesture.dy;
+        },
+        onPanResponderRelease: () => {
+          lastDragY.current = 0;
+        },
+        onPanResponderTerminate: () => {
+          lastDragY.current = 0;
+        },
       }),
-    [onDrag],
+    [onDrag, onSelect],
   );
   const orientation = pageOrientation(edit.rotation);
   return (
     <View
-      {...panResponder.panHandlers}
       style={[
         styles.pdfPageTile,
         {
@@ -701,19 +767,46 @@ function PdfPageTile({
       ]}
     >
       <Pressable
-        onLongPress={onLongPress}
-        delayLongPress={320}
+        accessibilityRole="button"
+        accessibilityLabel={isArabic ? `معاينة صفحة ${edit.sourcePage}` : `Preview page ${edit.sourcePage}`}
+        onPress={() => {
+          onSelect();
+          onPreview();
+        }}
         style={styles.pdfPagePreview}
       >
-        <Icon name="description" color={colors.primary} size={25} />
-        <Text style={[styles.pdfPageNumber, { color: colors.foreground }]}>
-          #{edit.sourcePage}
-        </Text>
-        <Text style={[styles.pdfPageMeta, { color: colors.muted }]}>
-          #{index + 1} · {edit.rotation}°
-        </Text>
-      </Pressable>
-      <View style={styles.pdfPageControls}>
+        <View
+          style={[
+            styles.pdfPagePaper,
+            { backgroundColor: colors.background, borderColor: colors.border },
+          ]}
+        >
+          <PdfThumbnailImage
+            uri={pdfUri}
+            pageIndex={edit.sourcePage - 1}
+            active={active}
+            colors={colors}
+            isArabic={isArabic}
+            fallbackLabel={
+              Platform.OS === "web"
+                ? isArabic
+                  ? "افتح الملف في قارئ PDF لمعاينة الصفحة"
+                  : "Open the file in a PDF reader to preview this page"
+                : isArabic
+                  ? "تعذرت المعاينة المضمنة"
+                  : "Embedded preview unavailable"
+            }
+            rotation={edit.rotation}
+            style={styles.pdfPageThumbnailBox}
+            onOpenExternal={onOpenExternal}
+          />
+          <Text style={[styles.pdfPageNumber, { color: colors.foreground }]}>
+            {isArabic ? `صفحة ${edit.sourcePage}` : `Page ${edit.sourcePage}`}
+          </Text>
+          <Text style={[styles.pdfPageMeta, { color: colors.muted }]}>
+            {isArabic ? `الترتيب ${index + 1}` : `Order ${index + 1}`} · {edit.rotation}°
+          </Text>
+        </View>
         <Text style={[styles.pdfPageOrientation, { color: colors.muted }]}>
           {isArabic
             ? orientation === "portrait"
@@ -721,6 +814,32 @@ function PdfPageTile({
               : "أفقي"
             : orientation}
         </Text>
+      </Pressable>
+      <View style={styles.pdfPageControls}>
+        <View
+          {...panResponder.panHandlers}
+          accessibilityRole="button"
+          accessibilityLabel={isArabic ? "اسحب لتحريك الصفحة" : "Drag to move page"}
+          style={[styles.pdfPageButton, { backgroundColor: colors.primary + "14" }]}
+        >
+          <Icon name="drag-indicator" color={colors.primary} size={19} />
+        </View>
+        <Pressable
+          accessibilityLabel={isArabic ? "تحريك الصفحة لأعلى" : "Move page up"}
+          disabled={!canMoveUp}
+          onPress={onMoveUp}
+          style={[styles.pdfPageButton, { opacity: canMoveUp ? 1 : 0.4 }]}
+        >
+          <Icon name="keyboard-arrow-up" color={colors.primary} size={19} />
+        </Pressable>
+        <Pressable
+          accessibilityLabel={isArabic ? "تحريك الصفحة لأسفل" : "Move page down"}
+          disabled={!canMoveDown}
+          onPress={onMoveDown}
+          style={[styles.pdfPageButton, { opacity: canMoveDown ? 1 : 0.4 }]}
+        >
+          <Icon name="keyboard-arrow-down" color={colors.primary} size={19} />
+        </Pressable>
         <Pressable onPress={onRotate} style={styles.pdfPageButton}>
           <Icon name="rotate-90-degrees-ccw" color={colors.primary} size={18} />
         </Pressable>
@@ -731,6 +850,339 @@ function PdfPageTile({
           <Icon name="delete-outline" color={colors.error} size={18} />
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function PdfThumbnailImage({
+  uri,
+  pageIndex,
+  active,
+  colors,
+  isArabic,
+  fallbackLabel,
+  rotation = 0,
+  style,
+  onOpenExternal,
+}: {
+  uri: string;
+  pageIndex: number;
+  active: boolean;
+  colors: ReturnType<typeof useColors>;
+  isArabic: boolean;
+  fallbackLabel: string;
+  rotation?: number;
+  style?: object;
+  onOpenExternal: () => void;
+}) {
+  const [thumbnail, setThumbnail] = useState<{
+    key: string;
+    uri: string;
+  } | null>(null);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const requestedKey = useRef<string | null>(null);
+  const key = `${uri}#${pageIndex}`;
+  const thumbnailUri = thumbnail?.key === key ? thumbnail.uri : null;
+
+  useEffect(() => {
+    if (!active || requestedKey.current === key) return;
+    requestedKey.current = key;
+    setLoadingKey(key);
+    void generatePdfPageThumbnail(uri, pageIndex)
+      .then((result) => {
+        if (result?.uri) setThumbnail({ key, uri: result.uri });
+        else setFailedKey(key);
+      })
+      .catch(() => setFailedKey(key))
+      .finally(() => setLoadingKey(null));
+  }, [active, key, pageIndex, uri]);
+
+  return (
+    <View
+      style={[
+        styles.pdfThumbnailContainer,
+        { backgroundColor: colors.background },
+        style,
+      ]}
+    >
+      {thumbnailUri ? (
+        <Image
+          source={{ uri: thumbnailUri }}
+          resizeMode="contain"
+          style={[
+            styles.pdfThumbnailImage,
+            rotation ? { transform: [{ rotate: `${rotation}deg` }] } : null,
+          ]}
+        />
+      ) : loadingKey === key ? (
+        <ActivityIndicator color={colors.primary} size="small" />
+      ) : (
+        <View style={styles.pdfThumbnailFallback}>
+          <Icon
+            name={failedKey === key ? "visibility-off" : "description"}
+            color={colors.muted}
+            size={22}
+          />
+          <Text
+            style={[
+              styles.pdfThumbnailFallbackText,
+              { color: colors.muted, textAlign: "center" },
+            ]}
+            numberOfLines={2}
+          >
+            {failedKey === key
+              ? fallbackLabel
+              : !active
+                ? isArabic
+                  ? "اضغط لمعاينة هذه الصفحة"
+                  : "Tap to preview this page"
+                : isArabic
+                  ? "جارٍ تجهيز المعاينة"
+                  : "Preparing preview"}
+          </Text>
+          {failedKey === key ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={isArabic ? "فتح الملف خارجيًا" : "Open file externally"}
+              onPress={(event) => {
+                event.stopPropagation();
+                onOpenExternal();
+              }}
+              style={[styles.thumbnailExternalButton, { borderColor: colors.border }]}
+            >
+              <Icon name="open-in-new" color={colors.primary} size={14} />
+              <Text style={[styles.thumbnailExternalText, { color: colors.primary }]}>
+                {isArabic ? "فتح خارجيًا" : "Open externally"}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function PreviewAssetRow({
+  asset,
+  index,
+  total,
+  selected,
+  disabled,
+  colors,
+  isArabic,
+  onSelect,
+  onDrag,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+}: {
+  asset: PickedAsset;
+  index: number;
+  total: number;
+  selected: boolean;
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+  isArabic: boolean;
+  onSelect: () => void;
+  onDrag: (direction: -1 | 1) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+}) {
+  const lastDragY = useRef(0);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          !disabled && Math.abs(gesture.dy) > 8,
+        onPanResponderGrant: () => {
+          lastDragY.current = 0;
+        },
+        onPanResponderMove: (_, gesture) => {
+          const delta = gesture.dy - lastDragY.current;
+          const direction = dragDirection(delta, 38);
+          if (!direction) return;
+          onDrag(direction);
+          lastDragY.current = gesture.dy;
+        },
+        onPanResponderRelease: () => {
+          lastDragY.current = 0;
+        },
+        onPanResponderTerminate: () => {
+          lastDragY.current = 0;
+        },
+      }),
+    [disabled, onDrag],
+  );
+  const imageAsset = asset.mimeType?.startsWith("image/") ?? false;
+  const sizeLabel =
+    typeof asset.size === "number"
+      ? `${(asset.size / 1024).toFixed(1)} KB`
+      : asset.mimeType || (isArabic ? "ملف" : "File");
+
+  return (
+    <View
+      style={[
+        styles.previewAssetItem,
+        {
+          borderBottomColor: colors.border,
+          backgroundColor: selected ? `${colors.primary}10` : "transparent",
+        },
+      ]}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={isArabic ? `معاينة ${asset.name}` : `Preview ${asset.name}`}
+        onPress={onSelect}
+        style={styles.previewAssetMain}
+      >
+        {imageAsset ? (
+          <Image source={{ uri: asset.uri }} style={styles.previewAssetThumb} />
+        ) : (
+          <View
+            style={[
+              styles.previewAssetThumb,
+              styles.previewAssetIcon,
+              { backgroundColor: colors.primary + "14" },
+            ]}
+          >
+            <Icon name="description" color={colors.primary} size={18} />
+          </View>
+        )}
+        <View style={styles.previewAssetText}>
+          <Text
+            style={[styles.previewListText, { color: colors.foreground }]}
+            numberOfLines={1}
+          >
+            {index + 1}. {asset.name}
+          </Text>
+          <Text style={[styles.previewAssetMeta, { color: colors.muted }]} numberOfLines={1}>
+            {sizeLabel}
+          </Text>
+        </View>
+      </Pressable>
+      <View
+        {...panResponder.panHandlers}
+        accessibilityRole="button"
+        accessibilityLabel={isArabic ? "اسحب لإعادة ترتيب الملف" : "Drag to reorder file"}
+        style={[
+          styles.pdfPageButton,
+          { backgroundColor: colors.primary + "14", opacity: disabled ? 0.45 : 1 },
+        ]}
+      >
+        <Icon name="drag-indicator" color={colors.primary} size={19} />
+      </View>
+      <Pressable
+        accessibilityLabel={isArabic ? "تحريك الملف لأعلى" : "Move file up"}
+        disabled={disabled || index === 0}
+        onPress={onMoveUp}
+        style={styles.pdfPageButton}
+      >
+        <Icon
+          name="keyboard-arrow-up"
+          color={index === 0 ? colors.border : colors.primary}
+          size={20}
+        />
+      </Pressable>
+      <Pressable
+        accessibilityLabel={isArabic ? "تحريك الملف لأسفل" : "Move file down"}
+        disabled={disabled || index === total - 1}
+        onPress={onMoveDown}
+        style={styles.pdfPageButton}
+      >
+        <Icon
+          name="keyboard-arrow-down"
+          color={index === total - 1 ? colors.border : colors.primary}
+          size={20}
+        />
+      </Pressable>
+      <Pressable
+        accessibilityLabel={isArabic ? "حذف الملف من القائمة" : "Remove file from list"}
+        disabled={disabled}
+        onPress={onRemove}
+        style={styles.pdfPageButton}
+      >
+        <Icon name="close" color={colors.error} size={18} />
+      </Pressable>
+    </View>
+  );
+}
+
+function OperationProgressBanner({
+  progress,
+  colors,
+  isArabic,
+  hint,
+  dismissLabel,
+  onDismiss,
+}: {
+  progress: OperationProgress;
+  colors: ReturnType<typeof useColors>;
+  isArabic: boolean;
+  hint: string;
+  dismissLabel: string;
+  onDismiss: () => void;
+}) {
+  const stages = [
+    "progressStage1",
+    "progressStage2",
+    "progressStage3",
+  ] as const;
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={[
+        styles.progressCard,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
+    >
+      <View style={[styles.progressHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
+        {progress.complete ? (
+          <Icon name="check-circle" color={colors.primary} size={19} />
+        ) : (
+          <ActivityIndicator color={colors.primary} size="small" />
+        )}
+        <Text
+          style={[styles.progressLabel, { color: colors.foreground, textAlign: isArabic ? "right" : "left" }]}
+          numberOfLines={2}
+        >
+          {progress.label}
+        </Text>
+        {progress.complete ? (
+          <Pressable onPress={onDismiss} accessibilityLabel={dismissLabel}>
+            <Icon name="close" color={colors.muted} size={19} />
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={[styles.progressStages, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
+        {stages.map((stage, index) => {
+          const active = index < progress.stage;
+          return (
+            <View key={stage} style={styles.progressStage}>
+              <View
+                style={[
+                  styles.progressStageTrack,
+                  { backgroundColor: active ? colors.primary : colors.border },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.progressStageText,
+                  { color: active ? colors.primary : colors.muted, textAlign: isArabic ? "right" : "left" },
+                ]}
+                numberOfLines={1}
+              >
+                {copy[isArabic ? "ar" : "en"][stage]}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+      <Text style={[styles.progressHint, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+        {hint}
+      </Text>
     </View>
   );
 }
@@ -844,6 +1296,8 @@ export default function HomeScreen() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [pendingAssets, setPendingAssets] = useState<PickedAsset[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [operationProgress, setOperationProgress] =
+    useState<OperationProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<{
     title: string;
     hint: string;
@@ -899,6 +1353,9 @@ export default function HomeScreen() {
     size?: number;
     mimeType?: string;
   } | null>(null);
+  const [documentPreview, setDocumentPreview] =
+    useState<PreviewDocument | null>(null);
+  const [documentPreviewError, setDocumentPreviewError] = useState(false);
   const [pageEditorFile, setPageEditorFile] = useState<{
     uri: string;
     name: string;
@@ -913,6 +1370,7 @@ export default function HomeScreen() {
   const [numberMirror, setNumberMirror] = useState(false);
   const [imageFit, setImageFit] = useState<"contain" | "fill">("contain");
   const [extractFormat, setExtractFormat] = useState<"jpg" | "png">("jpg");
+  const [extractFile, setExtractFile] = useState<PickedAsset | null>(null);
   const [tasks, setTasks] = useState<string[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>("home");
@@ -920,6 +1378,10 @@ export default function HomeScreen() {
   const colors = useColors();
   const isArabic = language === "ar";
   const t = copy[language];
+  const updateProgress = (label: string, stage: 1 | 2 | 3) =>
+    setOperationProgress({ label, stage });
+  const completeProgress = () =>
+    setOperationProgress({ label: t.progressDone, stage: 3, complete: true });
   const readableText = colorScheme === "dark" ? "#F3F8FC" : "#071A2B";
   const readableMuted = colorScheme === "dark" ? "#B7C8D8" : "#4B6377";
   const paper = useMemo(() => paperPresetById(selectedPaper), [selectedPaper]);
@@ -1104,9 +1566,7 @@ export default function HomeScreen() {
   }, [advancedSettings]);
 
   useEffect(() => {
-    if (pageEdits.length) {
-      setPageOrder(pageEdits.map((page) => String(page.sourcePage)).join(", "));
-    }
+    setPageOrder(pageEdits.map((page) => String(page.sourcePage)).join(", "));
   }, [pageEdits]);
 
   const showError = (title: string, hint: string) =>
@@ -1470,6 +1930,96 @@ export default function HomeScreen() {
     ? selectedFiles
     : [t.previewEmpty];
 
+  const showDocumentPreview = (asset: PreviewDocument) => {
+    setDocumentPreviewError(false);
+    setDocumentPreview(asset);
+  };
+
+  const openUriOutsideApp = async (uri: string, mimeType: string) => {
+    try {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType,
+          dialogTitle: t.previewOpenExternal,
+        });
+      } else {
+        await Linking.openURL(uri);
+      }
+    } catch {
+      showError(t.previewUnavailable, t.previewOpenExternal);
+    }
+  };
+
+  const openPreviewOutsideApp = async () => {
+    if (!documentPreview) return;
+    await openUriOutsideApp(
+      documentPreview.uri,
+      documentPreview.mimeType || "application/pdf",
+    );
+  };
+
+  const previewPdfPage = async (edit: PdfPageEdit) => {
+    if (!pageEditorFile) return;
+    updateProgress(t.progressReading, 1);
+    try {
+      const sourceBase64 = await FileSystem.readAsStringAsync(pageEditorFile.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      updateProgress(t.progressProcessing, 2);
+      const { PDFDocument } = await loadPdfLib();
+      const source = await PDFDocument.load(base64ToBytes(sourceBase64));
+      const onePage = await PDFDocument.create();
+      const [page] = await onePage.copyPages(source, [edit.sourcePage - 1]);
+      if (edit.rotation) page.setRotation({ angle: edit.rotation });
+      onePage.addPage(page);
+      updateProgress(t.progressSaving, 3);
+      const outputUri = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}PrintPilot-Page-Preview-${Date.now()}-${edit.sourcePage}.pdf`;
+      await FileSystem.writeAsStringAsync(
+        outputUri,
+        bytesToBase64(await onePage.save()),
+        { encoding: FileSystem.EncodingType.Base64 },
+      );
+      showDocumentPreview({
+        uri: outputUri,
+        name: `${pageEditorFile.name} · ${isArabic ? "صفحة" : "Page"} ${edit.sourcePage}`,
+        mimeType: "application/pdf",
+        sourcePage: edit.sourcePage,
+      });
+      completeProgress();
+    } catch {
+      setOperationProgress(null);
+      showError(t.pageEditFailed, t.previewUnavailable);
+    }
+  };
+
+  const moveEditedPage = (sourcePage: number, direction: -1 | 1) => {
+    const from = pageEdits.findIndex((page) => page.sourcePage === sourcePage);
+    const target = from + direction;
+    if (from < 0 || target < 0 || target >= pageEdits.length) return;
+    const next = movePage(pageEdits, from, target);
+    setPageEdits(next);
+    setPageOrder(next.map((page) => String(page.sourcePage)).join(", "));
+    setSelectedPageIndex(target);
+  };
+
+  const synchronizeTypedPageOrder = () => {
+    if (!pageEditorFile) return false;
+    const next = synchronizePageOrder(
+      pageEdits,
+      pageOrder,
+      pageEditorFile.pages,
+    );
+    const order = next.map((page) => page.sourcePage);
+    if (!canApplyPageOrder(order, pageEditorFile.pages)) {
+      showError(t.pageEditNeedOrder, t.pageOrderHint);
+      return false;
+    }
+    setPageEdits(next);
+    setPageOrder(order.join(", "));
+    setSelectedPageIndex(null);
+    return true;
+  };
+
   const continuePrint = async () => {
     if (!printUri) return;
     setPreviewKind(null);
@@ -1492,26 +2042,43 @@ export default function HomeScreen() {
     next.splice(to, 0, item);
     setPendingAssets(next);
     setSelectedFiles(next.map((asset) => asset.name));
+    if (previewKind === "images") setPreviewAsset(next[0] ?? null);
+  };
+
+  const removePendingAsset = (index: number) => {
+    const next = pendingAssets.filter((_, itemIndex) => itemIndex !== index);
+    setPendingAssets(next);
+    setSelectedFiles(next.map((asset) => asset.name));
+    if (previewKind === "images") setPreviewAsset(next[0] ?? null);
   };
 
   const continuePreviewAction = async () => {
     if (previewKind === "merge") return executeMergePdfs();
     if (previewKind === "images") return executeImagesToPdf();
+    if (previewKind === "extract") return executeExtractImages();
+    if (previewKind === "numbering") return numberPdf();
+    if (previewKind === "pages") return applyPageEditor();
     if (previewKind === "print") return continuePrint();
   };
 
   const choosePageEditorPdf = async () => {
+    updateProgress(t.progressPreparing, 1);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "application/pdf",
         multiple: false,
         copyToCacheDirectory: true,
       });
-      if (result.canceled || !result.assets?.length) return;
+      if (result.canceled || !result.assets?.length) {
+        setOperationProgress(null);
+        return;
+      }
+      updateProgress(t.progressReading, 1);
       const sourceBase64 = await FileSystem.readAsStringAsync(
         result.assets[0].uri,
         { encoding: FileSystem.EncodingType.Base64 },
       );
+      updateProgress(t.progressProcessing, 2);
       const { PDFDocument } = await loadPdfLib();
       const document = await PDFDocument.load(base64ToBytes(sourceBase64));
       const pages = document.getPageCount();
@@ -1528,9 +2095,18 @@ export default function HomeScreen() {
       setPageEdits(createPageEdits(pages));
       setSelectedPageIndex(null);
       setSelectedFiles([result.assets[0].name]);
+      setWorkspace("pdf");
+      setPreviewAsset({
+        uri: result.assets[0].uri,
+        name: result.assets[0].name,
+        size: result.assets[0].size,
+        mimeType: result.assets[0].mimeType,
+      });
       setPreviewKind("pages");
       setErrorMessage(null);
+      completeProgress();
     } catch {
+      setOperationProgress(null);
       showError(t.pageEditFailed, t.pickerCancelledHint);
     }
   };
@@ -1540,30 +2116,42 @@ export default function HomeScreen() {
       showError(t.pageEditNeedFile, t.choosePageFile);
       return;
     }
-    const order = pageEdits.map((page) => page.sourcePage);
+    const editsToApply = synchronizePageOrder(
+      pageEdits,
+      pageOrder,
+      pageEditorFile.pages,
+    );
+    const order = editsToApply.map((page) => page.sourcePage);
     if (!canApplyPageOrder(order, pageEditorFile.pages)) {
       showError(t.pageEditNeedOrder, t.pageOrderHint);
       return;
     }
+    setPageEdits(editsToApply);
+    setPageOrder(order.join(", "));
     setPageEditBusy(true);
+    setProcessing(true);
+    updateProgress(t.progressReading, 1);
     try {
       const sourceBase64 = await FileSystem.readAsStringAsync(
         pageEditorFile.uri,
         { encoding: FileSystem.EncodingType.Base64 },
       );
+      updateProgress(t.progressProcessing, 2);
       const { PDFDocument } = await loadPdfLib();
       const source = await PDFDocument.load(base64ToBytes(sourceBase64));
       const output = await PDFDocument.create();
+      updateProgress(t.progressProcessing, 2);
       const copied = await output.copyPages(
         source,
         order.map((page) => page - 1),
       );
       copied.forEach((page: any, index: number) => {
-        const edit = pageEdits[index];
+        const edit = editsToApply[index];
         if (edit?.rotation) page.setRotation({ angle: edit.rotation });
         output.addPage(page);
       });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Pages-${Date.now()}.pdf`;
+      updateProgress(t.progressSaving, 3);
       await FileSystem.writeAsStringAsync(
         outputUri,
         bytesToBase64(await output.save()),
@@ -1576,6 +2164,7 @@ export default function HomeScreen() {
       setSelectedFiles([outputName]);
       setPreviewKind(null);
       setErrorMessage(null);
+      completeProgress();
       Alert.alert(t.pageEditSuccess, outputUri, [
         { text: t.dismiss, style: "cancel" },
         {
@@ -1590,13 +2179,16 @@ export default function HomeScreen() {
         },
       ]);
     } catch {
+      setOperationProgress(null);
       showError(t.pageEditFailed, t.pageEditorHint);
     } finally {
       setPageEditBusy(false);
+      setProcessing(false);
     }
   };
 
   const selectFilesFor = async (kind: "merge" | "images") => {
+    updateProgress(t.progressPreparing, 1);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: kind === "merge" ? "application/pdf" : "image/*",
@@ -1604,13 +2196,15 @@ export default function HomeScreen() {
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets?.length) {
-        showError(t.pickerCancelled, t.pickerCancelledHint);
+        setOperationProgress(null);
         return;
       }
       if (kind === "merge" && !canMergePdfs(result.assets.length)) {
+        setOperationProgress(null);
         showError(t.mergeNeedTwo, t.mergeNeedTwo);
         return;
       }
+      updateProgress(t.progressProcessing, 2);
       const assets = result.assets.map((asset) => ({
         uri: asset.uri,
         name: asset.name,
@@ -1622,7 +2216,9 @@ export default function HomeScreen() {
       setPreviewAsset(kind === "images" ? assets[0] : null);
       setPreviewKind(kind);
       setErrorMessage(null);
+      completeProgress();
     } catch {
+      setOperationProgress(null);
       showError(t.errorTitle, t.pickerCancelledHint);
     }
   };
@@ -1636,10 +2232,12 @@ export default function HomeScreen() {
       return;
     }
     setProcessing(true);
+    updateProgress(t.progressReading, 1);
     try {
       const { PDFDocument } = await loadPdfLib();
       const merged = await PDFDocument.create();
       for (const asset of pendingAssets) {
+        updateProgress(t.progressProcessing, 2);
         const base64 = await FileSystem.readAsStringAsync(asset.uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -1648,6 +2246,7 @@ export default function HomeScreen() {
         pages.forEach((page: any) => merged.addPage(page));
       }
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Merged-${Date.now()}.pdf`;
+      updateProgress(t.progressSaving, 3);
       await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await merged.save()), {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -1657,6 +2256,7 @@ export default function HomeScreen() {
       setSelectedFiles([outputUri.split("/").pop() ?? t.mergeSuccess]);
       setPreviewKind(null);
       setErrorMessage(null);
+      completeProgress();
       Alert.alert(t.mergeSuccess, outputUri, [
         { text: t.dismiss, style: "cancel" },
         {
@@ -1668,6 +2268,7 @@ export default function HomeScreen() {
         },
       ]);
     } catch {
+      setOperationProgress(null);
       showError(t.mergeFailed, t.coming);
     } finally {
       setProcessing(false);
@@ -1680,17 +2281,21 @@ export default function HomeScreen() {
       return;
     }
     setProcessing(true);
+    updateProgress(t.progressReading, 1);
     try {
       const imageMarkup = await Promise.all(
         pendingAssets.map(async (asset) => {
+          updateProgress(t.progressProcessing, 2);
           const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
           return `<section><img src="data:${asset.mimeType || "image/jpeg"};base64,${base64}" /></section>`;
         }),
       );
       const objectFit = imageFit === "fill" ? "cover" : "contain";
       const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{margin:0}body{margin:0;background:#fff}section{page-break-after:always;width:100%;height:100vh;display:flex;align-items:center;justify-content:center}section:last-child{page-break-after:auto}img{width:100%;height:100%;object-fit:${objectFit}}</style></head><body>${imageMarkup.join("")}</body></html>`;
+      updateProgress(t.progressProcessing, 2);
       const generated = await Print.printToFileAsync({ html, width: 794, height: 1123 });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Images-${Date.now()}.pdf`;
+      updateProgress(t.progressSaving, 3);
       await FileSystem.copyAsync({ from: generated.uri, to: outputUri });
       setTasks((current) =>
         [`${t.imagesSuccess}: ${pendingAssets.length}`, ...current].slice(0, 4),
@@ -1698,6 +2303,7 @@ export default function HomeScreen() {
       setSelectedFiles([outputUri.split("/").pop() ?? t.imagesSuccess]);
       setPreviewKind(null);
       setErrorMessage(null);
+      completeProgress();
       Alert.alert(t.imagesSuccess, outputUri, [
         { text: t.dismiss, style: "cancel" },
         {
@@ -1709,6 +2315,7 @@ export default function HomeScreen() {
         },
       ]);
     } catch {
+      setOperationProgress(null);
       showError(t.imagesFailed, t.coming);
     } finally {
       setProcessing(false);
@@ -1716,17 +2323,23 @@ export default function HomeScreen() {
   };
 
   const chooseNumberingFile = async () => {
+    updateProgress(t.progressPreparing, 1);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "application/pdf",
         multiple: false,
         copyToCacheDirectory: true,
       });
-      if (result.canceled || !result.assets?.length) return;
+      if (result.canceled || !result.assets?.length) {
+        setOperationProgress(null);
+        return;
+      }
+      updateProgress(t.progressReading, 1);
       const sourceBase64 = await FileSystem.readAsStringAsync(
         result.assets[0].uri,
         { encoding: FileSystem.EncodingType.Base64 },
       );
+      updateProgress(t.progressProcessing, 2);
       const { PDFDocument } = await loadPdfLib();
       const document = await PDFDocument.load(base64ToBytes(sourceBase64));
       setNumberingFile({
@@ -1741,7 +2354,10 @@ export default function HomeScreen() {
         mimeType: result.assets[0].mimeType,
       });
       setErrorMessage(null);
+      setPreviewKind("numbering");
+      completeProgress();
     } catch {
+      setOperationProgress(null);
       showError(t.numberingFailed, t.pickerCancelledHint);
     }
   };
@@ -1751,6 +2367,8 @@ export default function HomeScreen() {
       showError(t.numberingNeedOne, t.chooseNumberingFile);
       return;
     }
+    setProcessing(true);
+    updateProgress(t.progressReading, 1);
     try {
       const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
       const sourceBase64 = await FileSystem.readAsStringAsync(
@@ -1758,6 +2376,7 @@ export default function HomeScreen() {
         { encoding: FileSystem.EncodingType.Base64 },
       );
       const document = await PDFDocument.load(base64ToBytes(sourceBase64));
+      updateProgress(t.progressProcessing, 2);
       const font = await document.embedFont(
         getNumberFont(StandardFonts, numberFont, numberBold),
       );
@@ -1816,6 +2435,7 @@ export default function HomeScreen() {
         });
       });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Numbered-${Date.now()}.pdf`;
+      updateProgress(t.progressSaving, 3);
       await FileSystem.writeAsStringAsync(
         outputUri,
         bytesToBase64(await document.save()),
@@ -1826,6 +2446,7 @@ export default function HomeScreen() {
         [`${t.numberingSuccess}: ${selected.length}`, ...current].slice(0, 4),
       );
       setErrorMessage(null);
+      completeProgress();
       Alert.alert(t.numberingSuccess, outputUri, [
         { text: t.dismiss, style: "cancel" },
         {
@@ -1840,11 +2461,15 @@ export default function HomeScreen() {
         },
       ]);
     } catch {
+      setOperationProgress(null);
       showError(t.numberingFailed, t.coming);
+    } finally {
+      setProcessing(false);
     }
   };
 
   const extractImages = async () => {
+    updateProgress(t.progressPreparing, 1);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "application/pdf",
@@ -1852,30 +2477,52 @@ export default function HomeScreen() {
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets?.length) {
-        showError(t.pickerCancelled, t.pickerCancelledHint);
+        setOperationProgress(null);
         return;
       }
-      const sourceBase64 = await FileSystem.readAsStringAsync(
-        result.assets[0].uri,
-        { encoding: FileSystem.EncodingType.Base64 },
-      );
-      const sourceBytes = base64ToBytes(sourceBase64);
-      setPreviewAsset({
+      const asset = {
         uri: result.assets[0].uri,
         name: result.assets[0].name,
         size: result.assets[0].size,
         mimeType: result.assets[0].mimeType,
+      };
+      setExtractFile(asset);
+      setPreviewAsset(asset);
+      setSelectedFiles([asset.name]);
+      setPreviewKind("extract");
+      setErrorMessage(null);
+      completeProgress();
+    } catch {
+      setOperationProgress(null);
+      showError(t.extractFailed, t.pickerCancelledHint);
+    }
+  };
+
+  const executeExtractImages = async () => {
+    if (!extractFile) {
+      showError(t.previewExtract, t.pickerCancelledHint);
+      return;
+    }
+    setProcessing(true);
+    updateProgress(t.progressReading, 1);
+    try {
+      const sourceBase64 = await FileSystem.readAsStringAsync(extractFile.uri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
+      updateProgress(t.progressProcessing, 2);
+      const sourceBytes = base64ToBytes(sourceBase64);
       const isPng = extractFormat === "png";
       const ranges = isPng
         ? findPngByteRanges(sourceBytes)
         : findJpegByteRanges(sourceBytes);
       if (!ranges.length) {
+        setOperationProgress(null);
         showError(t.extractNone, t.extractNone);
         return;
       }
       const outputUris: string[] = [];
       for (const [index, range] of ranges.entries()) {
+        updateProgress(t.progressSaving, 3);
         const extension = isPng ? "png" : "jpg";
         const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Image-${Date.now()}-${String(index + 1).padStart(2, "0")}.${extension}`;
         await FileSystem.writeAsStringAsync(
@@ -1885,11 +2532,13 @@ export default function HomeScreen() {
         );
         outputUris.push(outputUri);
       }
-      setSelectedFiles([result.assets[0].name]);
+      setSelectedFiles([extractFile.name]);
       setTasks((current) =>
         [`${t.extractSuccess}: ${outputUris.length}`, ...current].slice(0, 4),
       );
       setErrorMessage(null);
+      setPreviewKind(null);
+      completeProgress();
       const outputType = extractFormat.toUpperCase();
       Alert.alert(t.extractSuccess, `${outputUris.length} ${outputType}`, [
         { text: t.dismiss, style: "cancel" },
@@ -1906,7 +2555,10 @@ export default function HomeScreen() {
         },
       ]);
     } catch {
+      setOperationProgress(null);
       showError(t.extractFailed, t.coming);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -1937,6 +2589,15 @@ export default function HomeScreen() {
   };
 
   const actionComing = () => showError(t.errorTitle, t.coming);
+  const openPreviewFor = (kind: PreviewKind) => {
+    if (kind === "merge") return mergePdfs();
+    if (kind === "images") return imagesToPdf();
+    if (kind === "extract") return extractImages();
+    if (kind === "numbering") return chooseNumberingFile();
+    if (kind === "pages") return choosePageEditorPdf();
+    if (kind === "print") return openPrintDialog();
+    setPreviewKind("id");
+  };
   const scanForDevices = () => {
     if (printerIp.trim()) {
       void checkPrinterConnection();
@@ -1949,6 +2610,16 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer className="px-5" edges={["top", "left", "right"]}>
+      {operationProgress ? (
+        <OperationProgressBanner
+          progress={operationProgress}
+          colors={colors}
+          isArabic={isArabic}
+          hint={t.progressApprox}
+          dismissLabel={t.progressDismiss}
+          onDismiss={() => setOperationProgress(null)}
+        />
+      ) : null}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: 14, paddingBottom: 34 }}
@@ -2223,7 +2894,7 @@ export default function HomeScreen() {
             {previewKinds.map((kind) => (
               <Pressable
                 key={kind}
-                onPress={() => setPreviewKind(kind)}
+                onPress={() => openPreviewFor(kind)}
                 style={({ pressed }) => [
                   styles.previewRow,
                   {
@@ -2793,6 +3464,7 @@ export default function HomeScreen() {
             <TextInput
               value={pageOrder}
               onChangeText={setPageOrder}
+              onEndEditing={synchronizeTypedPageOrder}
               editable={Boolean(pageEditorFile)}
               placeholder="1, 2, 3"
               placeholderTextColor={colors.muted}
@@ -2808,7 +3480,9 @@ export default function HomeScreen() {
               ]}
             />
             <Pressable
-              onPress={() => setPreviewKind("pages")}
+              onPress={() => {
+                if (synchronizeTypedPageOrder()) setPreviewKind("pages");
+              }}
               disabled={!pageEditorFile}
               style={[
                 styles.outlineAction,
@@ -4611,9 +5285,7 @@ export default function HomeScreen() {
                   {isArabic ? "صفحة" : "pages"}
                 </Text>
                 <Text style={[styles.workspaceHint, { color: colors.primary }]}>
-                  {isArabic
-                    ? "اضغط مطولًا على الصفحة ثم اسحبها لأعلى أو لأسفل. استخدم الأزرار للتدوير أو تغيير الاتجاه أو الحذف."
-                    : "Long-press a page, then drag it up or down. Use the controls to rotate, change orientation, or delete."}
+                  {t.dragPageHint}
                 </Text>
                 <View style={styles.pdfPagesList}>
                   {pageEdits.map((edit, index) => (
@@ -4624,17 +5296,17 @@ export default function HomeScreen() {
                       active={selectedPageIndex === index}
                       colors={colors}
                       isArabic={isArabic}
-                      onLongPress={() => setSelectedPageIndex(index)}
-                      onDrag={(deltaY) => {
-                        if (Math.abs(deltaY) < 42) return;
-                        const direction = deltaY > 0 ? 1 : -1;
-                        const target = index + direction;
-                        if (target < 0 || target >= pageEdits.length) return;
-                        setPageEdits((current) =>
-                          movePage(current, index, target),
-                        );
-                        setSelectedPageIndex(target);
-                      }}
+                      pdfUri={pageEditorFile.uri}
+                      canMoveUp={index > 0}
+                      canMoveDown={index < pageEdits.length - 1}
+                      onSelect={() => setSelectedPageIndex(index)}
+                      onPreview={() => void previewPdfPage(edit)}
+                      onOpenExternal={() =>
+                        void openUriOutsideApp(pageEditorFile.uri, "application/pdf")
+                      }
+                      onDrag={(direction) => moveEditedPage(edit.sourcePage, direction)}
+                      onMoveUp={() => moveEditedPage(edit.sourcePage, -1)}
+                      onMoveDown={() => moveEditedPage(edit.sourcePage, 1)}
                       onRotate={() =>
                         setPageEdits((current) =>
                           current.map((item, itemIndex) =>
@@ -4659,10 +5331,18 @@ export default function HomeScreen() {
                         )
                       }
                       onDelete={() => {
-                        setPageEdits((current) =>
-                          current.filter((_, itemIndex) => itemIndex !== index),
+                        const next = pageEdits.filter(
+                          (_, itemIndex) => itemIndex !== index,
                         );
-                        setSelectedPageIndex(null);
+                        setPageEdits(next);
+                        setPageOrder(
+                          next
+                            .map((page) => String(page.sourcePage))
+                            .join(", "),
+                        );
+                        setSelectedPageIndex(
+                          next.length ? Math.min(index, next.length - 1) : null,
+                        );
                       }}
                     />
                   ))}
@@ -5455,21 +6135,26 @@ export default function HomeScreen() {
               >
                 {(previewKind === "merge" || previewKind === "images") && pendingAssets.length
                   ? pendingAssets.map((asset, index) => (
-                      <View
-                        key={`${asset.uri}-${index}`}
-                        style={[styles.previewListItem, { borderBottomColor: colors.border }]}
-                      >
-                        <Icon name={previewKind === "images" ? "image" : "description"} color={colors.primary} size={17} />
-                        <Text style={[styles.previewListText, { color: colors.foreground }]} numberOfLines={1}>
-                          {index + 1}. {asset.name}
-                        </Text>
-                        <Pressable disabled={index === 0 || processing} onPress={() => movePendingAsset(index, index - 1)}>
-                          <Icon name="keyboard-arrow-up" color={index === 0 ? colors.border : colors.primary} size={21} />
-                        </Pressable>
-                        <Pressable disabled={index === pendingAssets.length - 1 || processing} onPress={() => movePendingAsset(index, index + 1)}>
-                          <Icon name="keyboard-arrow-down" color={index === pendingAssets.length - 1 ? colors.border : colors.primary} size={21} />
-                        </Pressable>
-                      </View>
+                      <PreviewAssetRow
+                        key={asset.uri}
+                        asset={asset}
+                        index={index}
+                        total={pendingAssets.length}
+                        selected={previewAsset?.uri === asset.uri}
+                        disabled={processing}
+                        colors={colors}
+                        isArabic={isArabic}
+                        onSelect={() => {
+                          setPreviewAsset(asset);
+                          showDocumentPreview(asset);
+                        }}
+                        onDrag={(direction) =>
+                          movePendingAsset(index, index + direction)
+                        }
+                        onMoveUp={() => movePendingAsset(index, index - 1)}
+                        onMoveDown={() => movePendingAsset(index, index + 1)}
+                        onRemove={() => removePendingAsset(index)}
+                      />
                     ))
                   : previewFileNames.map((name) => (
                       <View key={name} style={[styles.previewListItem, { borderBottomColor: colors.border }]}>
@@ -5510,9 +6195,23 @@ export default function HomeScreen() {
                 {previewAsset.mimeType || "file"}
                 {formatFileSize(previewAsset.size)
                   ? ` · ${formatFileSize(previewAsset.size)}`
-                  : ""}
+                : ""}
               </Text>
             )}
+            {previewAsset &&
+            !previewAsset.mimeType?.startsWith("image/") &&
+            previewKind !== "id" ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => showDocumentPreview(previewAsset)}
+                style={[styles.previewFileButton, { borderColor: colors.border }]}
+              >
+                <Icon name="visibility" color={colors.primary} size={17} />
+                <Text style={[styles.outlineActionText, { color: colors.primary }]}>
+                  {t.previewOpenSelectedFile}
+                </Text>
+              </Pressable>
+            ) : null}
             {previewKind === "numbering" && (
               <View style={styles.modalSummary}>
                 <Text
@@ -5586,7 +6285,12 @@ export default function HomeScreen() {
                   {t.dismiss}
                 </Text>
               </Pressable>
-              {(previewKind === "print" || previewKind === "merge" || previewKind === "images") && (
+              {(previewKind === "print" ||
+                previewKind === "merge" ||
+                previewKind === "images" ||
+                previewKind === "extract" ||
+                previewKind === "numbering" ||
+                previewKind === "pages") && (
                 <Pressable
                   onPress={continuePreviewAction}
                   disabled={processing}
@@ -5595,12 +6299,113 @@ export default function HomeScreen() {
                     { backgroundColor: colors.primary },
                   ]}
                 >
-                  {processing ? <ActivityIndicator color="#fff" size="small" /> : <Icon name={previewKind === "print" ? "print" : "play-arrow"} color="#fff" size={17} />}
+                  {processing ? <ActivityIndicator color="#fff" size="small" /> : <Icon name={previewKind === "print" ? "print" : previewKind === "pages" ? "save" : previewKind === "numbering" ? "format-list-numbered" : previewKind === "extract" ? "photo-filter" : "play-arrow"} color="#fff" size={17} />}
                   <Text style={styles.printButtonText}>
                     {processing ? (isArabic ? "جارٍ المعالجة…" : "Processing…") : t.previewContinue}
                   </Text>
                 </Pressable>
               )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={documentPreview !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDocumentPreview(null)}
+      >
+        <View style={styles.documentPreviewBackdrop}>
+          <View
+            style={[
+              styles.documentPreviewModal,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.profileHeader,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <Icon
+                name={documentPreview?.mimeType?.startsWith("image/") ? "image" : "picture-as-pdf"}
+                color={colors.primary}
+                size={20}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.sectionTitle,
+                  {
+                    color: colors.foreground,
+                    flex: 1,
+                    textAlign: isArabic ? "right" : "left",
+                  },
+                ]}
+              >
+                {documentPreview?.name || t.previewOpenSelectedFile}
+              </Text>
+              <Pressable
+                accessibilityLabel={t.dismiss}
+                onPress={() => setDocumentPreview(null)}
+              >
+                <Icon name="close" color={colors.muted} size={21} />
+              </Pressable>
+            </View>
+            <View
+              style={[
+                styles.documentPreviewViewport,
+                { backgroundColor: colors.background, borderColor: colors.border },
+              ]}
+            >
+              {documentPreview?.mimeType?.startsWith("image/") ? (
+                <Image
+                  source={{ uri: documentPreview.uri }}
+                  resizeMode="contain"
+                  style={styles.documentPreviewImage}
+                />
+              ) : documentPreview ? (
+                <PdfDocumentPreview
+                  uri={documentPreview.uri}
+                  name={documentPreview.name}
+                  style={{ flex: 1 }}
+                  unavailableLabel={t.previewUnavailable}
+                  onError={() => setDocumentPreviewError(true)}
+                />
+              ) : null}
+            </View>
+            {documentPreviewError ? (
+              <Text
+                style={[
+                  styles.modalSummaryText,
+                  { color: colors.warning, textAlign: isArabic ? "right" : "left" },
+                ]}
+              >
+                {t.previewUnavailable}
+              </Text>
+            ) : null}
+            <View
+              style={[
+                styles.documentPreviewActions,
+                { flexDirection: isArabic ? "row-reverse" : "row" },
+              ]}
+            >
+              <Pressable
+                onPress={() => setDocumentPreview(null)}
+                style={[styles.modalSecondary, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.miniButtonText, { color: colors.foreground }]}>
+                  {t.dismiss}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void openPreviewOutsideApp()}
+                style={[styles.modalPrimary, { backgroundColor: colors.primary }]}
+              >
+                <Icon name="open-in-new" color="#fff" size={16} />
+                <Text style={styles.printButtonText}>{t.previewOpenExternal}</Text>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -6221,6 +7026,124 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   previewImageContent: { width: "100%", height: "100%", resizeMode: "contain" },
+  pdfPagePaper: {
+    width: 116,
+    minHeight: 154,
+    borderWidth: 1,
+    borderRadius: 9,
+    padding: 5,
+    alignItems: "center",
+    gap: 4,
+  },
+  pdfPageThumbnailBox: {
+    width: 100,
+    height: 96,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pdfThumbnailContainer: {
+    width: "100%",
+    minHeight: 60,
+    flex: 1,
+    overflow: "hidden",
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pdfThumbnailImage: { width: "100%", height: "100%" },
+  pdfThumbnailFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 4,
+  },
+  pdfThumbnailFallbackText: { fontSize: 9, fontWeight: "600" },
+  thumbnailExternalButton: {
+    minHeight: 26,
+    borderWidth: 1,
+    borderRadius: 7,
+    paddingHorizontal: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    marginTop: 3,
+  },
+  thumbnailExternalText: { fontSize: 9, fontWeight: "700" },
+  previewAssetItem: {
+    minHeight: 56,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+  },
+  previewAssetMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  previewAssetThumb: { width: 32, height: 38, borderRadius: 6 },
+  previewAssetIcon: { alignItems: "center", justifyContent: "center" },
+  previewAssetText: { flex: 1, minWidth: 0 },
+  previewAssetMeta: { fontSize: 9.5, marginTop: 2 },
+  progressCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 7,
+  },
+  progressHeader: { alignItems: "center", gap: 8 },
+  progressLabel: { flex: 1, fontSize: 11, fontWeight: "700" },
+  progressStages: { gap: 6, justifyContent: "space-between" },
+  progressStage: { flex: 1, minWidth: 0, gap: 4 },
+  progressStageTrack: { height: 4, borderRadius: 2 },
+  progressStageText: { fontSize: 8.5, fontWeight: "600" },
+  progressHint: { fontSize: 9, lineHeight: 13 },
+  previewFileButton: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: 11,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  documentPreviewBackdrop: {
+    flex: 1,
+    backgroundColor: "#00000099",
+    justifyContent: "center",
+    padding: 16,
+  },
+  documentPreviewModal: {
+    width: "100%",
+    height: "84%",
+    maxHeight: 720,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+  },
+  documentPreviewViewport: {
+    flex: 1,
+    minHeight: 220,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  documentPreviewImage: { width: "100%", height: "100%" },
+  documentPreviewActions: {
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 9,
+  },
   previewList: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 11 },
   previewListItem: {
     minHeight: 42,

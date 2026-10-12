@@ -1,0 +1,75 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build installable debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate native Android project
+        run: pnpm exec expo prebuild --platform android --no-install
+        env:
+          EXPO_PUBLIC_API_BASE_URL: ${{ vars.EXPO_PUBLIC_API_BASE_URL }}
+          EXPO_PUBLIC_OAUTH_PORTAL_URL: ${{ vars.EXPO_PUBLIC_OAUTH_PORTAL_URL }}
+          EXPO_PUBLIC_OAUTH_SERVER_URL: ${{ vars.EXPO_PUBLIC_OAUTH_SERVER_URL }}
+          EXPO_PUBLIC_APP_ID: ${{ vars.EXPO_PUBLIC_APP_ID }}
+          EXPO_PUBLIC_OWNER_OPEN_ID: ${{ vars.EXPO_PUBLIC_OWNER_OPEN_ID }}
+          EXPO_PUBLIC_OWNER_NAME: ${{ vars.EXPO_PUBLIC_OWNER_NAME }}
+
+      - name: Build APK
+        run: cd android && ./gradlew --no-daemon :app:assembleDebug
+        env:
+          EXPO_PUBLIC_API_BASE_URL: ${{ vars.EXPO_PUBLIC_API_BASE_URL }}
+          EXPO_PUBLIC_OAUTH_PORTAL_URL: ${{ vars.EXPO_PUBLIC_OAUTH_PORTAL_URL }}
+          EXPO_PUBLIC_OAUTH_SERVER_URL: ${{ vars.EXPO_PUBLIC_OAUTH_SERVER_URL }}
+          EXPO_PUBLIC_APP_ID: ${{ vars.EXPO_PUBLIC_APP_ID }}
+          EXPO_PUBLIC_OWNER_OPEN_ID: ${{ vars.EXPO_PUBLIC_OWNER_OPEN_ID }}
+          EXPO_PUBLIC_OWNER_NAME: ${{ vars.EXPO_PUBLIC_OWNER_NAME }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: printpilot-debug-apk-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PDFDocument, degrees } from "pdf-lib";
 
 import {
   paperOptions,
@@ -23,12 +24,15 @@ import { hasPreviewContent, previewKinds } from "../shared/preview";
 import {
   canApplyPageOrder,
   createPageEdits,
+  dragDirection,
   movePage,
   pageOrientation,
   parsePageOrder,
   rotatePage,
+  synchronizePageOrder,
   togglePageOrientation,
 } from "../shared/pdf-pages";
+import { generatePdfPageThumbnail } from "../shared/pdf-thumbnail";
 import { workspaceKinds } from "../shared/workspaces";
 import {
   createIdCardLayout,
@@ -211,6 +215,58 @@ describe("PrintPilot PDF page editor", () => {
     expect(togglePageOrientation(0)).toBe(90);
     expect(pageOrientation(90)).toBe("landscape");
     expect(pageOrientation(180)).toBe("portrait");
+  });
+
+  it("ignores short drags and reports a stable direction after the threshold", () => {
+    expect(dragDirection(37, 38)).toBe(0);
+    expect(dragDirection(38, 38)).toBe(1);
+    expect(dragDirection(-40, 38)).toBe(-1);
+    expect(dragDirection(Number.NaN, 38)).toBe(0);
+  });
+
+  it("applies typed page order and preserves each page's rotation", () => {
+    const edits = createPageEdits(3).map((page) =>
+      page.sourcePage === 3 ? { ...page, rotation: 90 as const } : page,
+    );
+    expect(synchronizePageOrder(edits, "3, 1, 3, 0, 9, 2", 3)).toEqual([
+      { sourcePage: 3, rotation: 90 },
+      { sourcePage: 1, rotation: 0 },
+      { sourcePage: 2, rotation: 0 },
+    ]);
+  });
+
+  it("writes the requested order, omission, and rotation into a real PDF", async () => {
+    const source = await PDFDocument.create();
+    source.addPage([100, 200]);
+    source.addPage([300, 400]);
+    source.addPage([500, 600]);
+    const sourceBytes = await source.save();
+    const input = await PDFDocument.load(sourceBytes);
+    const edits = createPageEdits(3).map((page) =>
+      page.sourcePage === 3 ? { ...page, rotation: 90 as const } : page,
+    );
+    const orderedEdits = synchronizePageOrder(edits, "3, 1, 3, 0", 3);
+    const output = await PDFDocument.create();
+    const copied = await output.copyPages(
+      input,
+      orderedEdits.map((page) => page.sourcePage - 1),
+    );
+    copied.forEach((page, index) => {
+      if (orderedEdits[index].rotation)
+        page.setRotation(degrees(orderedEdits[index].rotation));
+      output.addPage(page);
+    });
+    const reopened = await PDFDocument.load(await output.save());
+    expect(reopened.getPageCount()).toBe(2);
+    expect(reopened.getPage(0).getWidth()).toBe(500);
+    expect(reopened.getPage(1).getWidth()).toBe(100);
+    expect(reopened.getPage(0).getRotation().angle).toBe(90);
+  });
+});
+
+describe("PrintPilot web PDF preview fallback", () => {
+  it("reports a deliberate unavailable preview instead of a fake thumbnail", async () => {
+    await expect(generatePdfPageThumbnail("blob:local-file", 0)).resolves.toBeNull();
   });
 });
 
