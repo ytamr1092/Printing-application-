@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   build-apk:
-    name: Build installable debug APK
+    name: Build standalone APK
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -74,8 +74,8 @@ jobs:
           EXPO_PUBLIC_OWNER_OPEN_ID: ${{ vars.EXPO_PUBLIC_OWNER_OPEN_ID }}
           EXPO_PUBLIC_OWNER_NAME: ${{ vars.EXPO_PUBLIC_OWNER_NAME }}
 
-      - name: Build APK
-        run: cd android && ./gradlew --no-daemon :app:assembleDebug
+      - name: Build standalone APK
+        run: cd android && ./gradlew --no-daemon :app:assembleRelease
         env:
           EXPO_PUBLIC_API_BASE_URL: ${{ vars.EXPO_PUBLIC_API_BASE_URL }}
           EXPO_PUBLIC_OAUTH_PORTAL_URL: ${{ vars.EXPO_PUBLIC_OAUTH_PORTAL_URL }}
@@ -84,10 +84,16 @@ jobs:
           EXPO_PUBLIC_OWNER_OPEN_ID: ${{ vars.EXPO_PUBLIC_OWNER_OPEN_ID }}
           EXPO_PUBLIC_OWNER_NAME: ${{ vars.EXPO_PUBLIC_OWNER_NAME }}
 
+      - name: Verify embedded JavaScript bundle
+        run: |
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$apk"
+          unzip -Z1 "$apk" | grep -Fx 'assets/index.android.bundle'
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: printpilot-debug-apk-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: printpilot-standalone-apk-${{ github.sha }}
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14

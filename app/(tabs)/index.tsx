@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigation } from "expo-router";
 import {
   Alert,
   ActivityIndicator,
+  BackHandler,
   Image,
   Linking,
-  Modal,
   PanResponder,
   Platform,
   Pressable,
@@ -22,7 +23,10 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
-import { PdfDocumentPreview } from "@/components/pdf-document-preview";
+import {
+  ToolWorkflowScreen,
+  type WorkflowResult,
+} from "@/components/tool-workflow-screen";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext } from "@/lib/theme-provider";
@@ -37,7 +41,6 @@ import { paperOptions, paperPresetById } from "@/shared/print-options";
 import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
 import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
-import { duplexEdgeLabel } from "@/shared/duplex-settings";
 import {
   canApplyPageOrder,
   createPageEdits,
@@ -963,153 +966,6 @@ function PdfThumbnailImage({
   );
 }
 
-function PreviewAssetRow({
-  asset,
-  index,
-  total,
-  selected,
-  disabled,
-  colors,
-  isArabic,
-  onSelect,
-  onDrag,
-  onMoveUp,
-  onMoveDown,
-  onRemove,
-}: {
-  asset: PickedAsset;
-  index: number;
-  total: number;
-  selected: boolean;
-  disabled: boolean;
-  colors: ReturnType<typeof useColors>;
-  isArabic: boolean;
-  onSelect: () => void;
-  onDrag: (direction: -1 | 1) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onRemove: () => void;
-}) {
-  const lastDragY = useRef(0);
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          !disabled && Math.abs(gesture.dy) > 8,
-        onPanResponderGrant: () => {
-          lastDragY.current = 0;
-        },
-        onPanResponderMove: (_, gesture) => {
-          const delta = gesture.dy - lastDragY.current;
-          const direction = dragDirection(delta, 38);
-          if (!direction) return;
-          onDrag(direction);
-          lastDragY.current = gesture.dy;
-        },
-        onPanResponderRelease: () => {
-          lastDragY.current = 0;
-        },
-        onPanResponderTerminate: () => {
-          lastDragY.current = 0;
-        },
-      }),
-    [disabled, onDrag],
-  );
-  const imageAsset = asset.mimeType?.startsWith("image/") ?? false;
-  const sizeLabel =
-    typeof asset.size === "number"
-      ? `${(asset.size / 1024).toFixed(1)} KB`
-      : asset.mimeType || (isArabic ? "ملف" : "File");
-
-  return (
-    <View
-      style={[
-        styles.previewAssetItem,
-        {
-          borderBottomColor: colors.border,
-          backgroundColor: selected ? `${colors.primary}10` : "transparent",
-        },
-      ]}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={isArabic ? `معاينة ${asset.name}` : `Preview ${asset.name}`}
-        onPress={onSelect}
-        style={styles.previewAssetMain}
-      >
-        {imageAsset ? (
-          <Image source={{ uri: asset.uri }} style={styles.previewAssetThumb} />
-        ) : (
-          <View
-            style={[
-              styles.previewAssetThumb,
-              styles.previewAssetIcon,
-              { backgroundColor: colors.primary + "14" },
-            ]}
-          >
-            <Icon name="description" color={colors.primary} size={18} />
-          </View>
-        )}
-        <View style={styles.previewAssetText}>
-          <Text
-            style={[styles.previewListText, { color: colors.foreground }]}
-            numberOfLines={1}
-          >
-            {index + 1}. {asset.name}
-          </Text>
-          <Text style={[styles.previewAssetMeta, { color: colors.muted }]} numberOfLines={1}>
-            {sizeLabel}
-          </Text>
-        </View>
-      </Pressable>
-      <View
-        {...panResponder.panHandlers}
-        accessibilityRole="button"
-        accessibilityLabel={isArabic ? "اسحب لإعادة ترتيب الملف" : "Drag to reorder file"}
-        style={[
-          styles.pdfPageButton,
-          { backgroundColor: colors.primary + "14", opacity: disabled ? 0.45 : 1 },
-        ]}
-      >
-        <Icon name="drag-indicator" color={colors.primary} size={19} />
-      </View>
-      <Pressable
-        accessibilityLabel={isArabic ? "تحريك الملف لأعلى" : "Move file up"}
-        disabled={disabled || index === 0}
-        onPress={onMoveUp}
-        style={styles.pdfPageButton}
-      >
-        <Icon
-          name="keyboard-arrow-up"
-          color={index === 0 ? colors.border : colors.primary}
-          size={20}
-        />
-      </Pressable>
-      <Pressable
-        accessibilityLabel={isArabic ? "تحريك الملف لأسفل" : "Move file down"}
-        disabled={disabled || index === total - 1}
-        onPress={onMoveDown}
-        style={styles.pdfPageButton}
-      >
-        <Icon
-          name="keyboard-arrow-down"
-          color={index === total - 1 ? colors.border : colors.primary}
-          size={20}
-        />
-      </Pressable>
-      <Pressable
-        accessibilityLabel={isArabic ? "حذف الملف من القائمة" : "Remove file from list"}
-        disabled={disabled}
-        onPress={onRemove}
-        style={styles.pdfPageButton}
-      >
-        <Icon name="close" color={colors.error} size={18} />
-      </Pressable>
-    </View>
-  );
-}
-
 function OperationProgressBanner({
   progress,
   colors,
@@ -1248,13 +1104,6 @@ function bytesToBase64(bytes: Uint8Array): string {
     : Buffer.from(binary, "binary").toString("base64");
 }
 
-function formatFileSize(bytes?: number): string {
-  if (!Number.isFinite(bytes) || !bytes || bytes < 1) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function getNumberFont(
   StandardFonts: Record<string, string>,
   font: NumberFont,
@@ -1274,6 +1123,7 @@ const loadImagePicker = () => import("expo-image-picker");
 const loadNetwork = () => import("expo-network");
 
 export default function HomeScreen() {
+  const navigation = useNavigation();
   const [language, setLanguage] = useState<Language>("ar");
   const [selectedPaper, setSelectedPaper] = useState("certificate");
   const [selectedWeight, setSelectedWeight] = useState("200 g/m²");
@@ -1346,16 +1196,17 @@ export default function HomeScreen() {
   const [numberFont, setNumberFont] = useState<NumberFont>("helvetica");
   const [numberBold, setNumberBold] = useState(false);
   const [previewKind, setPreviewKind] = useState<PreviewKind | null>(null);
+  const [toolResults, setToolResults] = useState<
+    Partial<Record<PreviewKind, WorkflowResult>>
+  >({});
   const [printUri, setPrintUri] = useState<string | null>(null);
+  const [printAsset, setPrintAsset] = useState<PickedAsset | null>(null);
   const [previewAsset, setPreviewAsset] = useState<{
     uri: string;
     name: string;
     size?: number;
     mimeType?: string;
   } | null>(null);
-  const [documentPreview, setDocumentPreview] =
-    useState<PreviewDocument | null>(null);
-  const [documentPreviewError, setDocumentPreviewError] = useState(false);
   const [pageEditorFile, setPageEditorFile] = useState<{
     uri: string;
     name: string;
@@ -1378,6 +1229,22 @@ export default function HomeScreen() {
   const colors = useColors();
   const isArabic = language === "ar";
   const t = copy[language];
+  useEffect(() => {
+    (navigation as any).setOptions({
+      tabBarStyle: previewKind ? { display: "none" } : undefined,
+    });
+  }, [navigation, previewKind]);
+  useEffect(() => {
+    if (!previewKind) return;
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        setPreviewKind(null);
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [previewKind]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
   const completeProgress = () =>
@@ -1766,6 +1633,7 @@ export default function HomeScreen() {
       if (result.canceled || !result.assets?.length) return;
       if (side === "front") setIdFrontUri(result.assets[0].uri);
       else setIdBackUri(result.assets[0].uri);
+      setToolResults((current) => ({ ...current, id: undefined }));
       setErrorMessage(null);
     } catch {
       showError(t.errorTitle, t.idWizardHint);
@@ -1827,19 +1695,15 @@ export default function HomeScreen() {
       );
       setSelectedFiles([t.idWizard]);
       setErrorMessage(null);
-      Alert.alert(t.idSuccess, outputUri, [
-        { text: t.dismiss, style: "cancel" },
-        {
-          text: t.shareResult,
-          onPress: async () => {
-            if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUri, {
-                mimeType: "application/pdf",
-                dialogTitle: t.shareResult,
-              });
-          },
+      setToolResults((current) => ({
+        ...current,
+        id: {
+          title: t.idSuccess,
+          detail: `${layout.copies} ${isArabic ? "نسخ" : "copies"}`,
+          uri: outputUri,
+          mimeType: "application/pdf",
         },
-      ]);
+      }));
     } catch {
       showError(t.idFailed, t.idWizardHint);
     } finally {
@@ -1926,13 +1790,9 @@ export default function HomeScreen() {
     print: t.previewPrint,
   };
 
-  const previewFileNames = selectedFiles.length
-    ? selectedFiles
-    : [t.previewEmpty];
-
   const showDocumentPreview = (asset: PreviewDocument) => {
-    setDocumentPreviewError(false);
-    setDocumentPreview(asset);
+    setPreviewAsset(asset);
+    setPreviewKind("pages");
   };
 
   const openUriOutsideApp = async (uri: string, mimeType: string) => {
@@ -1948,14 +1808,6 @@ export default function HomeScreen() {
     } catch {
       showError(t.previewUnavailable, t.previewOpenExternal);
     }
-  };
-
-  const openPreviewOutsideApp = async () => {
-    if (!documentPreview) return;
-    await openUriOutsideApp(
-      documentPreview.uri,
-      documentPreview.mimeType || "application/pdf",
-    );
   };
 
   const previewPdfPage = async (edit: PdfPageEdit) => {
@@ -2022,12 +1874,15 @@ export default function HomeScreen() {
 
   const continuePrint = async () => {
     if (!printUri) return;
-    setPreviewKind(null);
     try {
       await Print.printAsync({ uri: printUri });
       setTasks((current) =>
         [`${t.printReady}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
       );
+      setToolResults((current) => ({
+        ...current,
+        print: { title: t.printReady, detail: selectedFiles[0] },
+      }));
       setErrorMessage(null);
     } catch {
       showError(t.printerUnavailable, t.printerUnavailableHint);
@@ -2059,6 +1914,7 @@ export default function HomeScreen() {
     if (previewKind === "numbering") return numberPdf();
     if (previewKind === "pages") return applyPageEditor();
     if (previewKind === "print") return continuePrint();
+    if (previewKind === "id") return createIdCardPdf();
   };
 
   const choosePageEditorPdf = async () => {
@@ -2095,6 +1951,7 @@ export default function HomeScreen() {
       setPageEdits(createPageEdits(pages));
       setSelectedPageIndex(null);
       setSelectedFiles([result.assets[0].name]);
+      setToolResults((current) => ({ ...current, pages: undefined }));
       setWorkspace("pdf");
       setPreviewAsset({
         uri: result.assets[0].uri,
@@ -2162,22 +2019,17 @@ export default function HomeScreen() {
         [`${t.pageEditSuccess}: ${outputName}`, ...current].slice(0, 4),
       );
       setSelectedFiles([outputName]);
-      setPreviewKind(null);
+      setToolResults((current) => ({
+        ...current,
+        pages: {
+          title: t.pageEditSuccess,
+          detail: outputName,
+          uri: outputUri,
+          mimeType: "application/pdf",
+        },
+      }));
       setErrorMessage(null);
       completeProgress();
-      Alert.alert(t.pageEditSuccess, outputUri, [
-        { text: t.dismiss, style: "cancel" },
-        {
-          text: t.shareResult,
-          onPress: async () => {
-            if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUri, {
-                mimeType: "application/pdf",
-                dialogTitle: t.shareResult,
-              });
-          },
-        },
-      ]);
     } catch {
       setOperationProgress(null);
       showError(t.pageEditFailed, t.pageEditorHint);
@@ -2214,6 +2066,7 @@ export default function HomeScreen() {
       setPendingAssets(assets);
       setSelectedFiles(assets.map((asset) => asset.name));
       setPreviewAsset(kind === "images" ? assets[0] : null);
+      setToolResults((current) => ({ ...current, [kind]: undefined }));
       setPreviewKind(kind);
       setErrorMessage(null);
       completeProgress();
@@ -2222,9 +2075,6 @@ export default function HomeScreen() {
       showError(t.errorTitle, t.pickerCancelledHint);
     }
   };
-
-  const mergePdfs = () => selectFilesFor("merge");
-  const imagesToPdf = () => selectFilesFor("images");
 
   const executeMergePdfs = async () => {
     if (!canMergePdfs(pendingAssets.length)) {
@@ -2254,19 +2104,17 @@ export default function HomeScreen() {
         [`${t.mergeSuccess}: ${pendingAssets.length}`, ...current].slice(0, 4),
       );
       setSelectedFiles([outputUri.split("/").pop() ?? t.mergeSuccess]);
-      setPreviewKind(null);
+      setToolResults((current) => ({
+        ...current,
+        merge: {
+          title: t.mergeSuccess,
+          detail: `${pendingAssets.length} ${isArabic ? "ملفات" : "files"}`,
+          uri: outputUri,
+          mimeType: "application/pdf",
+        },
+      }));
       setErrorMessage(null);
       completeProgress();
-      Alert.alert(t.mergeSuccess, outputUri, [
-        { text: t.dismiss, style: "cancel" },
-        {
-          text: t.shareResult,
-          onPress: async () => {
-            if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
-          },
-        },
-      ]);
     } catch {
       setOperationProgress(null);
       showError(t.mergeFailed, t.coming);
@@ -2301,19 +2149,17 @@ export default function HomeScreen() {
         [`${t.imagesSuccess}: ${pendingAssets.length}`, ...current].slice(0, 4),
       );
       setSelectedFiles([outputUri.split("/").pop() ?? t.imagesSuccess]);
-      setPreviewKind(null);
+      setToolResults((current) => ({
+        ...current,
+        images: {
+          title: t.imagesSuccess,
+          detail: `${pendingAssets.length} ${isArabic ? "صور" : "images"}`,
+          uri: outputUri,
+          mimeType: "application/pdf",
+        },
+      }));
       setErrorMessage(null);
       completeProgress();
-      Alert.alert(t.imagesSuccess, outputUri, [
-        { text: t.dismiss, style: "cancel" },
-        {
-          text: t.shareResult,
-          onPress: async () => {
-            if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUri, { mimeType: "application/pdf", dialogTitle: t.shareResult });
-          },
-        },
-      ]);
     } catch {
       setOperationProgress(null);
       showError(t.imagesFailed, t.coming);
@@ -2347,6 +2193,7 @@ export default function HomeScreen() {
         name: result.assets[0].name,
         pages: document.getPageCount(),
       });
+      setToolResults((current) => ({ ...current, numbering: undefined }));
       setPreviewAsset({
         uri: result.assets[0].uri,
         name: result.assets[0].name,
@@ -2445,21 +2292,17 @@ export default function HomeScreen() {
       setTasks((current) =>
         [`${t.numberingSuccess}: ${selected.length}`, ...current].slice(0, 4),
       );
+      setToolResults((current) => ({
+        ...current,
+        numbering: {
+          title: t.numberingSuccess,
+          detail: `${selected.length} ${isArabic ? "صفحات" : "pages"}`,
+          uri: outputUri,
+          mimeType: "application/pdf",
+        },
+      }));
       setErrorMessage(null);
       completeProgress();
-      Alert.alert(t.numberingSuccess, outputUri, [
-        { text: t.dismiss, style: "cancel" },
-        {
-          text: t.shareResult,
-          onPress: async () => {
-            if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUri, {
-                mimeType: "application/pdf",
-                dialogTitle: t.shareResult,
-              });
-          },
-        },
-      ]);
     } catch {
       setOperationProgress(null);
       showError(t.numberingFailed, t.coming);
@@ -2489,6 +2332,7 @@ export default function HomeScreen() {
       setExtractFile(asset);
       setPreviewAsset(asset);
       setSelectedFiles([asset.name]);
+      setToolResults((current) => ({ ...current, extract: undefined }));
       setPreviewKind("extract");
       setErrorMessage(null);
       completeProgress();
@@ -2537,23 +2381,17 @@ export default function HomeScreen() {
         [`${t.extractSuccess}: ${outputUris.length}`, ...current].slice(0, 4),
       );
       setErrorMessage(null);
-      setPreviewKind(null);
-      completeProgress();
       const outputType = extractFormat.toUpperCase();
-      Alert.alert(t.extractSuccess, `${outputUris.length} ${outputType}`, [
-        { text: t.dismiss, style: "cancel" },
-        {
-          text: t.shareResult,
-          onPress: async () => {
-            if (await Sharing.isAvailableAsync())
-              await Sharing.shareAsync(outputUris[0], {
-                mimeType: isPng ? "image/png" : "image/jpeg",
-                dialogTitle: t.shareResult,
-              });
-            else showError(t.errorTitle, t.printerUnavailableHint);
-          },
+      setToolResults((current) => ({
+        ...current,
+        extract: {
+          title: t.extractSuccess,
+          detail: `${outputUris.length} ${outputType}`,
+          uri: outputUris[0],
+          mimeType: isPng ? "image/png" : "image/jpeg",
         },
-      ]);
+      }));
+      completeProgress();
     } catch {
       setOperationProgress(null);
       showError(t.extractFailed, t.coming);
@@ -2570,18 +2408,20 @@ export default function HomeScreen() {
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets?.length) {
-        showError(t.pickerCancelled, t.pickerCancelledHint);
         return;
       }
       const asset = result.assets[0];
       setSelectedFiles([asset.name]);
       setPrintUri(asset.uri);
-      setPreviewAsset({
+      const pickedAsset = {
         uri: asset.uri,
         name: asset.name,
         size: asset.size,
         mimeType: asset.mimeType,
-      });
+      };
+      setPrintAsset(pickedAsset);
+      setPreviewAsset(pickedAsset);
+      setToolResults((current) => ({ ...current, print: undefined }));
       setPreviewKind("print");
     } catch {
       showError(t.printerUnavailable, t.printerUnavailableHint);
@@ -2589,15 +2429,11 @@ export default function HomeScreen() {
   };
 
   const actionComing = () => showError(t.errorTitle, t.coming);
-  const openPreviewFor = (kind: PreviewKind) => {
-    if (kind === "merge") return mergePdfs();
-    if (kind === "images") return imagesToPdf();
-    if (kind === "extract") return extractImages();
-    if (kind === "numbering") return chooseNumberingFile();
-    if (kind === "pages") return choosePageEditorPdf();
-    if (kind === "print") return openPrintDialog();
-    setPreviewKind("id");
+  const startTool = (kind: PreviewKind) => {
+    setErrorMessage(null);
+    setPreviewKind(kind);
   };
+  const openPreviewFor = (kind: PreviewKind) => startTool(kind);
   const scanForDevices = () => {
     if (printerIp.trim()) {
       void checkPrinterConnection();
@@ -2608,8 +2444,126 @@ export default function HomeScreen() {
     showError(t.connectionFailed, t.scannerIpHint);
   };
 
+  const workflowFiles: PickedAsset[] =
+    previewKind === "merge" || previewKind === "images"
+      ? pendingAssets
+      : previewKind === "extract" && extractFile
+        ? [extractFile]
+        : previewKind === "numbering" && numberingFile
+          ? [{ ...numberingFile, mimeType: "application/pdf" }]
+          : previewKind === "pages" && pageEditorFile
+            ? [{ ...pageEditorFile, mimeType: "application/pdf" }]
+            : previewKind === "print" && printAsset
+              ? [printAsset]
+              : [];
+  const selectedWorkflowFile =
+    workflowFiles.find((file) => file.uri === previewAsset?.uri) ??
+    workflowFiles[0] ??
+    null;
+  const workflowSettings: Record<string, string | boolean> = {
+    imageFit,
+    extractFormat,
+    pageOrder,
+    numberFormat,
+    numberSize,
+    numberMargin,
+    numberFrom,
+    numberTo,
+    numberStart,
+    numberPosition,
+    numberVertical,
+    numberWhich,
+    numberNumerals,
+    numberFont,
+    numberBold,
+    numberMirror,
+    selectedPaper,
+    selectedWeight,
+    orientation,
+    copies,
+    printPages,
+    printScale,
+    colorMode,
+    duplex,
+    duplexEdge,
+    printMargins,
+    printCollate,
+    idSize,
+    idMargin,
+    idQuality,
+    idCopies,
+  };
+  const changeWorkflowSetting = (key: string, value: string | boolean) => {
+    switch (key) {
+      case "imageFit": setImageFit(value as typeof imageFit); break;
+      case "extractFormat": setExtractFormat(value as typeof extractFormat); break;
+      case "pageOrder": setPageOrder(String(value)); break;
+      case "numberFormat": setNumberFormat(String(value)); break;
+      case "numberSize": setNumberSize(String(value)); break;
+      case "numberMargin": setNumberMargin(String(value)); break;
+      case "numberFrom": setNumberFrom(String(value)); break;
+      case "numberTo": setNumberTo(String(value)); break;
+      case "numberStart": setNumberStart(String(value)); break;
+      case "numberPosition": setNumberPosition(value as NumberPosition); break;
+      case "numberVertical": setNumberVertical(value as NumberVertical); break;
+      case "numberWhich": setNumberWhich(value as NumberWhich); break;
+      case "numberNumerals": setNumberNumerals(value as NumberNumerals); break;
+      case "numberFont": setNumberFont(value as NumberFont); break;
+      case "numberBold": setNumberBold(Boolean(value)); break;
+      case "numberMirror": setNumberMirror(Boolean(value)); break;
+      case "selectedPaper": setSelectedPaper(String(value)); break;
+      case "selectedWeight": setSelectedWeight(String(value)); break;
+      case "orientation": setOrientation(value as typeof orientation); break;
+      case "copies": setCopies(String(value)); break;
+      case "printPages": setPrintPages(String(value)); break;
+      case "printScale": setPrintScale(value as typeof printScale); break;
+      case "colorMode": setColorMode(value as typeof colorMode); break;
+      case "duplex": setDuplex(Boolean(value)); break;
+      case "duplexEdge": setDuplexEdge(value as typeof duplexEdge); break;
+      case "printMargins": setPrintMargins(String(value)); break;
+      case "printCollate": setPrintCollate(Boolean(value)); break;
+      case "idSize": setIdSize(value as typeof idSize); break;
+      case "idMargin": setIdMargin(String(value)); break;
+      case "idQuality": setIdQuality(value as typeof idQuality); break;
+      case "idCopies": setIdCopies(String(value)); break;
+    }
+  };
+  const pickWorkflowFiles = () => {
+    if (previewKind === "merge" || previewKind === "images")
+      return selectFilesFor(previewKind);
+    if (previewKind === "extract") return extractImages();
+    if (previewKind === "numbering") return chooseNumberingFile();
+    if (previewKind === "pages") return choosePageEditorPdf();
+    if (previewKind === "print") return openPrintDialog();
+  };
+  const canRunWorkflow =
+    previewKind === "merge"
+      ? canMergePdfs(pendingAssets.length)
+      : previewKind === "images"
+        ? hasAtLeastFiles(pendingAssets.length)
+        : previewKind === "extract"
+          ? Boolean(extractFile)
+          : previewKind === "numbering"
+            ? Boolean(numberingFile)
+            : previewKind === "pages"
+              ? Boolean(pageEditorFile && pageEdits.length)
+              : previewKind === "id"
+                ? hasBothIdFaces(idFrontUri, idBackUri)
+                : previewKind === "print"
+                  ? Boolean(printUri)
+                  : false;
+  const shareWorkflowResult = () => {
+    if (!previewKind) return;
+    const result = toolResults[previewKind];
+    if (result?.uri)
+      void openUriOutsideApp(result.uri, result.mimeType ?? "application/pdf");
+  };
+
   return (
-    <ScreenContainer className="px-5" edges={["top", "left", "right"]}>
+    <ScreenContainer
+      className={previewKind ? "px-0" : "px-5"}
+      edges={["top", "left", "right"]}
+    >
       {operationProgress ? (
         <OperationProgressBanner
           progress={operationProgress}
@@ -2620,6 +2574,35 @@ export default function HomeScreen() {
           onDismiss={() => setOperationProgress(null)}
         />
       ) : null}
+      {previewKind ? (
+        <ToolWorkflowScreen
+          kind={previewKind}
+          title={previewTitleFor(previewKind)}
+          isArabic={isArabic}
+          files={workflowFiles}
+          previewFile={selectedWorkflowFile}
+          frontUri={idFrontUri}
+          backUri={idBackUri}
+          pageCount={previewKind === "pages" ? pageEditorFile?.pages : numberingFile?.pages}
+          settings={workflowSettings}
+          result={toolResults[previewKind] ?? null}
+          error={errorMessage}
+          processing={processing}
+          idBusy={idBusy}
+          canRun={canRunWorkflow}
+          onBack={() => setPreviewKind(null)}
+          onPickFiles={() => { void pickWorkflowFiles(); }}
+          onPickIdFace={(side, source = "library") => { void chooseIdFace(side, source); }}
+          onScanIdFace={(side) => { void scanIdFaceFromKyocera(side); }}
+          onSelectPreviewFile={setPreviewAsset}
+          onMoveFile={movePendingAsset}
+          onRemoveFile={removePendingAsset}
+          onSettingChange={changeWorkflowSetting}
+          onRun={() => { void continuePreviewAction(); }}
+          onShareResult={shareWorkflowResult}
+          onDismissError={() => setErrorMessage(null)}
+        />
+      ) : (
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: 14, paddingBottom: 34 }}
@@ -2817,7 +2800,7 @@ export default function HomeScreen() {
               color="#8B5CF6"
               textColor={readableText}
               mutedColor={readableMuted}
-              onPress={() => setWorkspace("print")}
+              onPress={() => startTool("print")}
             />
             <ActionCard
               icon="document-scanner"
@@ -2835,7 +2818,7 @@ export default function HomeScreen() {
               color="#10B981"
               textColor={readableText}
               mutedColor={readableMuted}
-              onPress={() => setWorkspace("id")}
+              onPress={() => startTool("id")}
             />
             <ActionCard
               icon="folder-special"
@@ -2964,7 +2947,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <Pressable
-              onPress={chooseNumberingFile}
+              onPress={() => startTool("numbering")}
               style={[styles.outlineAction, { borderColor: colors.primary }]}
             >
               <Icon name="folder-open" color={colors.primary} size={17} />
@@ -3441,7 +3424,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <Pressable
-              onPress={choosePageEditorPdf}
+              onPress={() => startTool("pages")}
               style={[styles.outlineAction, { borderColor: colors.primary }]}
             >
               <Icon name="folder-open" color={colors.primary} size={17} />
@@ -3593,7 +3576,7 @@ export default function HomeScreen() {
                     {face.label}
                   </Text>
                   <Pressable
-                    onPress={() => scanIdFaceFromKyocera(face.side)}
+                    onPress={() => startTool("id")}
                     style={[
                       styles.miniButton,
                       {
@@ -3610,7 +3593,7 @@ export default function HomeScreen() {
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => chooseIdFace(face.side, "library")}
+                    onPress={() => startTool("id")}
                     style={[styles.miniButton, { borderColor: colors.border }]}
                   >
                     <Icon name="photo-library" color={colors.muted} size={15} />
@@ -3625,7 +3608,7 @@ export default function HomeScreen() {
             </View>
             <Pressable
               disabled={idBusy}
-              onPress={createIdCardPdf}
+              onPress={() => startTool("id")}
               style={({ pressed }) => [
                 styles.printButton,
                 {
@@ -3669,21 +3652,21 @@ export default function HomeScreen() {
               time={t.today}
               icon="picture-as-pdf"
               colors={colors}
-              onPress={openPrintDialog}
+              onPress={() => startTool("print")}
             />
             <FileRow
               name={t.file2}
               time={t.yesterday}
               icon="picture-as-pdf"
               colors={colors}
-              onPress={openPrintDialog}
+              onPress={() => startTool("print")}
             />
             <FileRow
               name={t.file3}
               time={t.yesterday}
               icon="picture-as-pdf"
               colors={colors}
-              onPress={openPrintDialog}
+              onPress={() => startTool("print")}
             />
           </View>
 
@@ -4042,7 +4025,7 @@ export default function HomeScreen() {
                 />
               </View>
               <Pressable
-                onPress={openPrintDialog}
+                onPress={() => startTool("print")}
                 style={({ pressed }) => [
                   styles.printButton,
                   { backgroundColor: colors.primary },
@@ -4906,7 +4889,7 @@ export default function HomeScreen() {
                   title={t.merge}
                   hint={t.mergeHint}
                   color="#0A7EA4"
-                  onPress={mergePdfs}
+                  onPress={() => startTool("merge")}
                   colors={colors}
                 />
                 <WorkspaceTile
@@ -4914,7 +4897,7 @@ export default function HomeScreen() {
                   title={t.images}
                   hint={t.imagesHint}
                   color="#8B5CF6"
-                  onPress={imagesToPdf}
+                  onPress={() => startTool("images")}
                   colors={colors}
                 />
                 <WorkspaceTile
@@ -4922,7 +4905,7 @@ export default function HomeScreen() {
                   title={t.extract}
                   hint={t.extractHint}
                   color="#F59E0B"
-                  onPress={extractImages}
+                  onPress={() => startTool("extract")}
                   colors={colors}
                 />
                 <WorkspaceTile
@@ -4930,7 +4913,7 @@ export default function HomeScreen() {
                   title={t.numbering}
                   hint={t.numberingHint}
                   color="#E45757"
-                  onPress={chooseNumberingFile}
+                  onPress={() => startTool("numbering")}
                   colors={colors}
                 />
                 <WorkspaceTile
@@ -4938,7 +4921,7 @@ export default function HomeScreen() {
                   title={t.pageEditor}
                   hint={t.pageEditorHint}
                   color="#2563EB"
-                  onPress={choosePageEditorPdf}
+                  onPress={() => startTool("pages")}
                   colors={colors}
                 />
               </View>
@@ -5372,7 +5355,7 @@ export default function HomeScreen() {
                   title={t.chooseFile}
                   hint={t.printHint}
                   color={colors.primary}
-                  onPress={openPrintDialog}
+                  onPress={() => startTool("print")}
                   colors={colors}
                 />
                 <Text
@@ -5630,7 +5613,7 @@ export default function HomeScreen() {
                     {duplex ? t.duplex : t.oneSided}
                   </Text>
                   <Pressable
-                    onPress={() => setPreviewKind("print")}
+                    onPress={() => startTool("print")}
                     style={[
                       styles.workspacePrimary,
                       { backgroundColor: colors.primary },
@@ -5822,7 +5805,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.workspaceSegmentRow}>
                   <Pressable
-                    onPress={() => chooseIdFace("front", "library")}
+                    onPress={() => startTool("id")}
                     style={[
                       styles.workspacePrimary,
                       {
@@ -5847,7 +5830,7 @@ export default function HomeScreen() {
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => chooseIdFace("back", "library")}
+                    onPress={() => startTool("id")}
                     style={[
                       styles.workspacePrimary,
                       {
@@ -5936,7 +5919,7 @@ export default function HomeScreen() {
                   />
                 </View>
                 <Pressable
-                  onPress={() => setPreviewKind("id")}
+                  onPress={() => startTool("id")}
                   style={[
                     styles.workspacePrimary,
                     { backgroundColor: colors.primary },
@@ -5946,7 +5929,7 @@ export default function HomeScreen() {
                   <Text style={styles.printButtonText}>{t.previewId}</Text>
                 </Pressable>
                 <Pressable
-                  onPress={createIdCardPdf}
+                  onPress={() => startTool("id")}
                   disabled={!idFrontUri || !idBackUri}
                   style={[
                     styles.workspacePrimary,
@@ -6038,378 +6021,8 @@ export default function HomeScreen() {
           </View>
         )}
       </ScrollView>
-      <Modal
-        visible={previewKind !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setPreviewKind(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View
-            style={[
-              styles.previewModal,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <View
-              style={[
-                styles.profileHeader,
-                { flexDirection: isArabic ? "row-reverse" : "row" },
-              ]}
-            >
-              <View
-                style={[
-                  styles.phaseIcon,
-                  { backgroundColor: colors.primary + "18" },
-                ]}
-              >
-                <Icon name="visibility" color={colors.primary} size={20} />
-              </View>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  {
-                    color: colors.foreground,
-                    flex: 1,
-                    textAlign: isArabic ? "right" : "left",
-                  },
-                ]}
-              >
-                {previewKind ? previewTitleFor(previewKind) : ""}
-              </Text>
-              <Pressable onPress={() => setPreviewKind(null)}>
-                <Icon name="close" color={colors.muted} size={21} />
-              </Pressable>
-            </View>
-            {previewKind === "id" ? (
-              <View
-                style={[
-                  styles.modalFaces,
-                  { flexDirection: isArabic ? "row-reverse" : "row" },
-                ]}
-              >
-                {[
-                  [idFrontUri, t.idFront],
-                  [idBackUri, t.idBack],
-                ].map(([uri, label]) => (
-                  <View key={label as string} style={styles.modalFace}>
-                    <View
-                      style={[
-                        styles.modalImage,
-                        {
-                          backgroundColor: colors.background,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      {uri ? (
-                        <Image
-                          source={{ uri: uri as string }}
-                          style={styles.modalImageContent}
-                        />
-                      ) : (
-                        <Icon
-                          name="image-not-supported"
-                          color={colors.muted}
-                          size={28}
-                        />
-                      )}
-                    </View>
-                    <Text
-                      style={[styles.smallLabel, { color: colors.foreground }]}
-                    >
-                      {label as string}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <View
-                style={[
-                  styles.previewList,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                {(previewKind === "merge" || previewKind === "images") && pendingAssets.length
-                  ? pendingAssets.map((asset, index) => (
-                      <PreviewAssetRow
-                        key={asset.uri}
-                        asset={asset}
-                        index={index}
-                        total={pendingAssets.length}
-                        selected={previewAsset?.uri === asset.uri}
-                        disabled={processing}
-                        colors={colors}
-                        isArabic={isArabic}
-                        onSelect={() => {
-                          setPreviewAsset(asset);
-                          showDocumentPreview(asset);
-                        }}
-                        onDrag={(direction) =>
-                          movePendingAsset(index, index + direction)
-                        }
-                        onMoveUp={() => movePendingAsset(index, index - 1)}
-                        onMoveDown={() => movePendingAsset(index, index + 1)}
-                        onRemove={() => removePendingAsset(index)}
-                      />
-                    ))
-                  : previewFileNames.map((name) => (
-                      <View key={name} style={[styles.previewListItem, { borderBottomColor: colors.border }]}>
-                        <Icon name="description" color={colors.primary} size={17} />
-                        <Text style={[styles.previewListText, { color: colors.foreground }]}>{name}</Text>
-                      </View>
-                    ))}
-              </View>
-            )}
-            {previewAsset &&
-            (previewKind === "images" || previewKind === "print") &&
-            previewAsset.mimeType?.startsWith("image/") ? (
-              <View
-                style={[
-                  styles.previewImageFrame,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <Image
-                  source={{ uri: previewAsset.uri }}
-                  style={styles.previewImageContent}
-                />
-              </View>
-            ) : null}
-            {previewAsset && (
-              <Text
-                style={[
-                  styles.modalSummaryText,
-                  {
-                    color: colors.muted,
-                    textAlign: isArabic ? "right" : "left",
-                  },
-                ]}
-              >
-                {previewAsset.mimeType || "file"}
-                {formatFileSize(previewAsset.size)
-                  ? ` · ${formatFileSize(previewAsset.size)}`
-                : ""}
-              </Text>
-            )}
-            {previewAsset &&
-            !previewAsset.mimeType?.startsWith("image/") &&
-            previewKind !== "id" ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => showDocumentPreview(previewAsset)}
-                style={[styles.previewFileButton, { borderColor: colors.border }]}
-              >
-                <Icon name="visibility" color={colors.primary} size={17} />
-                <Text style={[styles.outlineActionText, { color: colors.primary }]}>
-                  {t.previewOpenSelectedFile}
-                </Text>
-              </Pressable>
-            ) : null}
-            {previewKind === "numbering" && (
-              <View style={styles.modalSummary}>
-                <Text
-                  style={[
-                    styles.modalSummaryText,
-                    { color: colors.foreground },
-                  ]}
-                >
-                  {t.numberingSettings}: {numberPosition} · {numberVertical} ·{" "}
-                  {numberFormat} · {numberSize}pt
-                </Text>
-              </View>
-            )}
-            {previewKind === "pages" && (
-              <View style={styles.modalSummary}>
-                <Text
-                  style={[
-                    styles.modalSummaryText,
-                    { color: colors.foreground },
-                  ]}
-                >
-                  {t.pageOrder}: {pageOrder || t.previewEmpty}
-                </Text>
-              </View>
-            )}
-            {previewKind === "print" && (
-              <View style={styles.modalSummary}>
-                <Text
-                  style={[
-                    styles.modalSummaryText,
-                    { color: colors.foreground },
-                  ]}
-                >
-                  {paper.ar} · {selectedWeight} ·{" "}
-                  {colorMode === "color" ? t.color : t.bw} ·{" "}
-                  {duplex
-                    ? `${t.duplex} · ${duplexEdgeLabel(duplexEdge, language)}`
-                    : t.oneSided}{" "}
-                  · {copies}
-                </Text>
-              </View>
-            )}
-            {previewKind === "id" ? (
-              <Text
-                style={[
-                  styles.modalSummaryText,
-                  {
-                    color: colors.muted,
-                    textAlign: isArabic ? "right" : "left",
-                  },
-                ]}
-              >
-                {isArabic
-                  ? "الوجه الأمامي صفحة 1 والوجه الخلفي صفحة 2"
-                  : "Front is page 1 and back is page 2"}
-              </Text>
-            ) : null}
-            <View
-              style={[
-                styles.modalActions,
-                { flexDirection: isArabic ? "row-reverse" : "row" },
-              ]}
-            >
-              <Pressable
-                onPress={() => setPreviewKind(null)}
-                style={[styles.modalSecondary, { borderColor: colors.border }]}
-              >
-                <Text
-                  style={[styles.miniButtonText, { color: colors.foreground }]}
-                >
-                  {t.dismiss}
-                </Text>
-              </Pressable>
-              {(previewKind === "print" ||
-                previewKind === "merge" ||
-                previewKind === "images" ||
-                previewKind === "extract" ||
-                previewKind === "numbering" ||
-                previewKind === "pages") && (
-                <Pressable
-                  onPress={continuePreviewAction}
-                  disabled={processing}
-                  style={[
-                    styles.modalPrimary,
-                    { backgroundColor: colors.primary },
-                  ]}
-                >
-                  {processing ? <ActivityIndicator color="#fff" size="small" /> : <Icon name={previewKind === "print" ? "print" : previewKind === "pages" ? "save" : previewKind === "numbering" ? "format-list-numbered" : previewKind === "extract" ? "photo-filter" : "play-arrow"} color="#fff" size={17} />}
-                  <Text style={styles.printButtonText}>
-                    {processing ? (isArabic ? "جارٍ المعالجة…" : "Processing…") : t.previewContinue}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
-      <Modal
-        visible={documentPreview !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDocumentPreview(null)}
-      >
-        <View style={styles.documentPreviewBackdrop}>
-          <View
-            style={[
-              styles.documentPreviewModal,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <View
-              style={[
-                styles.profileHeader,
-                { flexDirection: isArabic ? "row-reverse" : "row" },
-              ]}
-            >
-              <Icon
-                name={documentPreview?.mimeType?.startsWith("image/") ? "image" : "picture-as-pdf"}
-                color={colors.primary}
-                size={20}
-              />
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.sectionTitle,
-                  {
-                    color: colors.foreground,
-                    flex: 1,
-                    textAlign: isArabic ? "right" : "left",
-                  },
-                ]}
-              >
-                {documentPreview?.name || t.previewOpenSelectedFile}
-              </Text>
-              <Pressable
-                accessibilityLabel={t.dismiss}
-                onPress={() => setDocumentPreview(null)}
-              >
-                <Icon name="close" color={colors.muted} size={21} />
-              </Pressable>
-            </View>
-            <View
-              style={[
-                styles.documentPreviewViewport,
-                { backgroundColor: colors.background, borderColor: colors.border },
-              ]}
-            >
-              {documentPreview?.mimeType?.startsWith("image/") ? (
-                <Image
-                  source={{ uri: documentPreview.uri }}
-                  resizeMode="contain"
-                  style={styles.documentPreviewImage}
-                />
-              ) : documentPreview ? (
-                <PdfDocumentPreview
-                  uri={documentPreview.uri}
-                  name={documentPreview.name}
-                  style={{ flex: 1 }}
-                  unavailableLabel={t.previewUnavailable}
-                  onError={() => setDocumentPreviewError(true)}
-                />
-              ) : null}
-            </View>
-            {documentPreviewError ? (
-              <Text
-                style={[
-                  styles.modalSummaryText,
-                  { color: colors.warning, textAlign: isArabic ? "right" : "left" },
-                ]}
-              >
-                {t.previewUnavailable}
-              </Text>
-            ) : null}
-            <View
-              style={[
-                styles.documentPreviewActions,
-                { flexDirection: isArabic ? "row-reverse" : "row" },
-              ]}
-            >
-              <Pressable
-                onPress={() => setDocumentPreview(null)}
-                style={[styles.modalSecondary, { borderColor: colors.border }]}
-              >
-                <Text style={[styles.miniButtonText, { color: colors.foreground }]}>
-                  {t.dismiss}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void openPreviewOutsideApp()}
-                style={[styles.modalPrimary, { backgroundColor: colors.primary }]}
-              >
-                <Icon name="open-in-new" color="#fff" size={16} />
-                <Text style={styles.printButtonText}>{t.previewOpenExternal}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      )}
+
     </ScreenContainer>
   );
 }
@@ -6992,30 +6605,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   previewRowText: { flex: 1, fontSize: 12, fontWeight: "800" },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "#00000088",
-    justifyContent: "flex-end",
-  },
-  previewModal: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    padding: 16,
-    minHeight: 280,
-    gap: 12,
-  },
-  modalFaces: { gap: 10 },
-  modalFace: { flex: 1, gap: 6 },
-  modalImage: {
-    height: 110,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  modalImageContent: { width: "100%", height: "100%", resizeMode: "contain" },
   previewImageFrame: {
     height: 170,
     borderRadius: 12,
@@ -7071,25 +6660,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   thumbnailExternalText: { fontSize: 9, fontWeight: "700" },
-  previewAssetItem: {
-    minHeight: 56,
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 6,
-  },
-  previewAssetMain: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  previewAssetThumb: { width: 32, height: 38, borderRadius: 6 },
-  previewAssetIcon: { alignItems: "center", justifyContent: "center" },
-  previewAssetText: { flex: 1, minWidth: 0 },
-  previewAssetMeta: { fontSize: 9.5, marginTop: 2 },
   progressCard: {
     borderRadius: 12,
     borderWidth: 1,
@@ -7116,34 +6686,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  documentPreviewBackdrop: {
-    flex: 1,
-    backgroundColor: "#00000099",
-    justifyContent: "center",
-    padding: 16,
-  },
-  documentPreviewModal: {
-    width: "100%",
-    height: "84%",
-    maxHeight: 720,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 14,
-    gap: 12,
-  },
-  documentPreviewViewport: {
-    flex: 1,
-    minHeight: 220,
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  documentPreviewImage: { width: "100%", height: "100%" },
-  documentPreviewActions: {
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 9,
-  },
   previewList: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 11 },
   previewListItem: {
     minHeight: 42,
@@ -7153,26 +6695,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   previewListText: { flex: 1, fontSize: 11, fontWeight: "700" },
-  modalSummary: { borderRadius: 10, padding: 10, backgroundColor: "#0A7EA412" },
-  modalSummaryText: { fontSize: 11, lineHeight: 18, fontWeight: "700" },
-  modalActions: { gap: 9, justifyContent: "flex-end" },
-  modalSecondary: {
-    minHeight: 40,
-    paddingHorizontal: 17,
-    borderRadius: 11,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalPrimary: {
-    minHeight: 40,
-    paddingHorizontal: 17,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
   pageEditorCard: {
     borderRadius: 17,
     borderWidth: 1,
