@@ -5,6 +5,8 @@ import {
   ActivityIndicator,
   BackHandler,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Linking,
   PanResponder,
   Platform,
@@ -40,6 +42,7 @@ import {
 import { paperOptions, paperPresetById } from "@/shared/print-options";
 import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
+import { moveWorkflowItem, normalizeRotation, rotateWorkflowFile } from "@/shared/workflow-files";
 import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 import {
   canApplyPageOrder,
@@ -76,6 +79,7 @@ type PickedAsset = {
   name: string;
   size?: number;
   mimeType?: string;
+  rotation?: number;
 };
 type PreviewDocument = PickedAsset & { sourcePage?: number };
 type OperationProgress = { label: string; stage: 1 | 2 | 3; complete?: boolean };
@@ -1170,6 +1174,10 @@ export default function HomeScreen() {
   const [scannerBlankPages, setScannerBlankPages] = useState(true);
   const [idFrontUri, setIdFrontUri] = useState<string | null>(null);
   const [idBackUri, setIdBackUri] = useState<string | null>(null);
+  const [idFrontMimeType, setIdFrontMimeType] = useState("image/jpeg");
+  const [idBackMimeType, setIdBackMimeType] = useState("image/jpeg");
+  const [idFrontRotation, setIdFrontRotation] = useState(0);
+  const [idBackRotation, setIdBackRotation] = useState(0);
   const [idBusy, setIdBusy] = useState(false);
   const [idSize, setIdSize] = useState<"fit" | "actual">("fit");
   const [idMargin, setIdMargin] = useState("12");
@@ -1225,6 +1233,7 @@ export default function HomeScreen() {
   const [tasks, setTasks] = useState<string[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>("home");
+  const [keyboardShown, setKeyboardShown] = useState(false);
   const { colorScheme, setColorScheme } = useThemeContext();
   const colors = useColors();
   const isArabic = language === "ar";
@@ -1235,16 +1244,28 @@ export default function HomeScreen() {
     });
   }, [navigation, previewKind]);
   useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardShown(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardShown(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  useEffect(() => {
     if (!previewKind) return;
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
       () => {
+        if (keyboardShown) {
+          Keyboard.dismiss();
+          return true;
+        }
         setPreviewKind(null);
         return true;
       },
     );
     return () => subscription.remove();
-  }, [previewKind]);
+  }, [keyboardShown, previewKind]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
   const completeProgress = () =>
@@ -1601,43 +1622,79 @@ export default function HomeScreen() {
 
   const chooseIdFace = async (
     side: "front" | "back",
-    source: "camera" | "library",
+    source: "camera" | "library" | "files",
   ) => {
     try {
-      if (Platform.OS === "web") {
+      let uri: string | undefined;
+      let mimeType = "image/jpeg";
+      if (source === "files") {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: "image/*",
+          multiple: false,
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        uri = result.assets[0].uri;
+        mimeType = result.assets[0].mimeType || mimeType;
+      } else {
+        if (Platform.OS === "web") {
+          showError(t.errorTitle, t.coming);
+          return;
+        }
+        const ImagePicker = await loadImagePicker();
+        if (source === "camera") {
+          const permission = await ImagePicker.requestCameraPermissionsAsync();
+          if (!permission.granted) {
+            showError(t.cameraDenied, t.idWizardHint);
+            return;
+          }
+        }
+        const result =
+          source === "camera"
+            ? await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [16, 10],
+                quality: 0.9,
+              })
+            : await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [16, 10],
+                quality: 0.9,
+              });
+        if (result.canceled || !result.assets?.length) return;
+        uri = result.assets[0].uri;
+        mimeType = result.assets[0].mimeType || mimeType;
+      }
+      if (!uri) return;
+      if (Platform.OS === "web" && source !== "files") {
         showError(t.errorTitle, t.coming);
         return;
       }
-      const ImagePicker = await loadImagePicker();
-      if (source === "camera") {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) {
-          showError(t.cameraDenied, t.idWizardHint);
-          return;
-        }
+      if (side === "front") {
+        setIdFrontUri(uri);
+        setIdFrontMimeType(mimeType);
+        setIdFrontRotation(0);
+      } else {
+        setIdBackUri(uri);
+        setIdBackMimeType(mimeType);
+        setIdBackRotation(0);
       }
-      const result =
-        source === "camera"
-          ? await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: true,
-              aspect: [16, 10],
-              quality: 0.9,
-            })
-          : await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              allowsEditing: true,
-              aspect: [16, 10],
-              quality: 0.9,
-            });
-      if (result.canceled || !result.assets?.length) return;
-      if (side === "front") setIdFrontUri(result.assets[0].uri);
-      else setIdBackUri(result.assets[0].uri);
       setToolResults((current) => ({ ...current, id: undefined }));
       setErrorMessage(null);
     } catch {
       showError(t.errorTitle, t.idWizardHint);
     }
+  };
+
+  const rotateIdFace = (side: "front" | "back") => {
+    if (side === "front") {
+      setIdFrontRotation((rotation) => (normalizeRotation(rotation) + 90) % 360);
+    } else {
+      setIdBackRotation((rotation) => (normalizeRotation(rotation) + 90) % 360);
+    }
+    setToolResults((current) => ({ ...current, id: undefined }));
   };
 
   const scanIdFaceFromKyocera = async (side: "front" | "back") => {
@@ -1665,21 +1722,29 @@ export default function HomeScreen() {
     }
     setIdBusy(true);
     try {
-      const faceUris = [idFrontUri, idBackUri] as [string, string];
+      const faceUris = [
+        { uri: idFrontUri, mimeType: idFrontMimeType },
+        { uri: idBackUri, mimeType: idBackMimeType },
+      ] as [{ uri: string; mimeType: string }, { uri: string; mimeType: string }];
       const [front, back] = await Promise.all(
-        faceUris.map(async (uri) => {
+        faceUris.map(async ({ uri, mimeType }) => {
           const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          return `data:image/jpeg;base64,${base64}`;
+          return `data:${mimeType};base64,${base64}`;
         }),
       );
       const layout = createIdCardLayout(normalizeIdCopies(idCopies), idMargin, duplexEdge);
-      const cards = (uri: string, transform = "none") =>
-        Array.from({ length: layout.copies }, () =>
-          `<div class="card"><img style="transform:${transform}" src="${uri}"/></div>`,
+      const cards = (uri: string, transform = "none", rotation = 0) => {
+        const imageTransform = [
+          rotation ? `rotate(${rotation}deg)` : null,
+          transform !== "none" ? transform : null,
+        ].filter(Boolean).join(" ") || "none";
+        return Array.from({ length: layout.copies }, () =>
+          `<div class="card"><img style="transform:${imageTransform}" src="${uri}"/></div>`,
         ).join("");
-      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.page{box-sizing:border-box;width:210mm;height:297mm;padding:${layout.marginMm}mm;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.grid{width:100%;height:100%;display:grid;grid-template-columns:repeat(${layout.columns},${layout.cardWidthMm}mm);grid-auto-rows:${layout.cardHeightMm}mm;align-content:center;justify-content:center;gap:0}.card{width:${layout.cardWidthMm}mm;height:${layout.cardHeightMm}mm;display:flex;align-items:center;justify-content:center;border:0.4mm solid #555;border-radius:2mm;overflow:hidden}.card img{width:100%;height:100%;object-fit:cover}.label{font:10px Arial;color:#334155;margin-top:2mm}</style></head><body><main class="page"><div class="grid">${cards(front)}</div><div class="label">${isArabic ? `الوجه الأمامي — ${layout.copies} نسخة` : `Front — ${layout.copies} copies`}</div></main><main class="page"><div class="grid">${cards(back, layout.backTransform)}</div><div class="label">${isArabic ? `الوجه الخلفي — ${layout.copies} نسخة` : `Back — ${layout.copies} copies`}</div></main></body></html>`;
+      };
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{size:A4;margin:0}body{margin:0;background:#fff}.page{box-sizing:border-box;width:210mm;height:297mm;padding:${layout.marginMm}mm;display:flex;flex-direction:column;align-items:center;justify-content:center;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.grid{width:100%;height:100%;display:grid;grid-template-columns:repeat(${layout.columns},${layout.cardWidthMm}mm);grid-auto-rows:${layout.cardHeightMm}mm;align-content:center;justify-content:center;gap:0}.card{width:${layout.cardWidthMm}mm;height:${layout.cardHeightMm}mm;display:flex;align-items:center;justify-content:center;border:0.4mm solid #555;border-radius:2mm;overflow:hidden}.card img{width:100%;height:100%;object-fit:cover}.label{font:10px Arial;color:#334155;margin-top:2mm}</style></head><body><main class="page"><div class="grid">${cards(front, "none", normalizeRotation(idFrontRotation))}</div><div class="label">${isArabic ? `الوجه الأمامي — ${layout.copies} نسخة` : `Front — ${layout.copies} copies`}</div></main><main class="page"><div class="grid">${cards(back, layout.backTransform, normalizeRotation(idBackRotation))}</div><div class="label">${isArabic ? `الوجه الخلفي — ${layout.copies} نسخة` : `Back — ${layout.copies} copies`}</div></main></body></html>`;
       const generated = await Print.printToFileAsync({
         html,
         width: idQuality === "high" ? 1588 : 794,
@@ -1891,20 +1956,31 @@ export default function HomeScreen() {
 
   const movePendingAsset = (from: number, to: number) => {
     if (from < 0 || to < 0 || from >= pendingAssets.length || to >= pendingAssets.length) return;
-    const next = pendingAssets.slice();
-    const [item] = next.splice(from, 1);
-    if (!item) return;
-    next.splice(to, 0, item);
+    const next = moveWorkflowItem(pendingAssets, from, to);
     setPendingAssets(next);
     setSelectedFiles(next.map((asset) => asset.name));
-    if (previewKind === "images") setPreviewAsset(next[0] ?? null);
+    if (previewKind === "images" && !previewAsset) setPreviewAsset(next[0] ?? null);
+  };
+
+  const rotatePendingAsset = (index: number) => {
+    const selected = pendingAssets[index];
+    if (!selected) return;
+    const updated = rotateWorkflowFile(selected);
+    const next = pendingAssets.map((asset, itemIndex) => itemIndex === index ? updated : asset);
+    setPendingAssets(next);
+    setSelectedFiles(next.map((asset) => asset.name));
+    if (previewAsset?.uri === selected.uri) setPreviewAsset(updated);
+    setToolResults((current) => ({ ...current, images: undefined }));
   };
 
   const removePendingAsset = (index: number) => {
+    const removed = pendingAssets[index];
     const next = pendingAssets.filter((_, itemIndex) => itemIndex !== index);
     setPendingAssets(next);
     setSelectedFiles(next.map((asset) => asset.name));
-    if (previewKind === "images") setPreviewAsset(next[0] ?? null);
+    if (removed && previewAsset?.uri === removed.uri) {
+      setPreviewAsset(next[Math.min(index, next.length - 1)] ?? null);
+    }
   };
 
   const continuePreviewAction = async () => {
@@ -2039,30 +2115,56 @@ export default function HomeScreen() {
     }
   };
 
-  const selectFilesFor = async (kind: "merge" | "images") => {
+  const selectFilesFor = async (
+    kind: "merge" | "images",
+    source: "gallery" | "files" = "files",
+  ) => {
     updateProgress(t.progressPreparing, 1);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: kind === "merge" ? "application/pdf" : "image/*",
-        multiple: true,
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets?.length) {
-        setOperationProgress(null);
-        return;
+      let assets: PickedAsset[] = [];
+      if (kind === "images" && source === "gallery") {
+        const ImagePicker = await loadImagePicker();
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsMultipleSelection: true,
+          selectionLimit: 0,
+          quality: 0.9,
+        });
+        if (result.canceled || !result.assets?.length) {
+          setOperationProgress(null);
+          return;
+        }
+        assets = result.assets.map((asset) => ({
+          uri: asset.uri,
+          name: asset.fileName || asset.uri.split("/").pop() || "image",
+          size: asset.fileSize,
+          mimeType: asset.mimeType,
+          rotation: 0,
+        }));
+      } else {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: kind === "merge" ? "application/pdf" : "image/*",
+          multiple: true,
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled || !result.assets?.length) {
+          setOperationProgress(null);
+          return;
+        }
+        assets = result.assets.map((asset) => ({
+          uri: asset.uri,
+          name: asset.name,
+          size: asset.size,
+          mimeType: asset.mimeType,
+          ...(kind === "images" ? { rotation: 0 } : {}),
+        }));
       }
-      if (kind === "merge" && !canMergePdfs(result.assets.length)) {
+      if (kind === "merge" && !canMergePdfs(assets.length)) {
         setOperationProgress(null);
         showError(t.mergeNeedTwo, t.mergeNeedTwo);
         return;
       }
       updateProgress(t.progressProcessing, 2);
-      const assets = result.assets.map((asset) => ({
-        uri: asset.uri,
-        name: asset.name,
-        size: asset.size,
-        mimeType: asset.mimeType,
-      }));
       setPendingAssets(assets);
       setSelectedFiles(assets.map((asset) => asset.name));
       setPreviewAsset(kind === "images" ? assets[0] : null);
@@ -2135,11 +2237,11 @@ export default function HomeScreen() {
         pendingAssets.map(async (asset) => {
           updateProgress(t.progressProcessing, 2);
           const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
-          return `<section><img src="data:${asset.mimeType || "image/jpeg"};base64,${base64}" /></section>`;
+          return `<section class="rotate-${normalizeRotation(asset.rotation)}"><img src="data:${asset.mimeType || "image/jpeg"};base64,${base64}" /></section>`;
         }),
       );
       const objectFit = imageFit === "fill" ? "cover" : "contain";
-      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{margin:0}body{margin:0;background:#fff}section{page-break-after:always;width:100%;height:100vh;display:flex;align-items:center;justify-content:center}section:last-child{page-break-after:auto}img{width:100%;height:100%;object-fit:${objectFit}}</style></head><body>${imageMarkup.join("")}</body></html>`;
+      const html = `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"/><style>@page{margin:0}body{margin:0;background:#fff}section{page-break-after:always;width:100%;height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}section:last-child{page-break-after:auto}img{width:100%;height:100%;object-fit:${objectFit};transform-origin:center}section.rotate-90 img,section.rotate-270 img{width:100vh;height:100vw}section.rotate-90 img{transform:rotate(90deg)}section.rotate-180 img{transform:rotate(180deg)}section.rotate-270 img{transform:rotate(270deg)}</style></head><body>${imageMarkup.join("")}</body></html>`;
       updateProgress(t.progressProcessing, 2);
       const generated = await Print.printToFileAsync({ html, width: 794, height: 1123 });
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Images-${Date.now()}.pdf`;
@@ -2528,9 +2630,9 @@ export default function HomeScreen() {
       case "idCopies": setIdCopies(String(value)); break;
     }
   };
-  const pickWorkflowFiles = () => {
+  const pickWorkflowFiles = (source: "gallery" | "files" = "files") => {
     if (previewKind === "merge" || previewKind === "images")
-      return selectFilesFor(previewKind);
+      return selectFilesFor(previewKind, source);
     if (previewKind === "extract") return extractImages();
     if (previewKind === "numbering") return chooseNumberingFile();
     if (previewKind === "pages") return choosePageEditorPdf();
@@ -2583,6 +2685,8 @@ export default function HomeScreen() {
           previewFile={selectedWorkflowFile}
           frontUri={idFrontUri}
           backUri={idBackUri}
+          frontRotation={idFrontRotation}
+          backRotation={idBackRotation}
           pageCount={previewKind === "pages" ? pageEditorFile?.pages : numberingFile?.pages}
           settings={workflowSettings}
           result={toolResults[previewKind] ?? null}
@@ -2591,11 +2695,13 @@ export default function HomeScreen() {
           idBusy={idBusy}
           canRun={canRunWorkflow}
           onBack={() => setPreviewKind(null)}
-          onPickFiles={() => { void pickWorkflowFiles(); }}
+          onPickFiles={(source) => { void pickWorkflowFiles(source); }}
           onPickIdFace={(side, source = "library") => { void chooseIdFace(side, source); }}
+          onRotateIdFace={rotateIdFace}
           onScanIdFace={(side) => { void scanIdFaceFromKyocera(side); }}
           onSelectPreviewFile={setPreviewAsset}
           onMoveFile={movePendingAsset}
+          onRotateFile={rotatePendingAsset}
           onRemoveFile={removePendingAsset}
           onSettingChange={changeWorkflowSetting}
           onRun={() => { void continuePreviewAction(); }}
@@ -2603,8 +2709,13 @@ export default function HomeScreen() {
           onDismissError={() => setErrorMessage(null)}
         />
       ) : (
+      <KeyboardAvoidingView style={{ flex: 1, minHeight: 0 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView
+        style={styles.homeScrollView}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={{ paddingTop: 14, paddingBottom: 34 }}
       >
         <View
@@ -3564,7 +3675,12 @@ export default function HomeScreen() {
                     {face.uri ? (
                       <Image
                         source={{ uri: face.uri }}
-                        style={styles.idPreviewImage}
+                        style={[
+                          styles.idPreviewImage,
+                          normalizeRotation(face.side === "front" ? idFrontRotation : idBackRotation)
+                            ? { transform: [{ rotate: `${normalizeRotation(face.side === "front" ? idFrontRotation : idBackRotation)}deg` }] }
+                            : null,
+                        ]}
                       />
                     ) : (
                       <Icon name="scanner" color={colors.muted} size={28} />
@@ -5881,6 +5997,9 @@ export default function HomeScreen() {
                     colors={colors}
                     onSelect={(value) => setIdSize(value as typeof idSize)}
                   />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.idMargin}
+                  </Text>
                   <TextInput
                     value={idMargin}
                     onChangeText={setIdMargin}
@@ -5892,6 +6011,9 @@ export default function HomeScreen() {
                       { color: colors.foreground, borderColor: colors.border },
                     ]}
                   />
+                  <Text style={[styles.settingLabel, { color: colors.muted }]}>
+                    {t.copies}
+                  </Text>
                   <TextInput
                     value={idCopies}
                     onChangeText={(value) => setIdCopies(value.replace(/\D/g, ""))}
@@ -6021,6 +6143,7 @@ export default function HomeScreen() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
       )}
 
     </ScreenContainer>
@@ -6143,6 +6266,7 @@ function PrivacyRow({
 }
 
 const styles = StyleSheet.create({
+  homeScrollView: { flex: 1, minHeight: 0 },
   header: {
     justifyContent: "space-between",
     alignItems: "flex-start",

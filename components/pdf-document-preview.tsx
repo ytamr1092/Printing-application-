@@ -6,6 +6,7 @@ export type PdfDocumentPreviewProps = {
   uri: string;
   name: string;
   style?: StyleProp<ViewStyle>;
+  isArabic?: boolean;
   onError?: () => void;
   unavailableLabel?: string;
 };

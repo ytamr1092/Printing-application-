@@ -1,7 +1,10 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,14 +16,17 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { PdfDocumentPreview } from "@/components/pdf-document-preview";
 import { useColors } from "@/hooks/use-colors";
+import { dragDirection } from "@/shared/pdf-pages";
 import { paperOptions } from "@/shared/print-options";
 import type { PreviewKind } from "@/shared/preview";
+import { normalizeRotation } from "@/shared/workflow-files";
 
 type WorkflowFile = {
   uri: string;
   name: string;
   size?: number;
   mimeType?: string;
+  rotation?: number;
 };
 
 export type WorkflowResult = {
@@ -38,6 +44,8 @@ type Props = {
   previewFile: WorkflowFile | null;
   frontUri: string | null;
   backUri: string | null;
+  frontRotation?: number;
+  backRotation?: number;
   pageCount?: number;
   settings: Record<string, string | boolean>;
   result: WorkflowResult | null;
@@ -46,11 +54,13 @@ type Props = {
   idBusy: boolean;
   canRun: boolean;
   onBack: () => void;
-  onPickFiles: () => void;
-  onPickIdFace: (side: "front" | "back", source?: "library" | "camera") => void;
+  onPickFiles: (source?: "gallery" | "files") => void;
+  onPickIdFace: (side: "front" | "back", source?: "library" | "camera" | "files") => void;
+  onRotateIdFace: (side: "front" | "back") => void;
   onScanIdFace: (side: "front" | "back") => void;
   onSelectPreviewFile: (file: WorkflowFile) => void;
   onMoveFile: (from: number, to: number) => void;
+  onRotateFile: (index: number) => void;
   onRemoveFile: (index: number) => void;
   onSettingChange: (key: string, value: string | boolean) => void;
   onRun: () => void;
@@ -61,6 +71,131 @@ type Props = {
 const tr = (isArabic: boolean, ar: string, en: string) =>
   isArabic ? ar : en;
 
+type WorkflowFileRowProps = {
+  file: WorkflowFile;
+  index: number;
+  total: number;
+  isArabic: boolean;
+  selected: boolean;
+  canReorder: boolean;
+  canRotate: boolean;
+  colors: ReturnType<typeof useColors>;
+  direction: "row" | "row-reverse";
+  onSelect: () => void;
+  onMove: (from: number, to: number) => void;
+  onRotate: () => void;
+  onRemove: () => void;
+};
+
+function WorkflowFileRow({
+  file,
+  index,
+  total,
+  isArabic,
+  selected,
+  canReorder,
+  canRotate,
+  colors,
+  direction,
+  onSelect,
+  onMove,
+  onRotate,
+  onRemove,
+}: WorkflowFileRowProps) {
+  const lastDragY = useRef(0);
+  const latest = useRef({ index, total, onMove });
+  latest.current = { index, total, onMove };
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 7,
+        onPanResponderGrant: () => {
+          lastDragY.current = 0;
+        },
+        onPanResponderMove: (_, gesture) => {
+          const direction = dragDirection(gesture.dy - lastDragY.current, 42);
+          if (!direction) return;
+          const { index: currentIndex, total: currentTotal, onMove: move } = latest.current;
+          const target = currentIndex + direction;
+          if (target < 0 || target >= currentTotal) return;
+          move(currentIndex, target);
+          lastDragY.current = gesture.dy;
+        },
+        onPanResponderRelease: () => {
+          lastDragY.current = 0;
+        },
+        onPanResponderTerminate: () => {
+          lastDragY.current = 0;
+        },
+      }),
+    [],
+  );
+
+  return (
+    <View style={[styles.fileRow, { borderBottomColor: colors.border, flexDirection: direction }]}>
+      <Pressable onPress={onSelect} style={[styles.fileMain, { flexDirection: direction }]}>
+        {file.mimeType?.startsWith("image/") ? (
+          <Image
+            source={{ uri: file.uri }}
+            resizeMode="contain"
+            style={[
+              styles.fileThumb,
+              normalizeRotation(file.rotation)
+                ? { transform: [{ rotate: `${normalizeRotation(file.rotation)}deg` }] }
+                : null,
+            ]}
+          />
+        ) : (
+          <View style={[styles.fileIcon, { backgroundColor: `${colors.primary}12` }]}>
+            <MaterialIcons name="picture-as-pdf" color={colors.primary} size={19} />
+          </View>
+        )}
+        <View style={styles.fileCopy}>
+          <Text numberOfLines={1} style={[styles.fileName, { color: selected ? colors.primary : colors.foreground, textAlign: isArabic ? "right" : "left" }]}>
+            {file.name}
+          </Text>
+          <Text style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+            {file.size
+              ? file.size < 1024 * 1024
+                ? `${Math.max(1, Math.round(file.size / 1024))} KB`
+                : `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+              : file.mimeType || tr(isArabic, "اضغط لمعاينة الملف", "Tap to preview")}
+          </Text>
+        </View>
+      </Pressable>
+      <View style={styles.fileActions}>
+        {canRotate ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تدوير الصورة", "Rotate image")} onPress={onRotate} style={styles.iconButton}>
+            <MaterialIcons name="rotate-90-degrees-ccw" color={colors.primary} size={18} />
+          </Pressable>
+        ) : null}
+        {canReorder ? (
+          <>
+            <View
+              {...panResponder.panHandlers}
+              accessibilityRole="button"
+              accessibilityLabel={tr(isArabic, "اسحب لتحريك الملف", "Drag to reorder file")}
+              style={[styles.iconButton, styles.dragHandle, { backgroundColor: `${colors.primary}12` }]}
+            >
+              <MaterialIcons name="drag-indicator" color={colors.primary} size={20} />
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تحريك لأعلى", "Move up")} disabled={index === 0} onPress={() => onMove(index, index - 1)} style={styles.iconButton}>
+              <MaterialIcons name="keyboard-arrow-up" color={index === 0 ? colors.border : colors.muted} size={21} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تحريك لأسفل", "Move down")} disabled={index === total - 1} onPress={() => onMove(index, index + 1)} style={styles.iconButton}>
+              <MaterialIcons name="keyboard-arrow-down" color={index === total - 1 ? colors.border : colors.muted} size={21} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "إزالة الملف", "Remove file")} onPress={onRemove} style={styles.iconButton}>
+              <MaterialIcons name="close" color={colors.error} size={18} />
+            </Pressable>
+          </>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export function ToolWorkflowScreen({
   kind,
   title,
@@ -69,6 +204,8 @@ export function ToolWorkflowScreen({
   previewFile,
   frontUri,
   backUri,
+  frontRotation = 0,
+  backRotation = 0,
   pageCount,
   settings,
   result,
@@ -79,9 +216,11 @@ export function ToolWorkflowScreen({
   onBack,
   onPickFiles,
   onPickIdFace,
+  onRotateIdFace,
   onScanIdFace,
   onSelectPreviewFile,
   onMoveFile,
+  onRotateFile,
   onRemoveFile,
   onSettingChange,
   onRun,
@@ -90,11 +229,6 @@ export function ToolWorkflowScreen({
 }: Props) {
   const colors = useColors();
   const direction = isArabic ? "row-reverse" : "row";
-  const formatBytes = (size?: number) => {
-    if (!size || size <= 0) return "";
-    if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  };
   const runLabel = useMemo(() => {
     const labels: Record<PreviewKind, [string, string]> = {
       merge: ["دمج الملفات", "Merge files"],
@@ -333,18 +467,28 @@ export function ToolWorkflowScreen({
     return null;
   };
 
-  const face = (side: "front" | "back", uri: string | null) => {
+  const face = (side: "front" | "back", uri: string | null, rotation: number) => {
     const label = side === "front" ? tr(isArabic, "الوجه الأمامي", "Front side") : tr(isArabic, "الوجه الخلفي", "Back side");
     return (
       <View key={side} style={[styles.faceCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
         <View style={[styles.facePreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {uri ? <Image source={{ uri }} resizeMode="contain" style={styles.faceImage} /> : <MaterialIcons name="add-photo-alternate" color={colors.muted} size={28} />}
+          {uri ? <Image source={{ uri }} resizeMode="contain" style={[styles.faceImage, normalizeRotation(rotation) ? { transform: [{ rotate: `${normalizeRotation(rotation)}deg` }] } : null]} /> : <MaterialIcons name="add-photo-alternate" color={colors.muted} size={28} />}
         </View>
         <Text style={[styles.faceTitle, { color: colors.foreground }]}>{label}</Text>
         <Pressable onPress={() => onPickIdFace(side, "library")} style={[styles.secondaryButton, { borderColor: colors.primary, flexDirection: direction }]}>
           <MaterialIcons name="photo-library" color={colors.primary} size={17} />
           <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, uri ? "تغيير الصورة" : "اختيار صورة", uri ? "Change image" : "Choose image")}</Text>
         </Pressable>
+        <Pressable onPress={() => onPickIdFace(side, "files")} style={[styles.secondaryButton, { borderColor: colors.border, flexDirection: direction }]}>
+          <MaterialIcons name="folder-open" color={colors.muted} size={17} />
+          <Text style={[styles.secondaryButtonText, { color: colors.muted }]}>{tr(isArabic, "تصفح الملفات", "Browse files")}</Text>
+        </Pressable>
+        {uri ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, `تدوير ${label}`, `Rotate ${label}`)} onPress={() => onRotateIdFace(side)} style={[styles.secondaryButton, { borderColor: colors.border, flexDirection: direction }]}>
+            <MaterialIcons name="rotate-90-degrees-ccw" color={colors.primary} size={17} />
+            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, "تدوير الصورة 90°", "Rotate image 90°")}</Text>
+          </Pressable>
+        ) : null}
         <Pressable onPress={() => onPickIdFace(side, "camera")} style={[styles.secondaryButton, { borderColor: colors.border, flexDirection: direction }]}>
           <MaterialIcons name="photo-camera" color={colors.muted} size={17} />
           <Text style={[styles.secondaryButtonText, { color: colors.muted }]}>{tr(isArabic, "التقاط بالكاميرا", "Take photo")}</Text>
@@ -361,7 +505,7 @@ export function ToolWorkflowScreen({
   const completedSteps = activeResult ? 3 : files.length || frontUri || backUri ? 2 : 0;
 
   return (
-    <View testID="tool-workflow-screen" style={[styles.screen, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView testID="tool-workflow-screen" style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View testID="tool-workflow-header" style={[styles.header, { borderBottomColor: colors.border, flexDirection: direction }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "رجوع مع الاحتفاظ بالملفات", "Back and keep files")} onPress={onBack} style={[styles.backButton, { borderColor: colors.border, flexDirection: direction }]}>
           <MaterialIcons name={isArabic ? "arrow-forward" : "arrow-back"} color={colors.foreground} size={20} />
@@ -400,41 +544,51 @@ export function ToolWorkflowScreen({
         </View>
       ) : null}
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.workflowScroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets>
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {sectionTitle(kind === "id" ? tr(isArabic, "اختر وجهي البطاقة", "Choose both card sides") : tr(isArabic, "اختيار الملفات", "Choose files"), "folder-open")}
           {kind === "id" ? (
-            <View style={[styles.facesRow, { flexDirection: direction }]}>{face("front", frontUri)}{face("back", backUri)}</View>
+            <View style={[styles.facesRow, { flexDirection: direction }]}>{face("front", frontUri, frontRotation)}{face("back", backUri, backRotation)}</View>
           ) : (
             <>
               <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "ابدأ باختيار الملف أو الملفات. يمكنك الرجوع لهذه الشاشة لاحقًا دون فقدان اختيارك.", "Choose one or more files to get started. You can return here later without losing your selection.")}</Text>
-              <Pressable onPress={onPickFiles} style={[styles.pickButton, { backgroundColor: colors.primary, flexDirection: direction }]}>
-                <MaterialIcons name="add" color="#fff" size={20} />
-                <Text style={styles.pickButtonText}>{files.length ? tr(isArabic, "تغيير الملفات", "Change files") : tr(isArabic, "اختيار الملفات", "Choose files")}</Text>
-              </Pressable>
+              {kind === "images" ? (
+                <View style={[styles.pickerOptionsRow, { flexDirection: direction }]}>
+                  <Pressable accessibilityRole="button" onPress={() => onPickFiles("gallery")} style={[styles.pickButton, styles.pickerOption, { backgroundColor: colors.primary, flexDirection: direction }]}>
+                    <MaterialIcons name="photo-library" color="#fff" size={18} />
+                    <Text style={styles.pickButtonText}>{tr(isArabic, "اختيار من المعرض", "Choose from photos")}</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => onPickFiles("files")} style={[styles.pickButton, styles.pickerOption, { backgroundColor: colors.primary, flexDirection: direction }]}>
+                    <MaterialIcons name="folder-open" color="#fff" size={18} />
+                    <Text style={styles.pickButtonText}>{tr(isArabic, "تصفح الملفات", "Browse files")}</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable onPress={() => onPickFiles("files")} style={[styles.pickButton, { backgroundColor: colors.primary, flexDirection: direction }]}>
+                  <MaterialIcons name="add" color="#fff" size={20} />
+                  <Text style={styles.pickButtonText}>{files.length ? tr(isArabic, "تغيير الملفات", "Change files") : tr(isArabic, "اختيار الملفات", "Choose files")}</Text>
+                </Pressable>
+              )}
               {files.length > 0 ? (
                 <View style={[styles.fileList, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                  {files.map((file, index) => {
-                    const selected = previewFile?.uri === file.uri;
-                    return (
-                      <View key={`${file.uri}-${index}`} style={[styles.fileRow, { borderBottomColor: colors.border, flexDirection: direction }]}>
-                        <Pressable onPress={() => onSelectPreviewFile(file)} style={[styles.fileMain, { flexDirection: direction }]}>
-                          {file.mimeType?.startsWith("image/") ? <Image source={{ uri: file.uri }} style={styles.fileThumb} /> : <View style={[styles.fileIcon, { backgroundColor: `${colors.primary}12` }]}><MaterialIcons name="picture-as-pdf" color={colors.primary} size={19} /></View>}
-                          <View style={styles.fileCopy}>
-                            <Text numberOfLines={1} style={[styles.fileName, { color: selected ? colors.primary : colors.foreground, textAlign: isArabic ? "right" : "left" }]}>{file.name}</Text>
-                            <Text style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{formatBytes(file.size) || file.mimeType || tr(isArabic, "اضغط لمعاينة الملف", "Tap to preview")}</Text>
-                          </View>
-                        </Pressable>
-                        {(kind === "merge" || kind === "images") && (
-                          <View style={styles.fileActions}>
-                            <Pressable accessibilityLabel={tr(isArabic, "تحريك لأعلى", "Move up")} disabled={index === 0} onPress={() => onMoveFile(index, index - 1)} style={styles.iconButton}><MaterialIcons name="keyboard-arrow-up" color={index === 0 ? colors.border : colors.muted} size={21} /></Pressable>
-                            <Pressable accessibilityLabel={tr(isArabic, "تحريك لأسفل", "Move down")} disabled={index === files.length - 1} onPress={() => onMoveFile(index, index + 1)} style={styles.iconButton}><MaterialIcons name="keyboard-arrow-down" color={index === files.length - 1 ? colors.border : colors.muted} size={21} /></Pressable>
-                            <Pressable accessibilityLabel={tr(isArabic, "إزالة الملف", "Remove file")} onPress={() => onRemoveFile(index)} style={styles.iconButton}><MaterialIcons name="close" color={colors.error} size={18} /></Pressable>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
+                  {files.map((file, index) => (
+                    <WorkflowFileRow
+                      key={file.uri}
+                      file={file}
+                      index={index}
+                      total={files.length}
+                      isArabic={isArabic}
+                      selected={previewFile?.uri === file.uri}
+                      canReorder={kind === "merge" || kind === "images"}
+                      canRotate={kind === "images" && Boolean(file.mimeType?.startsWith("image/"))}
+                      colors={colors}
+                      direction={direction}
+                      onSelect={() => onSelectPreviewFile(file)}
+                      onMove={onMoveFile}
+                      onRotate={() => onRotateFile(index)}
+                      onRemove={() => onRemoveFile(index)}
+                    />
+                  ))}
                 </View>
               ) : (
                 <View style={[styles.emptyFiles, { borderColor: colors.border, backgroundColor: colors.background }]}>
@@ -450,7 +604,7 @@ export function ToolWorkflowScreen({
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {sectionTitle(tr(isArabic, "معاينة الملف المختار", "Selected file preview"), "visibility")}
             <View style={[styles.previewFrame, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              {previewFile.mimeType?.startsWith("image/") ? <Image source={{ uri: previewFile.uri }} resizeMode="contain" style={styles.previewImage} /> : <PdfDocumentPreview uri={previewFile.uri} name={previewFile.name} style={styles.pdfPreview} unavailableLabel={tr(isArabic, "تعذرت المعاينة المضمنة لهذا الملف على هذا الجهاز.", "This file could not be previewed in the app on this device.")} />}
+              {previewFile.mimeType?.startsWith("image/") ? <Image source={{ uri: previewFile.uri }} resizeMode="contain" style={[styles.previewImage, normalizeRotation(previewFile.rotation) ? { transform: [{ rotate: `${normalizeRotation(previewFile.rotation)}deg` }] } : null]} /> : <PdfDocumentPreview uri={previewFile.uri} name={previewFile.name} isArabic={isArabic} style={styles.pdfPreview} unavailableLabel={tr(isArabic, "تعذرت المعاينة المضمنة لهذا الملف على هذا الجهاز.", "This file could not be previewed in the app on this device.")} />}
             </View>
           </View>
         ) : null}
@@ -458,7 +612,7 @@ export function ToolWorkflowScreen({
         {(kind === "merge" || kind === "images") && files.length > 1 ? (
           <View style={[styles.notice, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30`, flexDirection: direction }]}>
             <MaterialIcons name="drag-indicator" color={colors.primary} size={18} />
-            <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "رتّب الملفات بالأسهم؛ هذا هو ترتيبها في الناتج.", "Use the arrows to set the order used in the output.")}</Text>
+            <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اسحب مقبض الترتيب أو استخدم الأسهم؛ سيظهر ترتيب الملفات نفسه في الناتج.", "Drag the handle or use the arrows; the output will follow the same file order.")}</Text>
           </View>
         ) : null}
 
@@ -492,12 +646,13 @@ export function ToolWorkflowScreen({
           <Text style={styles.pickButtonText}>{processing || idBusy ? tr(isArabic, "جارٍ التنفيذ…", "Working…") : runLabel}</Text>
         </Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0 },
+  workflowScroll: { flex: 1, minHeight: 0 },
   header: { alignItems: "center", gap: 10, borderBottomWidth: 1, paddingHorizontal: 14, paddingVertical: 11 },
   backButton: { minHeight: 40, borderWidth: 1, borderRadius: 11, alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 9 },
   backText: { fontSize: 12, fontWeight: "800" },
@@ -520,6 +675,8 @@ const styles = StyleSheet.create({
   sectionTitle: { flex: 1, fontSize: 13, fontWeight: "900" },
   helper: { fontSize: 10.5, lineHeight: 17 },
   pickButton: { minHeight: 43, alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 13, borderRadius: 12 },
+  pickerOptionsRow: { gap: 7 },
+  pickerOption: { flex: 1, minWidth: 0, paddingHorizontal: 6 },
   pickButtonText: { color: "#fff", fontSize: 12, fontWeight: "900" },
   fileList: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 8 },
   fileRow: { minHeight: 56, alignItems: "center", gap: 4, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6 },
@@ -531,6 +688,7 @@ const styles = StyleSheet.create({
   fileMeta: { fontSize: 9, lineHeight: 14 },
   fileActions: { flexDirection: "row", alignItems: "center", gap: 0 },
   iconButton: { width: 26, height: 30, alignItems: "center", justifyContent: "center" },
+  dragHandle: { borderRadius: 7 },
   emptyFiles: { minHeight: 86, borderWidth: 1, borderStyle: "dashed", borderRadius: 12, alignItems: "center", justifyContent: "center", gap: 6 },
   emptyText: { fontSize: 10.5, fontWeight: "700" },
   previewFrame: { height: 300, borderWidth: 1, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" },

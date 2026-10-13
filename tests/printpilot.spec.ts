@@ -40,6 +40,7 @@ import {
   CR80_CARD_HEIGHT_MM,
   CR80_CARD_WIDTH_MM,
 } from "../shared/id-card";
+import { moveWorkflowItem, normalizeRotation, rotateWorkflowFile } from "../shared/workflow-files";
 import { themeColors } from "../theme.config";
 import {
   advancedSettingsStorageKey,
@@ -261,6 +262,31 @@ describe("PrintPilot PDF page editor", () => {
     expect(reopened.getPage(0).getWidth()).toBe(500);
     expect(reopened.getPage(1).getWidth()).toBe(100);
     expect(reopened.getPage(0).getRotation().angle).toBe(90);
+  });
+});
+
+describe("PrintPilot workflow file order and image rotation", () => {
+  it("moves selected files without changing the item values or losing order", () => {
+    const files = [
+      { uri: "file:///first.jpg", name: "first.jpg" },
+      { uri: "file:///second.jpg", name: "second.jpg" },
+      { uri: "file:///third.jpg", name: "third.jpg" },
+    ];
+    expect(moveWorkflowItem(files, 0, 2).map((file) => file.uri)).toEqual([
+      "file:///second.jpg",
+      "file:///third.jpg",
+      "file:///first.jpg",
+    ]);
+    expect(moveWorkflowItem(files, 4, 1)).toEqual(files);
+  });
+
+  it("rotates an image by quarter-turns and normalizes stored angles", () => {
+    const photo = { uri: "file:///photo.jpg", name: "photo.jpg", rotation: 0 };
+    const rotated = rotateWorkflowFile(photo);
+    expect(rotated).toEqual({ ...photo, rotation: 90 });
+    expect(rotateWorkflowFile({ ...rotated, rotation: 270 }).rotation).toBe(0);
+    expect(normalizeRotation(-90)).toBe(270);
+    expect(normalizeRotation(45)).toBe(90);
   });
 });
 
