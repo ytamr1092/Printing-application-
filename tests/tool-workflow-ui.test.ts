@@ -3,6 +3,8 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from "rea
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { moveWorkflowItem } from "../shared/workflow-files";
+import { movePage } from "../shared/pdf-pages";
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,6 +27,7 @@ vi.mock("react-native", async () => {
     Text: host("span"),
     TextInput: host("input"),
     View: host("div"),
+    useWindowDimensions: () => ({ width: (globalThis as any).__workflowWidth ?? 390, height: 800, scale: 1, fontScale: 1 }),
   };
 });
 
@@ -158,6 +161,7 @@ describe("tool workflow UI", () => {
     { language: "ar", isArabic: true, direction: "row-reverse", title: "معاينة دمج PDF", width: 320 },
     { language: "en", isArabic: false, direction: "row", title: "Merge PDF preview", width: 320 },
   ])("renders each language in the correct direction on a narrow 320px viewport", ({ isArabic, direction, title, width }) => {
+    (globalThis as any).__workflowWidth = width;
     const props = workflowProps(isArabic);
     props.title = title;
     let renderer!: ReactTestRenderer;
@@ -172,8 +176,24 @@ describe("tool workflow UI", () => {
     });
     const header = renderer.root.findByProps({ testID: "tool-workflow-header" });
     expect(JSON.stringify(header.props.style)).toContain(direction);
+    expect(JSON.stringify(renderer.root.findByProps({ testID: "workflow-columns" }).props.style)).toContain("column");
     expect(readText(renderer)).toContain(title);
     expect(renderer.root.findByProps({ testID: "tool-workflow-screen" })).toBeTruthy();
+    (globalThis as any).__workflowWidth = 390;
+  });
+
+  it("places editing beside the single preview panel on wide screens", () => {
+    (globalThis as any).__workflowWidth = 1024;
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, workflowProps(true)));
+    });
+    const columns = renderer.root.findByProps({ testID: "workflow-columns" });
+    expect(JSON.stringify(columns.props.style)).toContain("row-reverse");
+    expect(columns.findByProps({ testID: "workflow-editor-pane" })).toBeTruthy();
+    expect(columns.findByProps({ testID: "workflow-preview-pane" })).toBeTruthy();
+    expect(renderer.root.findAllByType("div").filter((node: ReactTestInstance) => node.props.testID === "workflow-preview-pane")).toHaveLength(1);
+    (globalThis as any).__workflowWidth = 390;
   });
 
   it("keeps ID library, camera, and Kyocera choices inside the full-screen flow", () => {
@@ -218,6 +238,8 @@ describe("tool workflow UI", () => {
     });
 
     const dragHandle = renderer.root.findAllByProps({ accessibilityLabel: "اسحب لتحريك الملف" })[0];
+    expect(dragHandle.props.onStartShouldSetPanResponder()).toBe(true);
+    expect(dragHandle.props.onPanResponderTerminationRequest()).toBe(false);
     act(() => {
       dragHandle.props.onPanResponderGrant();
       dragHandle.props.onPanResponderMove({}, { dy: 50 });
@@ -238,6 +260,122 @@ describe("tool workflow UI", () => {
     act(() => (filesButton!.props.onClick ?? filesButton!.props.onPress)());
     expect(props.onPickFiles).toHaveBeenNthCalledWith(1, "gallery");
     expect(props.onPickFiles).toHaveBeenNthCalledWith(2, "files");
+  });
+
+  it("uses dragged file order for the action that creates the output", () => {
+    const actionOrders: string[][] = [];
+    function ReorderHarness() {
+      const [files, setFiles] = useState([firstFile, secondFile]);
+      const props = workflowProps(true);
+      return React.createElement(ToolWorkflowScreen, {
+        ...props,
+        files,
+        previewFile: files[0],
+        onMoveFile: (from: number, to: number) => setFiles((current) => moveWorkflowItem(current, from, to)),
+        onRun: () => actionOrders.push(files.map((file) => file.name)),
+      });
+    }
+
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ReorderHarness));
+    });
+    const dragHandle = renderer.root.findAllByProps({ accessibilityLabel: "اسحب لتحريك الملف" })[0];
+    act(() => {
+      dragHandle.props.onPanResponderGrant();
+      dragHandle.props.onPanResponderMove({}, { dy: 50 });
+    });
+    expect(readText(renderer).indexOf("appendix.pdf")).toBeLessThan(readText(renderer).indexOf("contract.pdf"));
+    const run = renderer.root.findAllByType("button").find((button: ReactTestInstance) => button.findAllByType("span").some((child) => child.children.includes("دمج الملفات")));
+    expect(run).toBeTruthy();
+    act(() => (run!.props.onClick ?? run!.props.onPress)());
+    expect(actionOrders).toEqual([["appendix.pdf", "contract.pdf"]]);
+  });
+
+  it("shows every selected image in the one dedicated preview area", () => {
+    const props = {
+      ...workflowProps(true),
+      kind: "images" as const,
+      files: [
+        { uri: "file:///one.jpg", name: "one.jpg", mimeType: "image/jpeg" },
+        { uri: "file:///two.png", name: "two.png", mimeType: "image/png" },
+      ],
+      previewFile: { uri: "file:///one.jpg", name: "one.jpg", mimeType: "image/jpeg" },
+    };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "معاينة الصورة 1: one.jpg" }).length).toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "معاينة الصورة 2: two.png" }).length).toBeGreaterThan(0);
+    expect(renderer.root.findByProps({ testID: "workflow-preview-pane" })).toBeTruthy();
+  });
+
+  it("keeps page drag controls inside the same editor and sends movement to page state", () => {
+    const props = {
+      ...workflowProps(true),
+      kind: "pages" as const,
+      files: [{ ...firstFile }],
+      previewFile: firstFile,
+      pageEdits: [
+        { sourcePage: 1, rotation: 0 as const },
+        { sourcePage: 2, rotation: 0 as const },
+      ],
+      onMovePage: vi.fn(),
+    };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    expect(renderer.root.findByProps({ testID: "workflow-page-editor" })).toBeTruthy();
+    const dragHandle = renderer.root.findAllByProps({ accessibilityLabel: "اسحب المقبض لتحريك الصفحة" })[0];
+    act(() => {
+      dragHandle.props.onPanResponderGrant();
+      dragHandle.props.onPanResponderMove({}, { dy: 35 });
+    });
+    expect(props.onMovePage).toHaveBeenCalledWith(1, 1);
+  });
+
+  it("uses the dragged page order when the edited PDF is saved", () => {
+    const outputOrders: number[][] = [];
+    function PageOrderHarness() {
+      const [pageEdits, setPageEdits] = useState([
+        { sourcePage: 1, rotation: 0 as const },
+        { sourcePage: 2, rotation: 0 as const },
+      ]);
+      const [pageOrder, setPageOrder] = useState("1, 2");
+      const props = workflowProps(true);
+      const move = (sourcePage: number, direction: -1 | 1) => {
+        const from = pageEdits.findIndex((page) => page.sourcePage === sourcePage);
+        const next = movePage(pageEdits, from, from + direction);
+        setPageEdits(next);
+        setPageOrder(next.map((page) => String(page.sourcePage)).join(", "));
+      };
+      return React.createElement(ToolWorkflowScreen, {
+        ...props,
+        kind: "pages",
+        files: [firstFile],
+        previewFile: firstFile,
+        pageEdits,
+        onMovePage: move,
+        onRun: () => outputOrders.push(pageEdits.map((page) => page.sourcePage)),
+        settings: { pageOrder },
+      });
+    }
+
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(PageOrderHarness));
+    });
+    const dragHandle = renderer.root.findAllByProps({ accessibilityLabel: "اسحب المقبض لتحريك الصفحة" })[0];
+    act(() => {
+      dragHandle.props.onPanResponderGrant();
+      dragHandle.props.onPanResponderMove({}, { dy: 35 });
+    });
+    const run = renderer.root.findAllByType("button").find((button: ReactTestInstance) => button.findAllByType("span").some((child) => child.children.includes("إنشاء الملف المعدّل")));
+    expect(run).toBeTruthy();
+    act(() => (run!.props.onClick ?? run!.props.onPress)());
+    expect(outputOrders).toEqual([[2, 1]]);
   });
 
   it("keeps every PDF page reachable with free scrolling and shows the page position", () => {
@@ -263,12 +401,14 @@ describe("tool workflow UI", () => {
   it("keeps Android back inside the app and makes keyboard-covered fields scrollable", () => {
     const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
     const screenSource = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
-    expect(appSource).toMatch(/hardwareBackPress[\s\S]*?setPreviewKind\(null\)[\s\S]*?return true/);
-    expect(appSource).toContain("if (!previewKind) return;");
+    expect(appSource).toMatch(/hardwareBackPress[\s\S]*?if \(previewKind\)[\s\S]*?setPreviewKind\(null\)[\s\S]*?if \(workspace !== "home"\)[\s\S]*?setWorkspace\("home"\)[\s\S]*?return false/);
     expect(appSource).toContain("keyboardDidShow");
     expect(appSource).toContain("automaticallyAdjustKeyboardInsets");
     expect(screenSource).toContain('keyboardShouldPersistTaps="handled"');
     expect(screenSource).toContain("workflowScroll: { flex: 1, minHeight: 0 }");
+    expect(appSource).not.toContain("PdfPageTile");
+    expect(appSource).not.toContain("styles.pdfPagesList");
+    expect(screenSource.match(/<PdfDocumentPreview/g)).toHaveLength(1);
   });
 
   it("contains no modal or bottom-sheet component in the tool navigation path", () => {

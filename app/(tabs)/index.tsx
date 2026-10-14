@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigation } from "expo-router";
 import {
   Alert,
@@ -8,7 +8,6 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Linking,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -32,7 +31,6 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext } from "@/lib/theme-provider";
-import { generatePdfPageThumbnail } from "@/shared/pdf-thumbnail";
 import {
   canMergePdfs,
   findJpegByteRanges,
@@ -47,9 +45,7 @@ import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 import {
   canApplyPageOrder,
   createPageEdits,
-  dragDirection,
   movePage,
-  pageOrientation,
   rotatePage,
   synchronizePageOrder,
   togglePageOrientation,
@@ -81,7 +77,6 @@ type PickedAsset = {
   mimeType?: string;
   rotation?: number;
 };
-type PreviewDocument = PickedAsset & { sourcePage?: number };
 type OperationProgress = { label: string; stage: 1 | 2 | 3; complete?: boolean };
 const copy = {
   ar: {
@@ -698,278 +693,6 @@ function FileRow({
   );
 }
 
-function PdfPageTile({
-  edit,
-  index,
-  active,
-  colors,
-  isArabic,
-  pdfUri,
-  canMoveUp,
-  canMoveDown,
-  onSelect,
-  onPreview,
-  onOpenExternal,
-  onDrag,
-  onMoveUp,
-  onMoveDown,
-  onRotate,
-  onToggleOrientation,
-  onDelete,
-}: {
-  edit: PdfPageEdit;
-  index: number;
-  active: boolean;
-  colors: ReturnType<typeof useColors>;
-  isArabic: boolean;
-  pdfUri: string;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onSelect: () => void;
-  onPreview: () => void;
-  onOpenExternal: () => void;
-  onDrag: (direction: -1 | 1) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onRotate: () => void;
-  onToggleOrientation: () => void;
-  onDelete: () => void;
-}) {
-  const lastDragY = useRef(0);
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 6,
-        onPanResponderGrant: () => {
-          lastDragY.current = 0;
-          onSelect();
-        },
-        onPanResponderMove: (_, gesture) => {
-          const delta = gesture.dy - lastDragY.current;
-          const direction = dragDirection(delta, 46);
-          if (!direction) return;
-          onDrag(direction);
-          lastDragY.current = gesture.dy;
-        },
-        onPanResponderRelease: () => {
-          lastDragY.current = 0;
-        },
-        onPanResponderTerminate: () => {
-          lastDragY.current = 0;
-        },
-      }),
-    [onDrag, onSelect],
-  );
-  const orientation = pageOrientation(edit.rotation);
-  return (
-    <View
-      style={[
-        styles.pdfPageTile,
-        {
-          backgroundColor: colors.surface,
-          borderColor: active ? colors.primary : colors.border,
-          borderWidth: active ? 2 : 1,
-        },
-      ]}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={isArabic ? `معاينة صفحة ${edit.sourcePage}` : `Preview page ${edit.sourcePage}`}
-        onPress={() => {
-          onSelect();
-          onPreview();
-        }}
-        style={styles.pdfPagePreview}
-      >
-        <View
-          style={[
-            styles.pdfPagePaper,
-            { backgroundColor: colors.background, borderColor: colors.border },
-          ]}
-        >
-          <PdfThumbnailImage
-            uri={pdfUri}
-            pageIndex={edit.sourcePage - 1}
-            active={active}
-            colors={colors}
-            isArabic={isArabic}
-            fallbackLabel={
-              Platform.OS === "web"
-                ? isArabic
-                  ? "افتح الملف في قارئ PDF لمعاينة الصفحة"
-                  : "Open the file in a PDF reader to preview this page"
-                : isArabic
-                  ? "تعذرت المعاينة المضمنة"
-                  : "Embedded preview unavailable"
-            }
-            rotation={edit.rotation}
-            style={styles.pdfPageThumbnailBox}
-            onOpenExternal={onOpenExternal}
-          />
-          <Text style={[styles.pdfPageNumber, { color: colors.foreground }]}>
-            {isArabic ? `صفحة ${edit.sourcePage}` : `Page ${edit.sourcePage}`}
-          </Text>
-          <Text style={[styles.pdfPageMeta, { color: colors.muted }]}>
-            {isArabic ? `الترتيب ${index + 1}` : `Order ${index + 1}`} · {edit.rotation}°
-          </Text>
-        </View>
-        <Text style={[styles.pdfPageOrientation, { color: colors.muted }]}>
-          {isArabic
-            ? orientation === "portrait"
-              ? "رأسي"
-              : "أفقي"
-            : orientation}
-        </Text>
-      </Pressable>
-      <View style={styles.pdfPageControls}>
-        <View
-          {...panResponder.panHandlers}
-          accessibilityRole="button"
-          accessibilityLabel={isArabic ? "اسحب لتحريك الصفحة" : "Drag to move page"}
-          style={[styles.pdfPageButton, { backgroundColor: colors.primary + "14" }]}
-        >
-          <Icon name="drag-indicator" color={colors.primary} size={19} />
-        </View>
-        <Pressable
-          accessibilityLabel={isArabic ? "تحريك الصفحة لأعلى" : "Move page up"}
-          disabled={!canMoveUp}
-          onPress={onMoveUp}
-          style={[styles.pdfPageButton, { opacity: canMoveUp ? 1 : 0.4 }]}
-        >
-          <Icon name="keyboard-arrow-up" color={colors.primary} size={19} />
-        </Pressable>
-        <Pressable
-          accessibilityLabel={isArabic ? "تحريك الصفحة لأسفل" : "Move page down"}
-          disabled={!canMoveDown}
-          onPress={onMoveDown}
-          style={[styles.pdfPageButton, { opacity: canMoveDown ? 1 : 0.4 }]}
-        >
-          <Icon name="keyboard-arrow-down" color={colors.primary} size={19} />
-        </Pressable>
-        <Pressable onPress={onRotate} style={styles.pdfPageButton}>
-          <Icon name="rotate-90-degrees-ccw" color={colors.primary} size={18} />
-        </Pressable>
-        <Pressable onPress={onToggleOrientation} style={styles.pdfPageButton}>
-          <Icon name="screen-rotation" color={colors.primary} size={18} />
-        </Pressable>
-        <Pressable onPress={onDelete} style={styles.pdfPageButton}>
-          <Icon name="delete-outline" color={colors.error} size={18} />
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function PdfThumbnailImage({
-  uri,
-  pageIndex,
-  active,
-  colors,
-  isArabic,
-  fallbackLabel,
-  rotation = 0,
-  style,
-  onOpenExternal,
-}: {
-  uri: string;
-  pageIndex: number;
-  active: boolean;
-  colors: ReturnType<typeof useColors>;
-  isArabic: boolean;
-  fallbackLabel: string;
-  rotation?: number;
-  style?: object;
-  onOpenExternal: () => void;
-}) {
-  const [thumbnail, setThumbnail] = useState<{
-    key: string;
-    uri: string;
-  } | null>(null);
-  const [loadingKey, setLoadingKey] = useState<string | null>(null);
-  const [failedKey, setFailedKey] = useState<string | null>(null);
-  const requestedKey = useRef<string | null>(null);
-  const key = `${uri}#${pageIndex}`;
-  const thumbnailUri = thumbnail?.key === key ? thumbnail.uri : null;
-
-  useEffect(() => {
-    if (!active || requestedKey.current === key) return;
-    requestedKey.current = key;
-    setLoadingKey(key);
-    void generatePdfPageThumbnail(uri, pageIndex)
-      .then((result) => {
-        if (result?.uri) setThumbnail({ key, uri: result.uri });
-        else setFailedKey(key);
-      })
-      .catch(() => setFailedKey(key))
-      .finally(() => setLoadingKey(null));
-  }, [active, key, pageIndex, uri]);
-
-  return (
-    <View
-      style={[
-        styles.pdfThumbnailContainer,
-        { backgroundColor: colors.background },
-        style,
-      ]}
-    >
-      {thumbnailUri ? (
-        <Image
-          source={{ uri: thumbnailUri }}
-          resizeMode="contain"
-          style={[
-            styles.pdfThumbnailImage,
-            rotation ? { transform: [{ rotate: `${rotation}deg` }] } : null,
-          ]}
-        />
-      ) : loadingKey === key ? (
-        <ActivityIndicator color={colors.primary} size="small" />
-      ) : (
-        <View style={styles.pdfThumbnailFallback}>
-          <Icon
-            name={failedKey === key ? "visibility-off" : "description"}
-            color={colors.muted}
-            size={22}
-          />
-          <Text
-            style={[
-              styles.pdfThumbnailFallbackText,
-              { color: colors.muted, textAlign: "center" },
-            ]}
-            numberOfLines={2}
-          >
-            {failedKey === key
-              ? fallbackLabel
-              : !active
-                ? isArabic
-                  ? "اضغط لمعاينة هذه الصفحة"
-                  : "Tap to preview this page"
-                : isArabic
-                  ? "جارٍ تجهيز المعاينة"
-                  : "Preparing preview"}
-          </Text>
-          {failedKey === key ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={isArabic ? "فتح الملف خارجيًا" : "Open file externally"}
-              onPress={(event) => {
-                event.stopPropagation();
-                onOpenExternal();
-              }}
-              style={[styles.thumbnailExternalButton, { borderColor: colors.border }]}
-            >
-              <Icon name="open-in-new" color={colors.primary} size={14} />
-              <Text style={[styles.thumbnailExternalText, { color: colors.primary }]}>
-                {isArabic ? "فتح خارجيًا" : "Open externally"}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      )}
-    </View>
-  );
-}
-
 function OperationProgressBanner({
   progress,
   colors,
@@ -1225,7 +948,6 @@ export default function HomeScreen() {
   const [selectedPageIndex, setSelectedPageIndex] = useState<number | null>(
     null,
   );
-  const [pageEditBusy, setPageEditBusy] = useState(false);
   const [numberMirror, setNumberMirror] = useState(false);
   const [imageFit, setImageFit] = useState<"contain" | "fill">("contain");
   const [extractFormat, setExtractFormat] = useState<"jpg" | "png">("jpg");
@@ -1252,7 +974,6 @@ export default function HomeScreen() {
     };
   }, []);
   useEffect(() => {
-    if (!previewKind) return;
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
       () => {
@@ -1260,12 +981,19 @@ export default function HomeScreen() {
           Keyboard.dismiss();
           return true;
         }
-        setPreviewKind(null);
-        return true;
+        if (previewKind) {
+          setPreviewKind(null);
+          return true;
+        }
+        if (workspace !== "home") {
+          setWorkspace("home");
+          return true;
+        }
+        return false;
       },
     );
     return () => subscription.remove();
-  }, [keyboardShown, previewKind]);
+  }, [keyboardShown, previewKind, workspace]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
   const completeProgress = () =>
@@ -1855,11 +1583,6 @@ export default function HomeScreen() {
     print: t.previewPrint,
   };
 
-  const showDocumentPreview = (asset: PreviewDocument) => {
-    setPreviewAsset(asset);
-    setPreviewKind("pages");
-  };
-
   const openUriOutsideApp = async (uri: string, mimeType: string) => {
     try {
       if (await Sharing.isAvailableAsync()) {
@@ -1875,40 +1598,6 @@ export default function HomeScreen() {
     }
   };
 
-  const previewPdfPage = async (edit: PdfPageEdit) => {
-    if (!pageEditorFile) return;
-    updateProgress(t.progressReading, 1);
-    try {
-      const sourceBase64 = await FileSystem.readAsStringAsync(pageEditorFile.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      updateProgress(t.progressProcessing, 2);
-      const { PDFDocument } = await loadPdfLib();
-      const source = await PDFDocument.load(base64ToBytes(sourceBase64));
-      const onePage = await PDFDocument.create();
-      const [page] = await onePage.copyPages(source, [edit.sourcePage - 1]);
-      if (edit.rotation) page.setRotation({ angle: edit.rotation });
-      onePage.addPage(page);
-      updateProgress(t.progressSaving, 3);
-      const outputUri = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}PrintPilot-Page-Preview-${Date.now()}-${edit.sourcePage}.pdf`;
-      await FileSystem.writeAsStringAsync(
-        outputUri,
-        bytesToBase64(await onePage.save()),
-        { encoding: FileSystem.EncodingType.Base64 },
-      );
-      showDocumentPreview({
-        uri: outputUri,
-        name: `${pageEditorFile.name} · ${isArabic ? "صفحة" : "Page"} ${edit.sourcePage}`,
-        mimeType: "application/pdf",
-        sourcePage: edit.sourcePage,
-      });
-      completeProgress();
-    } catch {
-      setOperationProgress(null);
-      showError(t.pageEditFailed, t.previewUnavailable);
-    }
-  };
-
   const moveEditedPage = (sourcePage: number, direction: -1 | 1) => {
     const from = pageEdits.findIndex((page) => page.sourcePage === sourcePage);
     const target = from + direction;
@@ -1919,22 +1608,33 @@ export default function HomeScreen() {
     setSelectedPageIndex(target);
   };
 
-  const synchronizeTypedPageOrder = () => {
-    if (!pageEditorFile) return false;
-    const next = synchronizePageOrder(
-      pageEdits,
-      pageOrder,
-      pageEditorFile.pages,
+  const rotateEditedPage = (sourcePage: number) => {
+    setPageEdits((current) =>
+      current.map((edit) =>
+        edit.sourcePage === sourcePage
+          ? { ...edit, rotation: rotatePage(edit.rotation) }
+          : edit,
+      ),
     );
-    const order = next.map((page) => page.sourcePage);
-    if (!canApplyPageOrder(order, pageEditorFile.pages)) {
-      showError(t.pageEditNeedOrder, t.pageOrderHint);
-      return false;
-    }
+  };
+
+  const toggleEditedPageOrientation = (sourcePage: number) => {
+    setPageEdits((current) =>
+      current.map((edit) =>
+        edit.sourcePage === sourcePage
+          ? { ...edit, rotation: togglePageOrientation(edit.rotation) }
+          : edit,
+      ),
+    );
+  };
+
+  const deleteEditedPage = (sourcePage: number) => {
+    const index = pageEdits.findIndex((edit) => edit.sourcePage === sourcePage);
+    if (index < 0) return;
+    const next = pageEdits.filter((edit) => edit.sourcePage !== sourcePage);
     setPageEdits(next);
-    setPageOrder(order.join(", "));
-    setSelectedPageIndex(null);
-    return true;
+    setPageOrder(next.map((page) => String(page.sourcePage)).join(", "));
+    setSelectedPageIndex(next.length ? Math.min(index, next.length - 1) : null);
   };
 
   const continuePrint = async () => {
@@ -2061,7 +1761,6 @@ export default function HomeScreen() {
     }
     setPageEdits(editsToApply);
     setPageOrder(order.join(", "));
-    setPageEditBusy(true);
     setProcessing(true);
     updateProgress(t.progressReading, 1);
     try {
@@ -2110,7 +1809,6 @@ export default function HomeScreen() {
       setOperationProgress(null);
       showError(t.pageEditFailed, t.pageEditorHint);
     } finally {
-      setPageEditBusy(false);
       setProcessing(false);
     }
   };
@@ -2688,6 +2386,8 @@ export default function HomeScreen() {
           frontRotation={idFrontRotation}
           backRotation={idBackRotation}
           pageCount={previewKind === "pages" ? pageEditorFile?.pages : numberingFile?.pages}
+          pageEdits={previewKind === "pages" ? pageEdits : []}
+          selectedPageIndex={selectedPageIndex}
           settings={workflowSettings}
           result={toolResults[previewKind] ?? null}
           error={errorMessage}
@@ -2701,6 +2401,11 @@ export default function HomeScreen() {
           onScanIdFace={(side) => { void scanIdFaceFromKyocera(side); }}
           onSelectPreviewFile={setPreviewAsset}
           onMoveFile={movePendingAsset}
+          onSelectPage={setSelectedPageIndex}
+          onMovePage={moveEditedPage}
+          onRotatePage={rotateEditedPage}
+          onTogglePageOrientation={toggleEditedPageOrientation}
+          onDeletePage={deleteEditedPage}
           onRotateFile={rotatePendingAsset}
           onRemoveFile={removePendingAsset}
           onSettingChange={changeWorkflowSetting}
@@ -3545,80 +3250,11 @@ export default function HomeScreen() {
                 {t.choosePageFile}
               </Text>
             </Pressable>
-            <Text
-              style={[
-                styles.smallLabel,
-                { color: colors.muted, marginTop: 10 },
-              ]}
-            >
+            <Text style={[styles.smallLabel, { color: colors.muted, marginTop: 10 }]}>
               {pageEditorFile
                 ? `${pageEditorFile.name} · ${pageEditorFile.pages} ${isArabic ? "صفحة" : "pages"}`
                 : t.pageOrderHint}
             </Text>
-            <TextInput
-              value={pageOrder}
-              onChangeText={setPageOrder}
-              onEndEditing={synchronizeTypedPageOrder}
-              editable={Boolean(pageEditorFile)}
-              placeholder="1, 2, 3"
-              placeholderTextColor={colors.muted}
-              keyboardType="numbers-and-punctuation"
-              style={[
-                styles.pageOrderInput,
-                {
-                  color: colors.foreground,
-                  backgroundColor: colors.background,
-                  borderColor: colors.border,
-                  textAlign: isArabic ? "right" : "left",
-                },
-              ]}
-            />
-            <Pressable
-              onPress={() => {
-                if (synchronizeTypedPageOrder()) setPreviewKind("pages");
-              }}
-              disabled={!pageEditorFile}
-              style={[
-                styles.outlineAction,
-                {
-                  borderColor: pageEditorFile ? colors.primary : colors.border,
-                  marginTop: 9,
-                },
-              ]}
-            >
-              <Icon
-                name="visibility"
-                color={pageEditorFile ? colors.primary : colors.muted}
-                size={17}
-              />
-              <Text
-                style={[
-                  styles.outlineActionText,
-                  { color: pageEditorFile ? colors.primary : colors.muted },
-                ]}
-              >
-                {t.previewPages}
-              </Text>
-            </Pressable>
-            <Pressable
-              disabled={pageEditBusy || !pageEditorFile}
-              onPress={applyPageEditor}
-              style={({ pressed }) => [
-                styles.printButton,
-                {
-                  backgroundColor: pageEditorFile
-                    ? colors.primary
-                    : colors.border,
-                  marginTop: 9,
-                },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Icon name="save" color="#fff" size={18} />
-              <Text style={styles.printButtonText}>
-                {pageEditBusy ? "…" : t.applyPageEdit}
-              </Text>
-            </Pressable>
           </View>
 
           <View
@@ -5338,18 +4974,6 @@ export default function HomeScreen() {
                   </Pressable>
                 </View>
                 <Pressable
-                  onPress={() => setPreviewKind("numbering")}
-                  style={[
-                    styles.workspacePrimary,
-                    { backgroundColor: colors.primary },
-                  ]}
-                >
-                  <Icon name="visibility" color="#fff" size={18} />
-                  <Text style={styles.printButtonText}>
-                    {t.previewNumbering}
-                  </Text>
-                </Pressable>
-                <Pressable
                   onPress={numberPdf}
                   style={[
                     styles.workspacePrimary,
@@ -5358,109 +4982,6 @@ export default function HomeScreen() {
                 >
                   <Icon name="format-list-numbered" color="#fff" size={18} />
                   <Text style={styles.printButtonText}>{t.runNumbering}</Text>
-                </Pressable>
-              </View>
-            )}
-            {workspace === "pdf" && pageEditorFile && (
-              <View
-                style={[
-                  styles.workspacePreviewCard,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.workspacePreviewTitle,
-                    { color: colors.foreground },
-                  ]}
-                >
-                  {t.pageEditor}
-                </Text>
-                <Text style={[styles.workspaceHint, { color: colors.muted }]}>
-                  {pageEditorFile.name} · {pageEdits.length}{" "}
-                  {isArabic ? "صفحة" : "pages"}
-                </Text>
-                <Text style={[styles.workspaceHint, { color: colors.primary }]}>
-                  {t.dragPageHint}
-                </Text>
-                <View style={styles.pdfPagesList}>
-                  {pageEdits.map((edit, index) => (
-                    <PdfPageTile
-                      key={edit.sourcePage}
-                      edit={edit}
-                      index={index}
-                      active={selectedPageIndex === index}
-                      colors={colors}
-                      isArabic={isArabic}
-                      pdfUri={pageEditorFile.uri}
-                      canMoveUp={index > 0}
-                      canMoveDown={index < pageEdits.length - 1}
-                      onSelect={() => setSelectedPageIndex(index)}
-                      onPreview={() => void previewPdfPage(edit)}
-                      onOpenExternal={() =>
-                        void openUriOutsideApp(pageEditorFile.uri, "application/pdf")
-                      }
-                      onDrag={(direction) => moveEditedPage(edit.sourcePage, direction)}
-                      onMoveUp={() => moveEditedPage(edit.sourcePage, -1)}
-                      onMoveDown={() => moveEditedPage(edit.sourcePage, 1)}
-                      onRotate={() =>
-                        setPageEdits((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, rotation: rotatePage(item.rotation) }
-                              : item,
-                          ),
-                        )
-                      }
-                      onToggleOrientation={() =>
-                        setPageEdits((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...item,
-                                  rotation: togglePageOrientation(
-                                    item.rotation,
-                                  ),
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                      onDelete={() => {
-                        const next = pageEdits.filter(
-                          (_, itemIndex) => itemIndex !== index,
-                        );
-                        setPageEdits(next);
-                        setPageOrder(
-                          next
-                            .map((page) => String(page.sourcePage))
-                            .join(", "),
-                        );
-                        setSelectedPageIndex(
-                          next.length ? Math.min(index, next.length - 1) : null,
-                        );
-                      }}
-                    />
-                  ))}
-                </View>
-                <Pressable
-                  disabled={pageEditBusy || !pageEdits.length}
-                  onPress={applyPageEditor}
-                  style={[
-                    styles.workspacePrimary,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: pageEdits.length ? 1 : 0.5,
-                    },
-                  ]}
-                >
-                  <Icon name="save" color="#fff" size={18} />
-                  <Text style={styles.printButtonText}>
-                    {pageEditBusy ? "…" : t.applyPageEdit}
-                  </Text>
                 </Pressable>
               </View>
             )}
@@ -6359,7 +5880,6 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   workspacePanel: { gap: 12 },
-  pdfPagesList: { gap: 8, maxHeight: 430 },
   advancedCard: { borderRadius: 14, borderWidth: 1, padding: 12, gap: 9 },
   advancedTitle: { fontSize: 14, fontWeight: "900", textAlign: "right" },
   settingLabel: { fontSize: 10, fontWeight: "800", textAlign: "right", gap: 3 },
