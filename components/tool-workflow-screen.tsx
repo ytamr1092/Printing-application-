@@ -70,6 +70,7 @@ type Props = {
   onTogglePageOrientation?: (sourcePage: number) => void;
   onDeletePage?: (sourcePage: number) => void;
   onRotateFile: (index: number) => void;
+  onRotateAllFiles?: () => void;
   onRemoveFile: (index: number) => void;
   onSettingChange: (key: string, value: string | boolean) => void;
   onRun: () => void;
@@ -337,6 +338,7 @@ export function ToolWorkflowScreen({
   onTogglePageOrientation,
   onDeletePage,
   onRotateFile,
+  onRotateAllFiles,
   onRemoveFile,
   onSettingChange,
   onRun,
@@ -664,6 +666,17 @@ export function ToolWorkflowScreen({
             )}
             {files.length > 0 ? (
               <View style={[styles.fileList, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                {kind === "images" && onRotateAllFiles ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={tr(isArabic, "تدوير كل الصور", "Rotate all images")}
+                    onPress={onRotateAllFiles}
+                    style={[styles.bulkAction, { borderBottomColor: colors.border, flexDirection: direction }]}
+                  >
+                    <MaterialIcons name="rotate-right" color={colors.primary} size={18} />
+                    <Text style={[styles.bulkActionText, { color: colors.primary }]}>{tr(isArabic, "تدوير كل الصور 90°", "Rotate all images 90°")}</Text>
+                  </Pressable>
+                ) : null}
                 {files.map((file, index) => (
                   <WorkflowFileRow
                     key={file.uri}
@@ -696,7 +709,7 @@ export function ToolWorkflowScreen({
       {(kind === "merge" || kind === "images") && files.length > 1 ? (
         <View style={[styles.notice, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30`, flexDirection: direction }]}>
           <MaterialIcons name="drag-indicator" color={colors.primary} size={18} />
-          <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اسحب مقبض (اسحب) أو استخدم الأسهم؛ سيُستخدم هذا الترتيب نفسه في الملف الناتج.", "Drag the labeled handle or use the arrows; this exact order is used in the output.")}</Text>
+          <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اسحب مقبض (اسحب) أو استخدم الأسهم. يمكنك تدوير كل الصور أو تدوير صورة واحدة؛ سيُستخدم هذا الترتيب في الملف الناتج.", "Drag the labeled handle or use the arrows. You can rotate all images or one image; the same order is used in the output.")}</Text>
         </View>
       ) : null}
 
@@ -913,6 +926,8 @@ const styles = StyleSheet.create({
   pickerOption: { flex: 1, minWidth: 0, paddingHorizontal: 6 },
   pickButtonText: { color: "#fff", fontSize: 12, fontWeight: "900" },
   fileList: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 8 },
+  bulkAction: { minHeight: 40, borderBottomWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center", gap: 7 },
+  bulkActionText: { fontSize: 10.5, fontWeight: "900" },
   fileRow: { minHeight: 60, alignItems: "center", gap: 4, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6 },
   fileMain: { flex: 1, minWidth: 0, alignItems: "center", gap: 8 },
   fileIcon: { width: 36, height: 42, borderRadius: 7, alignItems: "center", justifyContent: "center" },

@@ -1673,6 +1673,18 @@ export default function HomeScreen() {
     setToolResults((current) => ({ ...current, images: undefined }));
   };
 
+  const rotateAllPendingAssets = () => {
+    if (!pendingAssets.length) return;
+    const next = pendingAssets.map((asset) => rotateWorkflowFile(asset));
+    setPendingAssets(next);
+    setSelectedFiles(next.map((asset) => asset.name));
+    if (previewAsset) {
+      const selected = next.find((asset) => asset.uri === previewAsset.uri);
+      if (selected) setPreviewAsset(selected);
+    }
+    setToolResults((current) => ({ ...current, images: undefined }));
+  };
+
   const removePendingAsset = (index: number) => {
     const removed = pendingAssets[index];
     const next = pendingAssets.filter((_, itemIndex) => itemIndex !== index);
@@ -2407,6 +2419,7 @@ export default function HomeScreen() {
           onTogglePageOrientation={toggleEditedPageOrientation}
           onDeletePage={deleteEditedPage}
           onRotateFile={rotatePendingAsset}
+          onRotateAllFiles={rotateAllPendingAssets}
           onRemoveFile={removePendingAsset}
           onSettingChange={changeWorkflowSetting}
           onRun={() => { void continuePreviewAction(); }}
