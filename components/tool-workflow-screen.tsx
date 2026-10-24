@@ -39,6 +39,8 @@ export type WorkflowResult = {
   title: string;
   detail?: string;
   uri?: string;
+  /** All produced files when a tool outputs several (e.g. extracted images). */
+  uris?: string[];
   mimeType?: string;
 };
 
@@ -79,6 +81,7 @@ type Props = {
   onRemoveFile: (index: number) => void;
   onSettingChange: (key: string, value: string | boolean) => void;
   onRun: () => void;
+  onSaveResult?: () => void;
   onShareResult: () => void;
   onDismissError: () => void;
 };
@@ -366,6 +369,7 @@ export function ToolWorkflowScreen({
   onRemoveFile,
   onSettingChange,
   onRun,
+  onSaveResult,
   onShareResult,
   onDismissError,
 }: Props) {
@@ -686,7 +690,7 @@ export function ToolWorkflowScreen({
           <View style={[styles.facesRow, { flexDirection: direction }]}>{face("front", frontUri)}{face("back", backUri)}</View>
         ) : (
           <>
-            <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "ابدأ باختيار الملف أو الملفات. يمكنك الرجوع لهذه الشاشة لاحقًا دون فقدان اختيارك.", "Choose one or more files to get started. You can return here later without losing your selection.")}</Text>
+            <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "ابدأ باختيار الملف أو الملفات. عند الخروج من هذه الأداة تُمسح ملفاتها ومعاينتها وتبدأ كل أداة من جديد.", "Choose one or more files to get started. Leaving this tool clears its files and preview, so each tool starts fresh.")}</Text>
             {kind === "images" ? (
               <View style={[styles.pickerOptionsRow, { flexDirection: direction }]}>
                 <Pressable accessibilityRole="button" onPress={() => onPickFiles("gallery")} style={[styles.pickButton, styles.pickerOption, { backgroundColor: colors.primary, flexDirection: direction }]}>
@@ -954,7 +958,7 @@ export function ToolWorkflowScreen({
   return (
     <KeyboardAvoidingView testID="tool-workflow-screen" style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View testID="tool-workflow-header" style={[styles.header, { borderBottomColor: colors.border, flexDirection: direction }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "رجوع مع الاحتفاظ بالملفات", "Back and keep files")} onPress={onBack} style={[styles.backButton, { borderColor: colors.border, flexDirection: direction }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "رجوع", "Back")} onPress={onBack} style={[styles.backButton, { borderColor: colors.border, flexDirection: direction }]}>
           <MaterialIcons name={isArabic ? "arrow-forward" : "arrow-back"} color={colors.foreground} size={20} />
           <Text style={[styles.backText, { color: colors.foreground }]}>{tr(isArabic, "رجوع", "Back")}</Text>
         </Pressable>
@@ -1007,7 +1011,20 @@ export function ToolWorkflowScreen({
             </View>
             {activeResult.detail ? <Text style={[styles.helper, { color: colors.foreground, textAlign: isArabic ? "right" : "left" }]}>{activeResult.detail}</Text> : null}
             {activeResult.uri ? <Text numberOfLines={2} style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{activeResult.uri.split("/").pop()}</Text> : null}
-            {activeResult.uri ? <Pressable onPress={onShareResult} style={[styles.secondaryButton, { borderColor: colors.primary, flexDirection: direction }]}><MaterialIcons name="share" color={colors.primary} size={17} /><Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, "مشاركة / حفظ النتيجة", "Share / save result")}</Text></Pressable> : null}
+            {activeResult.uri ? (
+              <View style={[styles.resultActions, { flexDirection: direction }]}>
+                {onSaveResult ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "حفظ على الجهاز", "Save to device")} onPress={onSaveResult} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, flexDirection: direction }]}>
+                    <MaterialIcons name="save-alt" color={colors.primary} size={17} />
+                    <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, "حفظ على الجهاز", "Save to device")}</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "مشاركة", "Share")} onPress={onShareResult} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.border, flexDirection: direction }]}>
+                  <MaterialIcons name="share" color={colors.muted} size={17} />
+                  <Text style={[styles.secondaryButtonText, { color: colors.muted }]}>{tr(isArabic, "مشاركة", "Share")}</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>
@@ -1123,6 +1140,8 @@ const styles = StyleSheet.create({
   secondaryButton: { minHeight: 36, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 8 },
   secondaryButtonText: { fontSize: 10, fontWeight: "800" },
   resultCard: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 8 },
+  resultActions: { gap: 8 },
+  resultAction: { flex: 1 },
   resultHeader: { alignItems: "center", gap: 7 },
   resultTitle: { flex: 1, fontSize: 12, fontWeight: "900" },
   footer: { borderTopWidth: 1, paddingHorizontal: 14, paddingTop: 9, paddingBottom: 10 },
