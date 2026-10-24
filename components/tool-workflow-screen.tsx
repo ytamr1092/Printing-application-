@@ -14,9 +14,11 @@ import {
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
+import { CropEditor } from "@/components/crop-editor";
 import { PdfDocumentPreview } from "@/components/pdf-document-preview";
 import { useDragReorder } from "@/components/use-drag-reorder";
 import { useColors } from "@/hooks/use-colors";
+import { eachPageRanges, FULL_CROP_RECT, parsePageRanges, type CropRect } from "@/shared/pdf-cut";
 import { paperOptions } from "@/shared/print-options";
 import type { PreviewKind } from "@/shared/preview";
 import {
@@ -81,6 +83,12 @@ type Props = {
   onRemoveFile: (index: number) => void;
   onSettingChange: (key: string, value: string | boolean) => void;
   onRun: () => void;
+  cropRect?: CropRect;
+  onCropRectChange?: (rect: CropRect) => void;
+  /** Zero-based page shown in the crop editor. */
+  cropPageIndex?: number;
+  onCropPageChange?: (index: number) => void;
+  cropPreview?: { uri: string | null; aspect: number } | null;
   onSaveResult?: () => void;
   onShareResult: () => void;
   onDismissError: () => void;
@@ -141,7 +149,7 @@ function WorkflowFileRow({
   onRotate,
   onRemove,
 }: WorkflowFileRowProps) {
-  const { panHandlers, dragging, offset } = useDragReorder({
+  const { panHandlers, rowHandlers, dragging, offset } = useDragReorder({
     index,
     total,
     rowHeight: FILE_ROW_HEIGHT,
@@ -153,6 +161,7 @@ function WorkflowFileRow({
   return (
     <View
       testID={`workflow-file-row-${index}`}
+      {...(canReorder ? rowHandlers : {})}
       style={[
         styles.fileRow,
         {
@@ -271,7 +280,7 @@ function WorkflowPageRow({
   onToggleOrientation,
   onDelete,
 }: WorkflowPageRowProps) {
-  const { panHandlers, dragging, offset } = useDragReorder({
+  const { panHandlers, rowHandlers, dragging, offset } = useDragReorder({
     index,
     total,
     rowHeight: PAGE_ROW_HEIGHT,
@@ -281,6 +290,8 @@ function WorkflowPageRow({
 
   return (
     <View
+      testID={`workflow-page-row-${index}`}
+      {...rowHandlers}
       style={[
         styles.pageEditRow,
         {
@@ -369,6 +380,11 @@ export function ToolWorkflowScreen({
   onRemoveFile,
   onSettingChange,
   onRun,
+  cropRect = FULL_CROP_RECT,
+  onCropRectChange,
+  cropPageIndex = 0,
+  onCropPageChange,
+  cropPreview = null,
   onSaveResult,
   onShareResult,
   onDismissError,
@@ -400,6 +416,7 @@ export function ToolWorkflowScreen({
       extract: ["استخراج الصور", "Extract images"],
       numbering: ["ترقيم الملف", "Number PDF"],
       pages: ["إنشاء الملف المعدّل", "Create edited PDF"],
+      cut: ["قص الملف", "Cut the file"],
       id: ["إنشاء ملف بطاقة الهوية", "Create ID card PDF"],
       print: ["متابعة الطباعة", "Continue to print"],
     };
@@ -562,6 +579,97 @@ export function ToolWorkflowScreen({
           ])}
           {toggle("numberBold", tr(isArabic, "خط غامق", "Bold"))}
           {toggle("numberMirror", tr(isArabic, "عكس الموضع في الصفحات الزوجية", "Mirror on even pages"))}
+        </>
+      );
+    }
+    if (kind === "cut") {
+      const mode = value("cutMode", "split");
+      const total = pageCount ?? 0;
+      const ranges = parsePageRanges(value("cutRanges"), total);
+      return (
+        <>
+          {sectionTitle(tr(isArabic, "نوع القص", "Cut type"), "content-cut")}
+          {pills("cutMode", [
+            { value: "split", label: tr(isArabic, "تقسيم إلى ملفات", "Split into files") },
+            { value: "crop", label: tr(isArabic, "قص جزء من الصفحة", "Crop part of a page") },
+          ])}
+          {mode === "split" ? (
+            <>
+              <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+                {tr(
+                  isArabic,
+                  `كل نطاق يصبح ملف PDF مستقلًا. مثال: 1-3, 4-6, 9${total ? ` (عدد الصفحات: ${total})` : ""}`,
+                  `Each range becomes its own PDF. Example: 1-3, 4-6, 9${total ? ` (${total} pages)` : ""}`,
+                )}
+              </Text>
+              {field("cutRanges", tr(isArabic, "نطاقات الصفحات", "Page ranges"), "1-3, 4-6")}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={tr(isArabic, "كل صفحة في ملف مستقل", "One file per page")}
+                onPress={() => set("cutRanges", eachPageRanges(total))}
+                style={[styles.secondaryButton, { borderColor: colors.border, flexDirection: direction }]}
+              >
+                <MaterialIcons name="splitscreen" color={colors.primary} size={17} />
+                <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, "كل صفحة في ملف مستقل", "One file per page")}</Text>
+              </Pressable>
+              <Text testID="cut-split-status" style={[styles.helper, { color: ranges ? colors.success : colors.error, textAlign: isArabic ? "right" : "left" }]}>
+                {ranges
+                  ? tr(isArabic, `سيتم إنشاء ${ranges.length} ملف`, `${ranges.length} file(s) will be created`)
+                  : tr(isArabic, "اكتب نطاقات صحيحة ضمن عدد الصفحات", "Enter valid ranges within the page count")}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+                {tr(
+                  isArabic,
+                  "اسحب من أي مكان داخل الإطار لتحريكه، واسحب الأركان أو الحواف لتغيير حجمه، أو ارسم إطارًا جديدًا بالسحب من أي مكان على الصفحة.",
+                  "Drag from anywhere inside the frame to move it, drag corners or edges to resize it, or draw a new frame by dragging anywhere on the page.",
+                )}
+              </Text>
+              <View style={[styles.cropPager, { flexDirection: direction }]}>
+                <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "الصفحة السابقة", "Previous page")} disabled={cropPageIndex <= 0} onPress={() => onCropPageChange?.(Math.max(0, cropPageIndex - 1))} style={styles.zoomButton}>
+                  <MaterialIcons name={isArabic ? "chevron-right" : "chevron-left"} color={cropPageIndex <= 0 ? colors.border : colors.primary} size={24} />
+                </Pressable>
+                <Text style={[styles.zoomValueText, { color: colors.foreground }]}>{tr(isArabic, `الصفحة ${cropPageIndex + 1} من ${Math.max(total, 1)}`, `Page ${cropPageIndex + 1} of ${Math.max(total, 1)}`)}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "الصفحة التالية", "Next page")} disabled={cropPageIndex >= total - 1} onPress={() => onCropPageChange?.(Math.min(total - 1, cropPageIndex + 1))} style={styles.zoomButton}>
+                  <MaterialIcons name={isArabic ? "chevron-left" : "chevron-right"} color={cropPageIndex >= total - 1 ? colors.border : colors.primary} size={24} />
+                </Pressable>
+              </View>
+              <CropEditor
+                imageUri={cropPreview?.uri ?? null}
+                aspect={cropPreview?.aspect ?? 0.7071}
+                rect={cropRect}
+                onChange={(next) => onCropRectChange?.(next)}
+                primaryColor={colors.primary}
+                surfaceColor="#FFFFFF"
+                borderColor={colors.border}
+                mutedColor={colors.muted}
+                unavailableLabel={tr(isArabic, "تعذر عرض صورة الصفحة؛ حدّد الجزء على الورقة", "Page image unavailable; select the area on the sheet")}
+                accessibilityLabel={tr(isArabic, "منطقة القص", "Crop area")}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={tr(isArabic, "تحديد الصفحة كلها", "Select whole page")}
+                onPress={() => onCropRectChange?.(FULL_CROP_RECT)}
+                style={[styles.secondaryButton, { borderColor: colors.border, flexDirection: direction }]}
+              >
+                <MaterialIcons name="crop-free" color={colors.primary} size={17} />
+                <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, "تحديد الصفحة كلها", "Select whole page")}</Text>
+              </Pressable>
+              {pills("cropScope", [
+                { value: "page", label: tr(isArabic, "هذه الصفحة فقط", "This page only") },
+                { value: "all", label: tr(isArabic, "كل الصفحات بنفس الإطار", "All pages, same frame") },
+              ])}
+              <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+                {tr(
+                  isArabic,
+                  "تنبيه: القص يخفي الأجزاء الخارجية فقط، وتبقى داخل الملف تقنيًا؛ لا تعتمد عليه لإخفاء معلومات حساسة.",
+                  "Note: cropping hides the outside area but it stays inside the file; do not rely on it to remove sensitive information.",
+                )}
+              </Text>
+            </>
+          )}
         </>
       );
     }
@@ -782,7 +890,7 @@ export function ToolWorkflowScreen({
       {(kind === "merge" || kind === "images") && files.length > 1 ? (
         <View style={[styles.notice, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30`, flexDirection: direction }]}>
           <MaterialIcons name="drag-indicator" color={colors.primary} size={18} />
-          <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اضغط مطولًا على مقبض (اسحب) وحرّك الملف لأعلى أو لأسفل لترتيبه. حدّد صورة أو أكثر ثم دوّرها دفعة واحدة؛ سيُستخدم هذا الترتيب في الملف الناتج.", "Hold the labeled handle and drag a file up or down to reorder it. Select one or more images and rotate them together; the same order is used in the output.")}</Text>
+          <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اضغط مطولًا على أي مكان في الملف ثم اسحبه لأعلى أو لأسفل لترتيبه (أو اسحب المقبض مباشرة). حدّد صورة أو أكثر ثم دوّرها دفعة واحدة؛ سيُستخدم هذا الترتيب في الملف الناتج.", "Press and hold anywhere on a file, then drag it up or down to reorder (or drag the handle right away). Select one or more images and rotate them together; the same order is used in the output.")}</Text>
         </View>
       ) : null}
 
@@ -799,7 +907,7 @@ export function ToolWorkflowScreen({
       {kind === "pages" && pageEdits.length > 0 ? (
         <View testID="workflow-page-editor" style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {sectionTitle(tr(isArabic, "ترتيب صفحات الملف", "Reorder document pages"), "view-list")}
-          <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اسحب المقبض لتحريك الصفحة لأعلى أو لأسفل. هذا الترتيب والتدوير والحذف يطبّق على الملف الناتج.", "Drag the handle to move a page up or down. This order, rotation, and deletion are applied to the output file.")}</Text>
+          <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اضغط مطولًا على أي مكان في الصفحة ثم اسحبها لأعلى أو لأسفل (أو اسحب المقبض مباشرة). هذا الترتيب والتدوير والحذف يطبّق على الملف الناتج.", "Press and hold anywhere on a page, then drag it up or down (or drag the handle right away). This order, rotation, and deletion are applied to the output file.")}</Text>
           <ScrollView style={styles.pageEditList} contentContainerStyle={styles.pageEditRows} nestedScrollEnabled showsVerticalScrollIndicator>
             {pageEdits.map((edit, index) => (
               <WorkflowPageRow
@@ -967,7 +1075,7 @@ export function ToolWorkflowScreen({
           <Text style={[styles.headerHint, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "مساحة العمل · ملفاتك تبقى على جهازك", "Workspace · your files stay on this device")}</Text>
         </View>
         <View style={[styles.headerIcon, { backgroundColor: `${colors.primary}14` }]}>
-          <MaterialIcons name={kind === "print" ? "print" : kind === "id" ? "badge" : kind === "pages" ? "view-list" : kind === "numbering" ? "format-list-numbered" : kind === "extract" ? "photo-filter" : kind === "images" ? "photo-library" : "merge-type"} color={colors.primary} size={20} />
+          <MaterialIcons name={kind === "print" ? "print" : kind === "id" ? "badge" : kind === "pages" ? "view-list" : kind === "cut" ? "content-cut" : kind === "numbering" ? "format-list-numbered" : kind === "extract" ? "photo-filter" : kind === "images" ? "photo-library" : "merge-type"} color={colors.primary} size={20} />
         </View>
       </View>
 
@@ -1019,11 +1127,14 @@ export function ToolWorkflowScreen({
                     <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, "حفظ على الجهاز", "Save to device")}</Text>
                   </Pressable>
                 ) : null}
-                <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "مشاركة", "Share")} onPress={onShareResult} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.border, flexDirection: direction }]}>
+                {(activeResult.uris?.length ?? 0) > 1 ? null : <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "مشاركة", "Share")} onPress={onShareResult} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.border, flexDirection: direction }]}>
                   <MaterialIcons name="share" color={colors.muted} size={17} />
                   <Text style={[styles.secondaryButtonText, { color: colors.muted }]}>{tr(isArabic, "مشاركة", "Share")}</Text>
-                </Pressable>
+                </Pressable>}
               </View>
+            ) : null}
+            {(activeResult.uris?.length ?? 0) > 1 ? (
+              <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "الناتج أكثر من ملف: استخدم «حفظ على الجهاز» لحفظها كلها.", "The result has several files: use “Save to device” to save them all.")}</Text>
             ) : null}
           </View>
         ) : null}
@@ -1100,6 +1211,7 @@ const styles = StyleSheet.create({
   zoomBar: { minHeight: 40, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "flex-end", gap: 2, paddingHorizontal: 6 },
   zoomCounter: { flex: 1, fontSize: 10.5, fontWeight: "800" },
   zoomSpacer: { flex: 1 },
+  cropPager: { alignItems: "center", justifyContent: "center", gap: 12 },
   zoomButton: { width: 38, height: 36, alignItems: "center", justifyContent: "center" },
   zoomValue: { minWidth: 52, height: 36, alignItems: "center", justifyContent: "center" },
   zoomValueText: { fontSize: 11.5, fontWeight: "900" },

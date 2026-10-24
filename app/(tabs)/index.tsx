@@ -53,6 +53,15 @@ import {
   type PdfPageEdit,
 } from "@/shared/pdf-pages";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
+import {
+  displayRectToPdfBox,
+  displayedAspect,
+  isValidCropRect,
+  parsePageRanges,
+  rangePageIndexes,
+  type CropRect,
+} from "@/shared/pdf-cut";
+import { generatePdfPageThumbnail } from "@/shared/pdf-thumbnail";
 import { type WorkspaceKind } from "@/shared/workspaces";
 import {
   createIdCardLayout,
@@ -269,6 +278,14 @@ const copy = {
     previewContinue: "متابعة التنفيذ",
     previewOpenSelectedFile: "فتح معاينة الملف",
     previewPages: "معاينة ترتيب صفحات PDF",
+    previewCut: "قص ملف PDF",
+    cutSuccess: "تم قص الملف بنجاح",
+    cutFailed: "تعذر قص الملف",
+    cutHint: "تأكد من النطاقات أو من الجزء المحدد ثم أعد المحاولة.",
+    cutBadRanges: "نطاقات الصفحات غير صحيحة",
+    cutBadRangesHint: "اكتب مثل 1-3, 5 ضمن عدد صفحات الملف.",
+    cutBadArea: "حدّد جزءًا صالحًا من الصفحة",
+    cutBadAreaHint: "اسحب على الصفحة لتحديد الجزء المطلوب.",
     pageEditor: "ترتيب وحذف صفحات PDF",
     pageEditorHint: "اختر الصفحات بالترتيب المطلوب، واحذف أي رقم لا تريده",
     choosePageFile: "اختيار ملف PDF",
@@ -532,6 +549,14 @@ const copy = {
     previewContinue: "Continue",
     previewOpenSelectedFile: "Preview file",
     previewPages: "PDF page order preview",
+    previewCut: "Cut PDF",
+    cutSuccess: "File cut successfully",
+    cutFailed: "Could not cut the file",
+    cutHint: "Check the ranges or the selected area and try again.",
+    cutBadRanges: "Page ranges are not valid",
+    cutBadRangesHint: "Write something like 1-3, 5 within the file's page count.",
+    cutBadArea: "Select a valid part of the page",
+    cutBadAreaHint: "Drag on the page to select the part you need.",
     pageEditor: "Reorder & delete PDF pages",
     pageEditorHint:
       "Enter pages in the order you want; omitted numbers are removed",
@@ -854,6 +879,13 @@ function getNumberFont(
 
 // Load the PDF engine only when a PDF action is requested.
 // @ts-ignore pdf-lib does not publish declarations for this bundled entry.
+type CutFile = {
+  uri: string;
+  name: string;
+  pages: number;
+  sizes: { width: number; height: number; rotation: number }[];
+};
+const INITIAL_CROP_RECT: CropRect = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
 const loadPdfLib = () => import("pdf-lib/dist/pdf-lib.esm.js") as Promise<any>;
 const loadImagePicker = () => import("expo-image-picker");
 const loadNetwork = () => import("expo-network");
@@ -953,6 +985,13 @@ export default function HomeScreen() {
     pages: number;
   } | null>(null);
   const [pageOrder, setPageOrder] = useState("");
+  const [cutFile, setCutFile] = useState<CutFile | null>(null);
+  const [cutMode, setCutMode] = useState<"split" | "crop">("split");
+  const [cutRanges, setCutRanges] = useState("");
+  const [cropScope, setCropScope] = useState<"page" | "all">("page");
+  const [cropRect, setCropRect] = useState<CropRect>(INITIAL_CROP_RECT);
+  const [cropPageIndex, setCropPageIndex] = useState(0);
+  const [cropPreview, setCropPreview] = useState<{ uri: string | null; aspect: number } | null>(null);
   const [pageEdits, setPageEdits] = useState<PdfPageEdit[]>([]);
   const [selectedPageIndex, setSelectedPageIndex] = useState<number | null>(
     null,
@@ -996,6 +1035,13 @@ export default function HomeScreen() {
     setPageEdits([]);
     setPageOrder("");
     setSelectedPageIndex(null);
+    setCutFile(null);
+    setCutRanges("");
+    setCutMode("split");
+    setCropScope("page");
+    setCropRect(INITIAL_CROP_RECT);
+    setCropPageIndex(0);
+    setCropPreview(null);
     setPrintAsset(null);
     setPrintUri(null);
     setIdFrontUri(null);
@@ -1596,6 +1642,7 @@ export default function HomeScreen() {
       extract: t.previewExtract,
       numbering: t.previewNumbering,
       pages: t.previewPages,
+      cut: t.previewCut,
       id: t.previewId,
       print: t.previewPrint,
     })[kind];
@@ -1608,6 +1655,7 @@ export default function HomeScreen() {
     extract: "photo-filter",
     numbering: "format-list-numbered",
     pages: "view-list",
+    cut: "content-cut",
     id: "badge",
     print: "print",
   };
@@ -1617,6 +1665,7 @@ export default function HomeScreen() {
     extract: t.previewExtract,
     numbering: t.previewNumbering,
     pages: t.previewPages,
+    cut: t.previewCut,
     id: t.previewId,
     print: t.previewPrint,
   };
@@ -1751,6 +1800,7 @@ export default function HomeScreen() {
     if (previewKind === "extract") return executeExtractImages();
     if (previewKind === "numbering") return numberPdf();
     if (previewKind === "pages") return applyPageEditor();
+    if (previewKind === "cut") return executeCut();
     if (previewKind === "print") return continuePrint();
     if (previewKind === "id") return createIdCardPdf();
   };
@@ -1870,6 +1920,167 @@ export default function HomeScreen() {
     } catch {
       setOperationProgress(null);
       showError(t.pageEditFailed, t.pageEditorHint);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const chooseCutFile = async () => {
+    updateProgress(t.progressPreparing, 1);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) {
+        setOperationProgress(null);
+        return;
+      }
+      const asset = result.assets[0];
+      updateProgress(t.progressReading, 1);
+      const sourceBase64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      updateProgress(t.progressProcessing, 2);
+      const { PDFDocument } = await loadPdfLib();
+      const document = await PDFDocument.load(base64ToBytes(sourceBase64));
+      const sizes = document.getPages().map((page: any) => {
+        const box = page.getCropBox();
+        return {
+          width: box.width as number,
+          height: box.height as number,
+          rotation: page.getRotation().angle as number,
+        };
+      });
+      const pages = sizes.length;
+      const half = Math.ceil(pages / 2);
+      setCutFile({ uri: asset.uri, name: asset.name, pages, sizes });
+      setCutRanges(pages > 1 ? `1-${half}, ${half + 1}-${pages}` : "1");
+      setCropPageIndex(0);
+      setCropRect(INITIAL_CROP_RECT);
+      setSelectedFiles([asset.name]);
+      setToolResults((current) => ({ ...current, cut: undefined }));
+      setWorkspace("pdf");
+      setPreviewAsset({
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size,
+        mimeType: asset.mimeType,
+      });
+      setPreviewKind("cut");
+      setErrorMessage(null);
+      completeProgress();
+    } catch {
+      setOperationProgress(null);
+      showError(t.cutFailed, t.pickerCancelledHint);
+    }
+  };
+
+  useEffect(() => {
+    if (previewKind !== "cut" || cutMode !== "crop" || !cutFile) {
+      setCropPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const size = cutFile.sizes[cropPageIndex];
+    setCropPreview({
+      uri: null,
+      aspect: displayedAspect(size?.width ?? 0, size?.height ?? 0, size?.rotation ?? 0),
+    });
+    generatePdfPageThumbnail(cutFile.uri, cropPageIndex, {
+      quality: 85,
+      maxWidth: 1000,
+      maxHeight: 1400,
+    })
+      .then((thumbnail) => {
+        if (cancelled || !thumbnail || !(thumbnail.height > 0)) return;
+        setCropPreview({ uri: thumbnail.uri, aspect: thumbnail.width / thumbnail.height });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [previewKind, cutMode, cutFile, cropPageIndex]);
+
+  const executeCut = async () => {
+    if (!cutFile) {
+      showError(t.pageEditNeedFile, t.choosePageFile);
+      return;
+    }
+    const ranges = parsePageRanges(cutRanges, cutFile.pages);
+    if (cutMode === "split" && !ranges) {
+      showError(t.cutBadRanges, t.cutBadRangesHint);
+      return;
+    }
+    if (cutMode === "crop" && !isValidCropRect(cropRect)) {
+      showError(t.cutBadArea, t.cutBadAreaHint);
+      return;
+    }
+    setProcessing(true);
+    updateProgress(t.progressReading, 1);
+    try {
+      const sourceBase64 = await FileSystem.readAsStringAsync(cutFile.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      updateProgress(t.progressProcessing, 2);
+      const { PDFDocument } = await loadPdfLib();
+      const source = await PDFDocument.load(base64ToBytes(sourceBase64));
+      const folder = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      const stamp = Date.now();
+      const outputs: string[] = [];
+      const writePdf = async (document: any, fileName: string) => {
+        const outputUri = `${folder}${fileName}`;
+        await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await document.save()), {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        outputs.push(outputUri);
+      };
+      if (cutMode === "split" && ranges) {
+        for (const [index, range] of ranges.entries()) {
+          const output = await PDFDocument.create();
+          const copied = await output.copyPages(source, rangePageIndexes(range));
+          copied.forEach((page: any) => output.addPage(page));
+          updateProgress(t.progressSaving, 3);
+          await writePdf(output, `PrintPilot-Part${index + 1}-p${range.from}-${range.to}-${stamp}.pdf`);
+        }
+      } else {
+        const applyCrop = (page: any) => {
+          const box = displayRectToPdfBox(cropRect, page.getCropBox(), page.getRotation().angle);
+          page.setCropBox(box.x, box.y, box.width, box.height);
+          page.setMediaBox(box.x, box.y, box.width, box.height);
+        };
+        if (cropScope === "page") {
+          const output = await PDFDocument.create();
+          const [page] = await output.copyPages(source, [cropPageIndex]);
+          applyCrop(page);
+          output.addPage(page);
+          updateProgress(t.progressSaving, 3);
+          await writePdf(output, `PrintPilot-Crop-p${cropPageIndex + 1}-${stamp}.pdf`);
+        } else {
+          source.getPages().forEach(applyCrop);
+          updateProgress(t.progressSaving, 3);
+          await writePdf(source, `PrintPilot-Crop-${stamp}.pdf`);
+        }
+      }
+      const outputName = outputs[0].split("/").pop() ?? cutFile.name;
+      setTasks((current) => [`${t.cutSuccess}: ${outputName}`, ...current].slice(0, 4));
+      setSelectedFiles([outputName]);
+      setToolResults((current) => ({
+        ...current,
+        cut: {
+          title: t.cutSuccess,
+          detail: outputs.length > 1 ? `${outputs.length} ${isArabic ? "ملفات" : "files"}` : outputName,
+          uri: outputs[0],
+          uris: outputs,
+          mimeType: "application/pdf",
+        },
+      }));
+      setErrorMessage(null);
+      completeProgress();
+    } catch {
+      setOperationProgress(null);
+      showError(t.cutFailed, t.cutHint);
     } finally {
       setProcessing(false);
     }
@@ -2316,6 +2527,8 @@ export default function HomeScreen() {
           ? [{ ...numberingFile, mimeType: "application/pdf" }]
           : previewKind === "pages" && pageEditorFile
             ? [{ ...pageEditorFile, mimeType: "application/pdf" }]
+            : previewKind === "cut" && cutFile
+              ? [{ uri: cutFile.uri, name: cutFile.name, mimeType: "application/pdf" }]
             : previewKind === "print" && printAsset
               ? [printAsset]
               : [];
@@ -2327,6 +2540,9 @@ export default function HomeScreen() {
     imageFit,
     extractFormat,
     pageOrder,
+    cutMode,
+    cutRanges,
+    cropScope,
     numberFormat,
     numberSize,
     numberMargin,
@@ -2361,6 +2577,9 @@ export default function HomeScreen() {
       case "imageFit": setImageFit(value as typeof imageFit); break;
       case "extractFormat": setExtractFormat(value as typeof extractFormat); break;
       case "pageOrder": setPageOrder(String(value)); break;
+      case "cutMode": setCutMode(value as typeof cutMode); break;
+      case "cutRanges": setCutRanges(String(value)); break;
+      case "cropScope": setCropScope(value as typeof cropScope); break;
       case "numberFormat": setNumberFormat(String(value)); break;
       case "numberSize": setNumberSize(String(value)); break;
       case "numberMargin": setNumberMargin(String(value)); break;
@@ -2397,6 +2616,7 @@ export default function HomeScreen() {
     if (previewKind === "extract") return extractImages();
     if (previewKind === "numbering") return chooseNumberingFile();
     if (previewKind === "pages") return choosePageEditorPdf();
+    if (previewKind === "cut") return chooseCutFile();
     if (previewKind === "print") return openPrintDialog();
   };
   const canRunWorkflow =
@@ -2410,6 +2630,13 @@ export default function HomeScreen() {
             ? Boolean(numberingFile)
             : previewKind === "pages"
               ? Boolean(pageEditorFile && pageEdits.length)
+              : previewKind === "cut"
+                ? Boolean(
+                    cutFile &&
+                      (cutMode === "crop"
+                        ? isValidCropRect(cropRect)
+                        : parsePageRanges(cutRanges, cutFile.pages)),
+                  )
               : previewKind === "id"
                 ? hasBothIdFaces(idFrontUri, idBackUri)
                 : previewKind === "print"
@@ -2492,8 +2719,13 @@ export default function HomeScreen() {
           backUri={idBackUri}
           frontRotation={idFrontRotation}
           backRotation={idBackRotation}
-          pageCount={previewKind === "pages" ? pageEditorFile?.pages : numberingFile?.pages}
+          pageCount={previewKind === "pages" ? pageEditorFile?.pages : previewKind === "cut" ? cutFile?.pages : numberingFile?.pages}
           pageEdits={previewKind === "pages" ? pageEdits : []}
+          cropRect={cropRect}
+          onCropRectChange={setCropRect}
+          cropPageIndex={cropPageIndex}
+          onCropPageChange={setCropPageIndex}
+          cropPreview={cropPreview}
           selectedPageIndex={selectedPageIndex}
           settings={workflowSettings}
           result={toolResults[previewKind] ?? null}

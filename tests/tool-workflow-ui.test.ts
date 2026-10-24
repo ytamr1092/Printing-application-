@@ -537,6 +537,8 @@ describe("tool workflow UI: separate save and share, isolated tools", () => {
       "setPrintAsset(null)",
       "setIdFrontUri(null)",
       "setIdBackUri(null)",
+      "setCutFile(null)",
+      "setCropPreview(null)",
       "setToolResults({})",
     ]) {
       expect(closeSource).toContain(call);
@@ -548,5 +550,163 @@ describe("tool workflow UI: separate save and share, isolated tools", () => {
     expect(backSource).toContain("closeTool()");
     expect(backSource).toContain("ToastAndroid.show(t.pressBackAgain");
     expect(backSource).toContain("< 2000");
+  });
+});
+
+describe("tool workflow UI: drag from anywhere and the cut tool", () => {
+  const press = (node: ReactTestInstance) => (node.props.onClick ?? node.props.onPress)();
+  const touch = (x: number, y: number) => ({ nativeEvent: { pageX: x, pageY: y } });
+
+  it("lets a file row be dragged from anywhere after a press-and-hold", () => {
+    vi.useFakeTimers();
+    try {
+      const props = {
+        ...workflowProps(true),
+        kind: "images" as const,
+        files: [
+          { uri: "file:///one.jpg", name: "one.jpg", mimeType: "image/jpeg" },
+          { uri: "file:///two.png", name: "two.png", mimeType: "image/png" },
+        ],
+        previewFile: { uri: "file:///one.jpg", name: "one.jpg", mimeType: "image/jpeg" },
+      };
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(React.createElement(ToolWorkflowScreen, props));
+      });
+      const row = renderer.root.findAllByProps({ testID: "workflow-file-row-0" })[0];
+
+      // Moving the finger before the hold finishes is a scroll, not a drag.
+      act(() => row.props.onTouchStart(touch(10, 10)));
+      act(() => row.props.onTouchMove(touch(10, 60)));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(row.props.onMoveShouldSetPanResponder()).toBe(false);
+      act(() => row.props.onTouchEnd());
+
+      // Holding still arms the drag; then the row claims the gesture and moves.
+      act(() => row.props.onTouchStart(touch(10, 10)));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(row.props.onMoveShouldSetPanResponder()).toBe(true);
+      expect(row.props.onMoveShouldSetPanResponderCapture()).toBe(true);
+      expect(row.props.onStartShouldSetPanResponder()).toBe(false);
+      act(() => {
+        row.props.onPanResponderGrant();
+        row.props.onPanResponderMove({}, { dy: 70 });
+      });
+      expect(props.onMoveFile).toHaveBeenCalledWith(0, 1);
+      act(() => row.props.onPanResponderRelease());
+      expect(row.props.onMoveShouldSetPanResponder()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  const cutProps = (mode: "split" | "crop") => ({
+    ...workflowProps(true),
+    kind: "cut" as const,
+    title: "قص ملف PDF",
+    files: [firstFile],
+    previewFile: firstFile,
+    pageCount: 6,
+    settings: { cutMode: mode, cutRanges: "1-3, 4-6", cropScope: "page" },
+    onSettingChange: vi.fn(),
+    onCropRectChange: vi.fn(),
+    onCropPageChange: vi.fn(),
+    cropPreview: { uri: null, aspect: 0.75 },
+  });
+
+  it("shows how many files a split will create and the one-file-per-page shortcut", () => {
+    const props = cutProps("split");
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    expect(readText(renderer)).toContain("سيتم إنشاء 2 ملف");
+    const each = renderer.root.findAllByProps({ accessibilityLabel: "كل صفحة في ملف مستقل" }).filter((node) => node.type === "button")[0];
+    act(() => press(each));
+    expect(props.onSettingChange).toHaveBeenCalledWith("cutRanges", "1, 2, 3, 4, 5, 6");
+    expect(readText(renderer)).toContain("قص الملف");
+  });
+
+  it("flags invalid split ranges", () => {
+    const props = { ...cutProps("split"), settings: { cutMode: "split", cutRanges: "1-9" } };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    expect(readText(renderer)).toContain("اكتب نطاقات صحيحة");
+  });
+
+  it("crop mode lets the frame move from anywhere inside it and be redrawn from anywhere", () => {
+    const props = { ...cutProps("crop"), cropRect: { x: 0.2, y: 0.2, w: 0.4, h: 0.4 } };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    // The editor measures itself; give it a width so the page and frame render.
+    const editor = renderer.root.findAllByProps({ testID: "crop-editor" })[0];
+    act(() => editor.props.onLayout({ nativeEvent: { layout: { width: 300 } } }));
+    const body = renderer.root.findAllByProps({ testID: "crop-selection-body" })[0];
+    expect(body.props.onStartShouldSetPanResponder()).toBe(true);
+    act(() => {
+      body.props.onPanResponderGrant();
+      body.props.onPanResponderMove({}, { dx: 30, dy: 0 });
+    });
+    expect(props.onCropRectChange).toHaveBeenCalled();
+    const moved = props.onCropRectChange.mock.calls.at(-1)![0];
+    expect(moved.x).toBeGreaterThan(0.2);
+    expect(moved.w).toBeCloseTo(0.4, 6);
+
+    const corner = renderer.root.findAllByProps({ testID: "crop-handle-br" })[0];
+    act(() => {
+      corner.props.onPanResponderGrant();
+      corner.props.onPanResponderMove({}, { dx: 30, dy: 30 });
+    });
+    const resized = props.onCropRectChange.mock.calls.at(-1)![0];
+    expect(resized.x).toBeCloseTo(0.2, 6);
+    expect(resized.w).toBeGreaterThan(0.4);
+
+    const page = renderer.root.findAllByProps({ accessibilityLabel: "منطقة القص" }).find((node) => typeof node.props.onPanResponderGrant === "function")!;
+    act(() => {
+      page.props.onPanResponderGrant({ nativeEvent: { locationX: 30, locationY: 40 } });
+      page.props.onPanResponderMove({}, { dx: 90, dy: 80 });
+    });
+    const drawn = props.onCropRectChange.mock.calls.at(-1)![0];
+    expect(drawn.x).toBeCloseTo(0.1, 6);
+    expect(drawn.w).toBeCloseTo(0.3, 6);
+  });
+
+  it("crop mode offers whole-page reset, page navigation and a sensitive-data note", () => {
+    const props = cutProps("crop");
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    const whole = renderer.root.findAllByProps({ accessibilityLabel: "تحديد الصفحة كلها" }).filter((node) => node.type === "button")[0];
+    act(() => press(whole));
+    expect(props.onCropRectChange).toHaveBeenCalledWith({ x: 0, y: 0, w: 1, h: 1 });
+    const next = renderer.root.findAllByProps({ accessibilityLabel: "الصفحة التالية" }).filter((node) => node.type === "button")[0];
+    act(() => press(next));
+    expect(props.onCropPageChange).toHaveBeenCalledWith(1);
+    expect(readText(renderer)).toContain("الصفحة 1 من 6");
+    expect(readText(renderer)).toContain("تبقى داخل الملف");
+  });
+
+  it("hides Share when a result has several files and points to Save", () => {
+    const props = {
+      ...cutProps("split"),
+      result: { title: "تم", uri: "file:///a.pdf", uris: ["file:///a.pdf", "file:///b.pdf"], mimeType: "application/pdf" },
+      onSaveResult: vi.fn(),
+    };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "مشاركة" })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "حفظ على الجهاز" }).length).toBeGreaterThan(0);
+    expect(readText(renderer)).toContain("حفظ على الجهاز");
   });
 });
