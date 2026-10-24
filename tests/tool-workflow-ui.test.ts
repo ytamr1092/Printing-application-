@@ -401,7 +401,7 @@ describe("tool workflow UI", () => {
   it("keeps Android back inside the app and makes keyboard-covered fields scrollable", () => {
     const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
     const screenSource = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
-    expect(appSource).toMatch(/hardwareBackPress[\s\S]*?if \(previewKind\)[\s\S]*?setPreviewKind\(null\)[\s\S]*?if \(workspace !== "home"\)[\s\S]*?setWorkspace\("home"\)[\s\S]*?return false/);
+    expect(appSource).toMatch(/hardwareBackPress[\s\S]*?if \(previewKind\)[\s\S]*?closeTool\(\)[\s\S]*?if \(workspace !== "home"\)[\s\S]*?setWorkspace\("home"\)[\s\S]*?return false/);
     expect(appSource).toContain("keyboardDidShow");
     expect(appSource).toContain("automaticallyAdjustKeyboardInsets");
     expect(screenSource).toContain('keyboardShouldPersistTaps="handled"');
