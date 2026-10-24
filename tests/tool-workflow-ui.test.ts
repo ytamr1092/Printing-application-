@@ -416,7 +416,7 @@ describe("tool workflow UI", () => {
     const screenSource = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
     expect(appSource).not.toMatch(/<Modal\b/);
     expect(screenSource).not.toMatch(/<Modal\b|BottomSheet/);
-    expect(appSource).toMatch(/onBack=\{\(\) => setPreviewKind\(null\)\}/);
+    expect(appSource).toContain("onBack={closeTool}");
   });
 });
 
