@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "expo-router";
 import {
   Alert,
@@ -15,6 +15,7 @@ import {
   Switch,
   Text,
   TextInput,
+  ToastAndroid,
   View,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -176,6 +177,10 @@ const copy = {
     mergeSuccess: "تم دمج ملفات PDF بنجاح",
     mergeFailed: "تعذر دمج ملفات PDF",
     shareResult: "مشاركة الملف الناتج",
+    saveResultDone: "تم حفظ الملف في المجلد الذي اخترته",
+    saveResultFailed: "تعذر حفظ الملف",
+    saveResultHint: "اختر مجلدًا وامنح الإذن ثم أعد المحاولة.",
+    pressBackAgain: "اضغط رجوع مرة أخرى للخروج من التطبيق",
     imagesNeedOne: "اختر صورة واحدة على الأقل.",
     imagesSuccess: "تم تحويل الصور إلى PDF بنجاح",
     imagesFailed: "تعذر تحويل الصور إلى PDF",
@@ -435,6 +440,10 @@ const copy = {
     mergeSuccess: "PDF files merged successfully",
     mergeFailed: "PDF merge failed",
     shareResult: "Share the result",
+    saveResultDone: "File saved to the folder you chose",
+    saveResultFailed: "Could not save the file",
+    saveResultHint: "Choose a folder, grant access, and try again.",
+    pressBackAgain: "Press back again to exit the app",
     imagesNeedOne: "Choose at least one image.",
     imagesSuccess: "Images converted to PDF successfully",
     imagesFailed: "Image to PDF conversion failed",
@@ -973,6 +982,30 @@ export default function HomeScreen() {
       hide.remove();
     };
   }, []);
+  const lastBackPress = useRef(0);
+  // Every tool starts clean and leaves nothing behind: files, previews and
+  // results belong to the tool that created them.
+  const closeTool = () => {
+    setPreviewKind(null);
+    setPendingAssets([]);
+    setSelectedFiles([]);
+    setPreviewAsset(null);
+    setExtractFile(null);
+    setNumberingFile(null);
+    setPageEditorFile(null);
+    setPageEdits([]);
+    setPageOrder("");
+    setSelectedPageIndex(null);
+    setPrintAsset(null);
+    setPrintUri(null);
+    setIdFrontUri(null);
+    setIdBackUri(null);
+    setIdFrontRotation(0);
+    setIdBackRotation(0);
+    setToolResults({});
+    setErrorMessage(null);
+    setOperationProgress(null);
+  };
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
@@ -982,18 +1015,23 @@ export default function HomeScreen() {
           return true;
         }
         if (previewKind) {
-          setPreviewKind(null);
+          closeTool();
           return true;
         }
         if (workspace !== "home") {
           setWorkspace("home");
           return true;
         }
-        return false;
+        // On the home screen, back only exits after a second press.
+        const now = Date.now();
+        if (now - lastBackPress.current < 2000) return false;
+        lastBackPress.current = now;
+        if (Platform.OS === "android") ToastAndroid.show(t.pressBackAgain, ToastAndroid.SHORT);
+        return true;
       },
     );
     return () => subscription.remove();
-  }, [keyboardShown, previewKind, workspace]);
+  }, [keyboardShown, previewKind, workspace, t]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
   const completeProgress = () =>
@@ -2212,6 +2250,7 @@ export default function HomeScreen() {
           title: t.extractSuccess,
           detail: `${outputUris.length} ${outputType}`,
           uri: outputUris[0],
+          uris: outputUris,
           mimeType: isPng ? "image/png" : "image/jpeg",
         },
       }));
@@ -2376,6 +2415,50 @@ export default function HomeScreen() {
                 : previewKind === "print"
                   ? Boolean(printUri)
                   : false;
+  const saveWorkflowResult = async () => {
+    if (!previewKind) return;
+    const result = toolResults[previewKind];
+    if (!result?.uri) return;
+    const uris = result.uris?.length ? result.uris : [result.uri];
+    const mimeType = result.mimeType ?? "application/pdf";
+    try {
+      if (Platform.OS === "android") {
+        const access =
+          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!access.granted) return;
+        for (const uri of uris) {
+          const fileName = (uri.split("/").pop() ?? `PrintPilot-${Date.now()}`).replace(/\.[^.]+$/, "");
+          const base64 = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const target = await FileSystem.StorageAccessFramework.createFileAsync(
+            access.directoryUri,
+            fileName,
+            mimeType,
+          );
+          await FileSystem.writeAsStringAsync(target, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        }
+        Alert.alert(t.saveResultDone);
+      } else if (Platform.OS === "web") {
+        for (const uri of uris) {
+          const blob = await (await fetch(uri)).blob();
+          const webDocument = (globalThis as any).document;
+          const link = webDocument.createElement("a");
+          link.href = (globalThis as any).URL.createObjectURL(blob);
+          link.download = uri.split("/").pop() ?? "PrintPilot-file";
+          link.click();
+          (globalThis as any).URL.revokeObjectURL(link.href);
+        }
+      } else {
+        // iOS has no folder picker: the share sheet's "Save to Files" saves it.
+        await openUriOutsideApp(uris[0], mimeType);
+      }
+    } catch {
+      showError(t.saveResultFailed, t.saveResultHint);
+    }
+  };
   const shareWorkflowResult = () => {
     if (!previewKind) return;
     const result = toolResults[previewKind];
@@ -2418,7 +2501,7 @@ export default function HomeScreen() {
           processing={processing}
           idBusy={idBusy}
           canRun={canRunWorkflow}
-          onBack={() => setPreviewKind(null)}
+          onBack={closeTool}
           onPickFiles={(source) => { void pickWorkflowFiles(source); }}
           onPickIdFace={(side, source = "library") => { void chooseIdFace(side, source); }}
           onRotateIdFace={rotateIdFace}
@@ -2436,6 +2519,7 @@ export default function HomeScreen() {
           onRemoveFile={removePendingAsset}
           onSettingChange={changeWorkflowSetting}
           onRun={() => { void continuePreviewAction(); }}
+          onSaveResult={() => { void saveWorkflowResult(); }}
           onShareResult={shareWorkflowResult}
           onDismissError={() => setErrorMessage(null)}
         />

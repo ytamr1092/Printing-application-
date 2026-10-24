@@ -115,7 +115,7 @@ function readText(renderer: ReactTestRenderer) {
 }
 
 describe("tool workflow UI", () => {
-  it("opens a titled full-screen tool and returns without losing the selected files", () => {
+  it("opens a titled full-screen tool and returns to the previous screen", () => {
     function NavigationHarness() {
       const [opened, setOpened] = useState(false);
       const [files] = useState([firstFile, secondFile]);
@@ -146,7 +146,7 @@ describe("tool workflow UI", () => {
     expect(readText(renderer)).toContain("contract.pdf");
     expect(readText(renderer)).toContain("appendix.pdf");
 
-    const back = renderer.root.findByProps({ accessibilityLabel: "رجوع مع الاحتفاظ بالملفات" });
+    const back = renderer.root.findByProps({ accessibilityLabel: "رجوع" });
     act(() => (back.props.onPress ?? back.props.onClick)());
     act(() => {
       renderer.root.findByProps({ "aria-label": "open-merge-tool" }).props.onClick();
@@ -485,5 +485,68 @@ describe("tool workflow UI: selection, zoom and drag-only ordering", () => {
     expect(renderer.root.findAllByProps({ accessibilityLabel: "تحريك لأعلى" })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ accessibilityLabel: "تحريك لأسفل" })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ accessibilityLabel: "اسحب لتحريك الملف" }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("tool workflow UI: separate save and share, isolated tools", () => {
+  const press = (node: ReactTestInstance) => (node.props.onClick ?? node.props.onPress)();
+  const resultProps = () => ({
+    ...workflowProps(true),
+    result: { title: "تم الدمج", uri: "file:///out/merged.pdf", mimeType: "application/pdf" },
+    onSaveResult: vi.fn(),
+    onShareResult: vi.fn(),
+  });
+
+  it("offers a Save button and a Share button that do different things", () => {
+    const props = resultProps();
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    const save = renderer.root.findAllByProps({ accessibilityLabel: "حفظ على الجهاز" }).filter((node) => node.type === "button")[0];
+    const share = renderer.root.findAllByProps({ accessibilityLabel: "مشاركة" }).filter((node) => node.type === "button")[0];
+    expect(save).toBeTruthy();
+    expect(share).toBeTruthy();
+    act(() => press(save));
+    expect(props.onSaveResult).toHaveBeenCalledTimes(1);
+    expect(props.onShareResult).not.toHaveBeenCalled();
+    act(() => press(share));
+    expect(props.onShareResult).toHaveBeenCalledTimes(1);
+    expect(props.onSaveResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows neither button before a result exists", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, { ...workflowProps(true), onSaveResult: vi.fn() }));
+    });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "حفظ على الجهاز" })).toHaveLength(0);
+  });
+
+  it("clears each tool's files, preview and results when leaving it, and asks twice before exiting", () => {
+    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const closeStart = appSource.indexOf("const closeTool = () => {");
+    const closeSource = appSource.slice(closeStart, appSource.indexOf("useEffect(", closeStart));
+    for (const call of [
+      "setPreviewKind(null)",
+      "setPendingAssets([])",
+      "setPreviewAsset(null)",
+      "setExtractFile(null)",
+      "setNumberingFile(null)",
+      "setPageEditorFile(null)",
+      "setPrintAsset(null)",
+      "setIdFrontUri(null)",
+      "setIdBackUri(null)",
+      "setToolResults({})",
+    ]) {
+      expect(closeSource).toContain(call);
+    }
+    expect(appSource).toContain("onBack={closeTool}");
+    expect(appSource).not.toMatch(/onBack=\{\(\) => setPreviewKind\(null\)\}/);
+    const backStart = appSource.indexOf('"hardwareBackPress"');
+    const backSource = appSource.slice(backStart, backStart + 900);
+    expect(backSource).toContain("closeTool()");
+    expect(backSource).toContain("ToastAndroid.show(t.pressBackAgain");
+    expect(backSource).toContain("< 2000");
   });
 });
