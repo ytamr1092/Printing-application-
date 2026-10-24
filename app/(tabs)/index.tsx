@@ -877,8 +877,6 @@ function getNumberFont(
   return StandardFonts[bold ? "HelveticaBold" : "Helvetica"];
 }
 
-// Load the PDF engine only when a PDF action is requested.
-// @ts-ignore pdf-lib does not publish declarations for this bundled entry.
 type CutFile = {
   uri: string;
   name: string;
@@ -886,6 +884,9 @@ type CutFile = {
   sizes: { width: number; height: number; rotation: number }[];
 };
 const INITIAL_CROP_RECT: CropRect = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+
+// Load the PDF engine only when a PDF action is requested.
+// @ts-ignore pdf-lib does not publish declarations for this bundled entry.
 const loadPdfLib = () => import("pdf-lib/dist/pdf-lib.esm.js") as Promise<any>;
 const loadImagePicker = () => import("expo-image-picker");
 const loadNetwork = () => import("expo-network");
