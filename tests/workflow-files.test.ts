@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  deleteSelectedPages,
+  keepSelectedPages,
+  rotateSelectedPages,
+  type PdfPageEdit,
+} from "../shared/pdf-pages";
+import {
   dragTargetIndex,
+  gridTargetIndex,
   pruneSelection,
   rotateSelectedFiles,
   stepPreviewZoom,
@@ -55,5 +62,41 @@ describe("preview zoom", () => {
     expect(stepPreviewZoom(1, -1)).toBe(0.75);
     expect(stepPreviewZoom(0.5, -1)).toBe(0.5);
     expect(stepPreviewZoom(3, 1)).toBe(3);
+  });
+});
+
+describe("grid drag reordering", () => {
+  // 2 columns, 100 x 150 cells, 5 items: rows [0 1] [2 3] [4]
+  it("maps a finger movement to the grid slot under it", () => {
+    expect(gridTargetIndex(0, 110, 0, 2, 100, 150, 5)).toBe(1);
+    expect(gridTargetIndex(0, 0, 160, 2, 100, 150, 5)).toBe(2);
+    expect(gridTargetIndex(0, 110, 160, 2, 100, 150, 5)).toBe(3);
+    expect(gridTargetIndex(3, -110, -160, 2, 100, 150, 5)).toBe(0);
+  });
+
+  it("stays inside the grid, including the short last row", () => {
+    expect(gridTargetIndex(0, 999, 999, 2, 100, 150, 5)).toBe(4);
+    expect(gridTargetIndex(4, 999, 0, 2, 100, 150, 5)).toBe(4);
+    expect(gridTargetIndex(2, -999, -999, 2, 100, 150, 5)).toBe(0);
+    expect(gridTargetIndex(1, 20, 20, 2, 100, 150, 5)).toBe(1);
+  });
+
+  it("is safe for invalid input", () => {
+    expect(gridTargetIndex(0, 10, 10, 2, 100, 150, 0)).toBe(0);
+    expect(gridTargetIndex(1, Number.NaN, 0, 2, 100, 150, 5)).toBe(1);
+    expect(gridTargetIndex(1, 10, 10, 2, 0, 150, 5)).toBe(1);
+    expect(gridTargetIndex(1, 10, 10, 0, 100, 150, 5)).toBe(0);
+  });
+});
+
+describe("selected page operations", () => {
+  const pages: PdfPageEdit[] = [1, 2, 3, 4].map((sourcePage) => ({ sourcePage, rotation: 0 }));
+
+  it("rotates, deletes and extracts only the selected pages", () => {
+    expect(rotateSelectedPages(pages, [2, 4]).map((page) => page.rotation)).toEqual([0, 90, 0, 90]);
+    expect(deleteSelectedPages(pages, [1, 3]).map((page) => page.sourcePage)).toEqual([2, 4]);
+    expect(keepSelectedPages(pages, [3, 1]).map((page) => page.sourcePage)).toEqual([1, 3]);
+    expect(keepSelectedPages(pages, [])).toHaveLength(4);
+    expect(pages.every((page) => page.rotation === 0)).toBe(true);
   });
 });

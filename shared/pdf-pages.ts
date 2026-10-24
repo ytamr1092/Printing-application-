@@ -85,3 +85,35 @@ export function pageOrientation(
 export function togglePageOrientation(rotation: PageRotation): PageRotation {
   return rotation === 0 || rotation === 180 ? 90 : 0;
 }
+
+/** Rotates every selected page 90 degrees, keeping order. */
+export function rotateSelectedPages(
+  edits: PdfPageEdit[],
+  selectedPages: readonly number[],
+): PdfPageEdit[] {
+  const selected = new Set(selectedPages);
+  return edits.map((edit) =>
+    selected.has(edit.sourcePage)
+      ? { ...edit, rotation: rotatePage(edit.rotation) }
+      : edit,
+  );
+}
+
+/** Removes every selected page. */
+export function deleteSelectedPages(
+  edits: PdfPageEdit[],
+  selectedPages: readonly number[],
+): PdfPageEdit[] {
+  const selected = new Set(selectedPages);
+  return edits.filter((edit) => !selected.has(edit.sourcePage));
+}
+
+/** Keeps only the selected pages (extract); returns all when nothing is selected. */
+export function keepSelectedPages(
+  edits: PdfPageEdit[],
+  selectedPages: readonly number[],
+): PdfPageEdit[] {
+  if (!selectedPages.length) return edits.slice();
+  const selected = new Set(selectedPages);
+  return edits.filter((edit) => selected.has(edit.sourcePage));
+}
