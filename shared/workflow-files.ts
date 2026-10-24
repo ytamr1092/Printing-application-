@@ -97,3 +97,39 @@ export function stepPreviewZoom(current: number, direction: -1 | 1): number {
   }
   return steps[Math.min(Math.max(nearest + direction, 0), steps.length - 1)];
 }
+
+/**
+ * Slot a dragged grid cell should occupy after the finger moved (dx, dy) from
+ * where the drag started. `cols` cells per row, each `cellWidth` x `cellHeight`.
+ */
+export function gridTargetIndex(
+  startIndex: number,
+  dx: number,
+  dy: number,
+  cols: number,
+  cellWidth: number,
+  cellHeight: number,
+  total: number,
+): number {
+  if (total <= 0 || !(cols >= 1)) return 0;
+  const start = Math.min(Math.max(Math.trunc(startIndex) || 0, 0), total - 1);
+  if (
+    !Number.isFinite(dx) ||
+    !Number.isFinite(dy) ||
+    !(cellWidth > 0) ||
+    !(cellHeight > 0)
+  ) {
+    return start;
+  }
+  const columns = Math.trunc(cols);
+  const rows = Math.ceil(total / columns);
+  const col = Math.min(
+    Math.max(Math.round((start % columns) + dx / cellWidth), 0),
+    columns - 1,
+  );
+  const row = Math.min(
+    Math.max(Math.round(Math.floor(start / columns) + dy / cellHeight), 0),
+    rows - 1,
+  );
+  return Math.min(row * columns + col, total - 1);
+}

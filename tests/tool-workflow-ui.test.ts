@@ -60,6 +60,7 @@ vi.mock("@/components/pdf-document-preview", async () => {
   };
 });
 
+import { PageGridEditor } from "../components/page-grid-editor";
 import { ToolWorkflowScreen } from "../components/tool-workflow-screen";
 
 const firstFile = {
@@ -708,5 +709,180 @@ describe("tool workflow UI: drag from anywhere and the cut tool", () => {
     expect(renderer.root.findAllByProps({ accessibilityLabel: "مشاركة" })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ accessibilityLabel: "حفظ على الجهاز" }).length).toBeGreaterThan(0);
     expect(readText(renderer)).toContain("حفظ على الجهاز");
+  });
+});
+
+describe("page grid window", () => {
+  const press = (node: ReactTestInstance) => (node.props.onClick ?? node.props.onPress)();
+  const touch = (x: number, y: number) => ({ nativeEvent: { pageX: x, pageY: y } });
+  const items = ["a", "b", "c", "d"].map((key, index) => ({
+    key,
+    label: String(index + 1),
+    thumbUri: key === "a" ? "file:///thumb-a.png" : null,
+    rotation: key === "c" ? 90 : 0,
+  }));
+  const gridProps = (overrides: Record<string, unknown> = {}) => ({
+    title: "معاينة ترتيب صفحات PDF",
+    items,
+    selected: [] as string[],
+    isArabic: true,
+    onToggle: vi.fn(),
+    onSelectAll: vi.fn(),
+    onClear: vi.fn(),
+    onMove: vi.fn(),
+    onRotateSelected: vi.fn(),
+    onDeleteSelected: vi.fn(),
+    onClose: vi.fn(),
+    ...overrides,
+  });
+  const render = (props: ReturnType<typeof gridProps>) => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(PageGridEditor, props));
+    });
+    return renderer;
+  };
+  const buttonByLabel = (renderer: ReactTestRenderer, label: string) =>
+    renderer.root.findAllByProps({ accessibilityLabel: label }).filter((node) => node.type === "button")[0];
+
+  it("shows every page and how many are selected", () => {
+    const renderer = render(gridProps({ selected: ["b"] }));
+    expect(renderer.root.findAllByProps({ testID: "page-grid-editor" }).length).toBeGreaterThan(0);
+    for (let i = 0; i < items.length; i += 1) {
+      expect(renderer.root.findAllByProps({ testID: `grid-cell-${i}` }).length).toBeGreaterThan(0);
+    }
+    expect(readText(renderer)).toContain("تم تحديد 1 من 4 من الصفحات");
+    expect(renderer.root.findAllByType("img").some((node: ReactTestInstance) => node.props.source?.uri === "file:///thumb-a.png")).toBe(true);
+  });
+
+  it("selects a page with a tap and offers select all / clear", () => {
+    const props = gridProps();
+    const renderer = render(props);
+    act(() => press(buttonByLabel(renderer, "الصفحة 2")));
+    expect(props.onToggle).toHaveBeenCalledWith("b");
+    act(() => press(buttonByLabel(renderer, "تحديد الكل")));
+    expect(props.onSelectAll).toHaveBeenCalled();
+
+    const all = gridProps({ selected: ["a", "b", "c", "d"] });
+    const full = render(all);
+    act(() => press(buttonByLabel(full, "إلغاء تحديد الكل")));
+    expect(all.onClear).toHaveBeenCalled();
+  });
+
+  it("disables the actions until something is selected, then runs them", () => {
+    const empty = render(gridProps());
+    expect(buttonByLabel(empty, "حذف").props.disabled).toBe(true);
+    expect(buttonByLabel(empty, "تدوير").props.disabled).toBe(true);
+
+    const extract = vi.fn();
+    const props = gridProps({ selected: ["a", "b"], onExtractSelected: extract });
+    const renderer = render(props);
+    act(() => press(buttonByLabel(renderer, "حذف")));
+    act(() => press(buttonByLabel(renderer, "تدوير")));
+    act(() => press(buttonByLabel(renderer, "استخراج")));
+    expect(props.onDeleteSelected).toHaveBeenCalledTimes(1);
+    expect(props.onRotateSelected).toHaveBeenCalledTimes(1);
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect(buttonByLabel(empty, "استخراج")).toBeUndefined();
+  });
+
+  it("reorders by press-and-hold then dragging a page across the grid", () => {
+    vi.useFakeTimers();
+    try {
+      const props = gridProps({ isArabic: false });
+      const renderer = render(props);
+      const cell = renderer.root.findAllByProps({ testID: "grid-cell-0" })[0];
+
+      // A quick tap never arms the drag.
+      act(() => cell.props.onTouchStart(touch(5, 5)));
+      act(() => cell.props.onTouchEnd());
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(cell.props.onMoveShouldSetPanResponder()).toBe(false);
+
+      // Hold, then drag one column right and one row down (two columns, 195px wide).
+      act(() => cell.props.onTouchStart(touch(5, 5)));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(cell.props.onMoveShouldSetPanResponder()).toBe(true);
+      act(() => {
+        cell.props.onPanResponderGrant();
+        cell.props.onPanResponderMove({}, { dx: 200, dy: 0 });
+      });
+      expect(props.onMove).toHaveBeenCalledWith(0, 1);
+      act(() => {
+        cell.props.onPanResponderMove({}, { dx: 200, dy: 310 });
+      });
+      expect(props.onMove).toHaveBeenLastCalledWith(0, 3);
+      act(() => cell.props.onPanResponderRelease());
+      expect(cell.props.onMoveShouldSetPanResponder()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("mirrors horizontal drags in the right-to-left layout", () => {
+    vi.useFakeTimers();
+    try {
+      const props = gridProps({ isArabic: true });
+      const renderer = render(props);
+      const cell = renderer.root.findAllByProps({ testID: "grid-cell-0" })[0];
+      act(() => cell.props.onTouchStart(touch(5, 5)));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      act(() => {
+        cell.props.onPanResponderGrant();
+        // In Arabic the first page is on the right, so the next one is to its left.
+        cell.props.onPanResponderMove({}, { dx: -200, dy: 0 });
+      });
+      expect(props.onMove).toHaveBeenCalledWith(0, 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is opened from the preview for images and pages, and closes back", () => {
+    const open = vi.fn();
+    const images = [
+      { uri: "file:///one.jpg", name: "one.jpg", mimeType: "image/jpeg" },
+      { uri: "file:///two.png", name: "two.png", mimeType: "image/png" },
+    ];
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, { ...workflowProps(true), kind: "images" as const, files: images, previewFile: images[0], onOpenPageGrid: open }));
+    });
+    act(() => press(buttonByLabel(renderer, "عرض كل الصور وتعديلها")));
+    expect(open).toHaveBeenCalledTimes(1);
+
+    let pages!: ReactTestRenderer;
+    act(() => {
+      pages = create(React.createElement(ToolWorkflowScreen, { ...workflowProps(true), kind: "pages" as const, files: [firstFile], previewFile: firstFile, pageEdits: [{ sourcePage: 1, rotation: 0 as const }], onOpenPageGrid: open }));
+    });
+    expect(pages.root.findAllByProps({ accessibilityLabel: "عرض كل الصفحات وتعديلها" }).length).toBeGreaterThan(0);
+    let merge!: ReactTestRenderer;
+    act(() => {
+      merge = create(React.createElement(ToolWorkflowScreen, { ...workflowProps(true), onOpenPageGrid: open }));
+    });
+    expect(merge.root.findAllByProps({ accessibilityLabel: "عرض كل الصفحات وتعديلها" })).toHaveLength(0);
+
+    const props = gridProps();
+    const grid = render(props);
+    act(() => press(buttonByLabel(grid, "إغلاق نافذة الصفحات")));
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it("is wired into the app: the phone back button closes the window before the tool", () => {
+    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    expect(appSource).toContain("<PageGridEditor");
+    expect(appSource).toContain("onOpenPageGrid=");
+    const backStart = appSource.indexOf('"hardwareBackPress"');
+    const backSource = appSource.slice(backStart, backStart + 1400);
+    expect(backSource.indexOf("pageGridOpen")).toBeGreaterThan(-1);
+    expect(backSource.indexOf("pageGridOpen")).toBeLessThan(backSource.indexOf("closeTool()"));
+    expect(backSource).toContain("< 2000");
+    expect(appSource).toContain("setPageGridOpen(false);\n    setGridSelected([]);\n    setPageThumbs({});");
   });
 });

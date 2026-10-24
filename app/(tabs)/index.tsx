@@ -41,13 +41,16 @@ import {
 import { paperOptions, paperPresetById } from "@/shared/print-options";
 import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
-import { moveWorkflowItem, normalizeRotation, rotateSelectedFiles, rotateWorkflowFile } from "@/shared/workflow-files";
+import { moveWorkflowItem, normalizeRotation, rotateSelectedFiles, rotateWorkflowFile, toggleSelected } from "@/shared/workflow-files";
 import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 import {
   canApplyPageOrder,
   createPageEdits,
+  deleteSelectedPages,
+  keepSelectedPages,
   movePage,
   rotatePage,
+  rotateSelectedPages,
   synchronizePageOrder,
   togglePageOrientation,
   type PdfPageEdit,
@@ -62,6 +65,7 @@ import {
   type CropRect,
 } from "@/shared/pdf-cut";
 import { generatePdfPageThumbnail } from "@/shared/pdf-thumbnail";
+import { PageGridEditor, type GridItem } from "@/components/page-grid-editor";
 import { type WorkspaceKind } from "@/shared/workspaces";
 import {
   createIdCardLayout,
@@ -986,6 +990,9 @@ export default function HomeScreen() {
     pages: number;
   } | null>(null);
   const [pageOrder, setPageOrder] = useState("");
+  const [pageGridOpen, setPageGridOpen] = useState(false);
+  const [gridSelected, setGridSelected] = useState<string[]>([]);
+  const [pageThumbs, setPageThumbs] = useState<Record<number, string>>({});
   const [cutFile, setCutFile] = useState<CutFile | null>(null);
   const [cutMode, setCutMode] = useState<"split" | "crop">("split");
   const [cutRanges, setCutRanges] = useState("");
@@ -1036,6 +1043,9 @@ export default function HomeScreen() {
     setPageEdits([]);
     setPageOrder("");
     setSelectedPageIndex(null);
+    setPageGridOpen(false);
+    setGridSelected([]);
+    setPageThumbs({});
     setCutFile(null);
     setCutRanges("");
     setCutMode("split");
@@ -1061,6 +1071,11 @@ export default function HomeScreen() {
           Keyboard.dismiss();
           return true;
         }
+        if (pageGridOpen) {
+          setPageGridOpen(false);
+          setGridSelected([]);
+          return true;
+        }
         if (previewKind) {
           closeTool();
           return true;
@@ -1078,7 +1093,7 @@ export default function HomeScreen() {
       },
     );
     return () => subscription.remove();
-  }, [keyboardShown, previewKind, workspace, t]);
+  }, [keyboardShown, previewKind, workspace, pageGridOpen, t]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
   const completeProgress = () =>
@@ -1725,6 +1740,97 @@ export default function HomeScreen() {
     setSelectedPageIndex(next.length ? Math.min(index, next.length - 1) : null);
   };
 
+  const gridItems: GridItem[] =
+    previewKind === "pages"
+      ? pageEdits.map((edit, index) => ({
+          key: String(edit.sourcePage),
+          label: String(index + 1),
+          thumbUri: pageThumbs[edit.sourcePage] ?? null,
+          rotation: edit.rotation,
+        }))
+      : pendingAssets.map((asset, index) => ({
+          key: asset.uri,
+          label: String(index + 1),
+          thumbUri: asset.uri,
+          rotation: normalizeRotation(asset.rotation),
+        }));
+  const closePageGrid = () => {
+    setPageGridOpen(false);
+    setGridSelected([]);
+  };
+  const moveGridItem = (from: number, to: number) => {
+    if (previewKind === "pages") {
+      if (from < 0 || to < 0 || from >= pageEdits.length || to >= pageEdits.length) return;
+      const next = movePage(pageEdits, from, to);
+      setPageEdits(next);
+      setPageOrder(next.map((page) => String(page.sourcePage)).join(", "));
+      return;
+    }
+    movePendingAsset(from, to);
+  };
+  const rotateGridSelected = () => {
+    if (!gridSelected.length) return;
+    if (previewKind === "pages") {
+      setPageEdits((current) => rotateSelectedPages(current, gridSelected.map(Number)));
+      return;
+    }
+    rotateSelectedPendingAssets(gridSelected);
+  };
+  const deleteGridSelected = () => {
+    if (!gridSelected.length) return;
+    if (previewKind === "pages") {
+      const next = deleteSelectedPages(pageEdits, gridSelected.map(Number));
+      if (!next.length) {
+        showError(t.pageEditNeedOrder, t.pageOrderHint);
+        return;
+      }
+      setPageEdits(next);
+      setPageOrder(next.map((page) => String(page.sourcePage)).join(", "));
+    } else {
+      const next = pendingAssets.filter((asset) => !gridSelected.includes(asset.uri));
+      setPendingAssets(next);
+      setSelectedFiles(next.map((asset) => asset.name));
+      if (previewAsset && gridSelected.includes(previewAsset.uri)) setPreviewAsset(next[0] ?? null);
+      setToolResults((current) => ({ ...current, images: undefined }));
+    }
+    setGridSelected([]);
+  };
+  const extractGridSelected = () => {
+    if (previewKind !== "pages" || !gridSelected.length) return;
+    const next = keepSelectedPages(pageEdits, gridSelected.map(Number));
+    setPageEdits(next);
+    setPageOrder(next.map((page) => String(page.sourcePage)).join(", "));
+    setGridSelected([]);
+  };
+  const pageThumbsRef = useRef(pageThumbs);
+  pageThumbsRef.current = pageThumbs;
+  useEffect(() => {
+    if (!pageGridOpen || previewKind !== "pages" || !pageEditorFile) return;
+    let cancelled = false;
+    const file = pageEditorFile;
+    void (async () => {
+      for (let page = 1; page <= file.pages; page += 1) {
+        if (cancelled) return;
+        if (pageThumbsRef.current[page]) continue;
+        try {
+          const thumbnail = await generatePdfPageThumbnail(file.uri, page - 1, {
+            quality: 70,
+            maxWidth: 420,
+            maxHeight: 600,
+          });
+          if (cancelled) return;
+          if (!thumbnail) return;
+          setPageThumbs((current) => ({ ...current, [page]: thumbnail.uri }));
+        } catch {
+          // A page that cannot be rendered keeps its numbered placeholder.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pageGridOpen, previewKind, pageEditorFile]);
+
   const continuePrint = async () => {
     if (!printUri) return;
     try {
@@ -1838,6 +1944,8 @@ export default function HomeScreen() {
         ),
       );
       setPageEdits(createPageEdits(pages));
+      setPageThumbs({});
+      setGridSelected([]);
       setSelectedPageIndex(null);
       setSelectedFiles([result.assets[0].name]);
       setToolResults((current) => ({ ...current, pages: undefined }));
@@ -2709,7 +2817,22 @@ export default function HomeScreen() {
           onDismiss={() => setOperationProgress(null)}
         />
       ) : null}
-      {previewKind ? (
+      {previewKind && pageGridOpen && (previewKind === "pages" || previewKind === "images") ? (
+        <PageGridEditor
+          title={previewTitleFor(previewKind)}
+          items={gridItems}
+          selected={gridSelected}
+          isArabic={isArabic}
+          onToggle={(key) => setGridSelected((current) => toggleSelected(current, key))}
+          onSelectAll={() => setGridSelected(gridItems.map((item) => item.key))}
+          onClear={() => setGridSelected([])}
+          onMove={moveGridItem}
+          onRotateSelected={rotateGridSelected}
+          onDeleteSelected={deleteGridSelected}
+          onExtractSelected={previewKind === "pages" ? extractGridSelected : undefined}
+          onClose={closePageGrid}
+        />
+      ) : previewKind ? (
         <ToolWorkflowScreen
           kind={previewKind}
           title={previewTitleFor(previewKind)}
@@ -2752,6 +2875,7 @@ export default function HomeScreen() {
           onRemoveFile={removePendingAsset}
           onSettingChange={changeWorkflowSetting}
           onRun={() => { void continuePreviewAction(); }}
+          onOpenPageGrid={() => { setGridSelected([]); setPageGridOpen(true); }}
           onSaveResult={() => { void saveWorkflowResult(); }}
           onShareResult={shareWorkflowResult}
           onDismissError={() => setErrorMessage(null)}

@@ -89,6 +89,8 @@ type Props = {
   cropPageIndex?: number;
   onCropPageChange?: (index: number) => void;
   cropPreview?: { uri: string | null; aspect: number } | null;
+  /** Opens the full-window page grid where pages/images are edited by dragging. */
+  onOpenPageGrid?: () => void;
   onSaveResult?: () => void;
   onShareResult: () => void;
   onDismissError: () => void;
@@ -385,6 +387,7 @@ export function ToolWorkflowScreen({
   cropPageIndex = 0,
   onCropPageChange,
   cropPreview = null,
+  onOpenPageGrid,
   onSaveResult,
   onShareResult,
   onDismissError,
@@ -936,6 +939,25 @@ export function ToolWorkflowScreen({
     <View testID="workflow-preview-pane" style={styles.previewPane}>
       <View style={[styles.card, styles.previewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {sectionTitle(tr(isArabic, "المعاينة الكاملة", "Full preview"), "visibility")}
+        {onOpenPageGrid && ((kind === "images" && files.length > 0) || (kind === "pages" && pageEdits.length > 0)) ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={kind === "pages" ? tr(isArabic, "عرض كل الصفحات وتعديلها", "View and edit all pages") : tr(isArabic, "عرض كل الصور وتعديلها", "View and edit all images")}
+            onPress={onOpenPageGrid}
+            style={[styles.openGridButton, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, flexDirection: direction }]}
+          >
+            <MaterialIcons name="grid-view" color={colors.primary} size={20} />
+            <View style={styles.openGridCopy}>
+              <Text style={[styles.openGridTitle, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>
+                {kind === "pages" ? tr(isArabic, "عرض كل الصفحات وتعديلها", "View and edit all pages") : tr(isArabic, "عرض كل الصور وتعديلها", "View and edit all images")}
+              </Text>
+              <Text style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+                {tr(isArabic, "نافذة بكل الصفحات: حدّد، اسحب لإعادة الترتيب، دوّر أو احذف", "A window with every page: select, drag to reorder, rotate or delete")}
+              </Text>
+            </View>
+            <MaterialIcons name={isArabic ? "chevron-left" : "chevron-right"} color={colors.primary} size={22} />
+          </Pressable>
+        ) : null}
         {kind === "merge" && files.length > 1 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.previewFilePicker, { flexDirection: direction }]}>
             {files.map((file) => (
@@ -1211,6 +1233,9 @@ const styles = StyleSheet.create({
   zoomBar: { minHeight: 40, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "flex-end", gap: 2, paddingHorizontal: 6 },
   zoomCounter: { flex: 1, fontSize: 10.5, fontWeight: "800" },
   zoomSpacer: { flex: 1 },
+  openGridButton: { minHeight: 56, borderWidth: 1.5, borderRadius: 12, alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  openGridCopy: { flex: 1, minWidth: 0, gap: 2 },
+  openGridTitle: { fontSize: 12.5, fontWeight: "900" },
   cropPager: { alignItems: "center", justifyContent: "center", gap: 12 },
   zoomButton: { width: 38, height: 36, alignItems: "center", justifyContent: "center" },
   zoomValue: { minWidth: 52, height: 36, alignItems: "center", justifyContent: "center" },
