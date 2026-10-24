@@ -1,9 +1,8 @@
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -16,11 +15,16 @@ import {
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { PdfDocumentPreview } from "@/components/pdf-document-preview";
+import { useDragReorder } from "@/components/use-drag-reorder";
 import { useColors } from "@/hooks/use-colors";
-import { dragDirection } from "@/shared/pdf-pages";
 import { paperOptions } from "@/shared/print-options";
 import type { PreviewKind } from "@/shared/preview";
-import { normalizeRotation } from "@/shared/workflow-files";
+import {
+  normalizeRotation,
+  pruneSelection,
+  stepPreviewZoom,
+  toggleSelected,
+} from "@/shared/workflow-files";
 import type { PdfPageEdit } from "@/shared/pdf-pages";
 
 type WorkflowFile = {
@@ -71,6 +75,7 @@ type Props = {
   onDeletePage?: (sourcePage: number) => void;
   onRotateFile: (index: number) => void;
   onRotateAllFiles?: () => void;
+  onRotateSelectedFiles?: (uris: string[]) => void;
   onRemoveFile: (index: number) => void;
   onSettingChange: (key: string, value: string | boolean) => void;
   onRun: () => void;
@@ -81,6 +86,21 @@ type Props = {
 const tr = (isArabic: boolean, ar: string, en: string) =>
   isArabic ? ar : en;
 
+const FILE_ROW_HEIGHT = 62;
+const PAGE_ROW_HEIGHT = 58;
+
+const liftedRowStyle = (offset: number, surface: string) => ({
+  transform: [{ translateY: offset }],
+  zIndex: 20,
+  elevation: 6,
+  backgroundColor: surface,
+  borderRadius: 10,
+  shadowColor: "#000",
+  shadowOpacity: 0.18,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 3 },
+});
+
 type WorkflowFileRowProps = {
   file: WorkflowFile;
   index: number;
@@ -89,9 +109,12 @@ type WorkflowFileRowProps = {
   selected: boolean;
   canReorder: boolean;
   canRotate: boolean;
+  selectable: boolean;
+  checked: boolean;
   colors: ReturnType<typeof useColors>;
   direction: "row" | "row-reverse";
   onSelect: () => void;
+  onToggleChecked: () => void;
   onMove: (from: number, to: number) => void;
   onRotate: () => void;
   onRemove: () => void;
@@ -105,54 +128,67 @@ function WorkflowFileRow({
   selected,
   canReorder,
   canRotate,
+  selectable,
+  checked,
   colors,
   direction,
   onSelect,
+  onToggleChecked,
   onMove,
   onRotate,
   onRemove,
 }: WorkflowFileRowProps) {
-  const lastDragY = useRef(0);
-  const latest = useRef({ index, total, onMove });
-  latest.current = { index, total, onMove };
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 7,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
-          lastDragY.current = 0;
-        },
-        onPanResponderMove: (_, gesture) => {
-          const direction = dragDirection(gesture.dy - lastDragY.current, 42);
-          if (!direction) return;
-          const { index: currentIndex, total: currentTotal, onMove: move } = latest.current;
-          const target = currentIndex + direction;
-          if (target < 0 || target >= currentTotal) return;
-          move(currentIndex, target);
-          lastDragY.current += direction * 42;
-        },
-        onPanResponderRelease: () => {
-          lastDragY.current = 0;
-        },
-        onPanResponderTerminate: () => {
-          lastDragY.current = 0;
-        },
-      }),
-    [],
-  );
+  const { panHandlers, dragging, offset } = useDragReorder({
+    index,
+    total,
+    rowHeight: FILE_ROW_HEIGHT,
+    onStep: onMove,
+  });
+  const isImage = Boolean(file.mimeType?.startsWith("image/"));
+  const rotation = normalizeRotation(file.rotation);
 
   return (
-    <View testID={`workflow-file-row-${index}`} style={[styles.fileRow, { borderBottomColor: colors.border, flexDirection: direction }]}>
-      <Pressable onPress={onSelect} style={[styles.fileMain, { flexDirection: direction }]}>
-        <View style={[styles.fileIcon, { backgroundColor: `${colors.primary}12` }]}>
+    <View
+      testID={`workflow-file-row-${index}`}
+      style={[
+        styles.fileRow,
+        {
+          borderBottomColor: colors.border,
+          flexDirection: direction,
+          backgroundColor: checked ? `${colors.primary}0D` : "transparent",
+        },
+        dragging ? liftedRowStyle(offset, colors.surface) : null,
+      ]}
+    >
+      {selectable ? (
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked }}
+          accessibilityLabel={tr(isArabic, "تحديد الصورة", "Select image")}
+          onPress={onToggleChecked}
+          style={styles.checkButton}
+        >
           <MaterialIcons
-            name={file.mimeType?.startsWith("image/") ? "image" : "picture-as-pdf"}
-            color={colors.primary}
-            size={19}
+            name={checked ? "check-box" : "check-box-outline-blank"}
+            color={checked ? colors.primary : colors.muted}
+            size={22}
           />
-        </View>
+        </Pressable>
+      ) : null}
+      <Pressable onPress={onSelect} style={[styles.fileMain, { flexDirection: direction }]}>
+        {isImage ? (
+          <View style={[styles.fileThumbBox, { borderColor: selected ? colors.primary : colors.border }]}>
+            <Image
+              source={{ uri: file.uri }}
+              resizeMode="cover"
+              style={[styles.fileThumb, rotation ? { transform: [{ rotate: `${rotation}deg` }] } : null]}
+            />
+          </View>
+        ) : (
+          <View style={[styles.fileIcon, { backgroundColor: `${colors.primary}12` }]}>
+            <MaterialIcons name="picture-as-pdf" color={colors.primary} size={19} />
+          </View>
+        )}
         <View style={styles.fileCopy}>
           <Text numberOfLines={1} style={[styles.fileName, { color: selected ? colors.primary : colors.foreground, textAlign: isArabic ? "right" : "left" }]}>
             {file.name}
@@ -163,6 +199,7 @@ function WorkflowFileRow({
                 ? `${Math.max(1, Math.round(file.size / 1024))} KB`
                 : `${(file.size / (1024 * 1024)).toFixed(1)} MB`
               : file.mimeType || tr(isArabic, "اضغط لمعاينة الملف", "Tap to preview")}
+            {rotation ? ` · ${rotation}°` : ""}
           </Text>
         </View>
       </Pressable>
@@ -175,20 +212,23 @@ function WorkflowFileRow({
         {canReorder ? (
           <>
             <View
-              {...panResponder.panHandlers}
-              accessibilityRole="button"
+              {...panHandlers}
+              accessible
+              accessibilityRole="adjustable"
               accessibilityLabel={tr(isArabic, "اسحب لتحريك الملف", "Drag to reorder file")}
-              style={[styles.iconButton, styles.dragHandle, { backgroundColor: `${colors.primary}12` }]}
+              accessibilityActions={[
+                { name: "decrement", label: tr(isArabic, "تحريك لأعلى", "Move up") },
+                { name: "increment", label: tr(isArabic, "تحريك لأسفل", "Move down") },
+              ]}
+              onAccessibilityAction={(event: { nativeEvent: { actionName: string } }) => {
+                if (event.nativeEvent.actionName === "decrement" && index > 0) onMove(index, index - 1);
+                if (event.nativeEvent.actionName === "increment" && index < total - 1) onMove(index, index + 1);
+              }}
+              style={[styles.dragHandle, { backgroundColor: `${colors.primary}12` }]}
             >
-              <MaterialIcons name="drag-indicator" color={colors.primary} size={20} />
+              <MaterialIcons name="drag-indicator" color={colors.primary} size={22} />
               <Text style={[styles.fileDragLabel, { color: colors.primary }]}>{tr(isArabic, "اسحب", "Drag")}</Text>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تحريك لأعلى", "Move up")} disabled={index === 0} onPress={() => onMove(index, index - 1)} style={styles.iconButton}>
-              <MaterialIcons name="keyboard-arrow-up" color={index === 0 ? colors.border : colors.muted} size={21} />
-            </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تحريك لأسفل", "Move down")} disabled={index === total - 1} onPress={() => onMove(index, index + 1)} style={styles.iconButton}>
-              <MaterialIcons name="keyboard-arrow-down" color={index === total - 1 ? colors.border : colors.muted} size={21} />
-            </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "إزالة الملف", "Remove file")} onPress={onRemove} style={styles.iconButton}>
               <MaterialIcons name="close" color={colors.error} size={18} />
             </Pressable>
@@ -228,34 +268,13 @@ function WorkflowPageRow({
   onToggleOrientation,
   onDelete,
 }: WorkflowPageRowProps) {
-  const lastDragY = useRef(0);
-  const latest = useRef({ sourcePage: edit.sourcePage, onMove, onSelect });
-  latest.current = { sourcePage: edit.sourcePage, onMove, onSelect };
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
-          lastDragY.current = 0;
-          latest.current.onSelect();
-        },
-        onPanResponderMove: (_, gesture) => {
-          const move = dragDirection(gesture.dy - lastDragY.current, 30);
-          if (!move) return;
-          latest.current.onMove(latest.current.sourcePage, move);
-          lastDragY.current += move * 30;
-        },
-        onPanResponderRelease: () => {
-          lastDragY.current = 0;
-        },
-        onPanResponderTerminate: () => {
-          lastDragY.current = 0;
-        },
-      }),
-    [],
-  );
+  const { panHandlers, dragging, offset } = useDragReorder({
+    index,
+    total,
+    rowHeight: PAGE_ROW_HEIGHT,
+    onStart: onSelect,
+    onStep: (from, to) => onMove(edit.sourcePage, to > from ? 1 : -1),
+  });
 
   return (
     <View
@@ -266,6 +285,7 @@ function WorkflowPageRow({
           backgroundColor: active ? `${colors.primary}10` : colors.background,
           borderColor: active ? colors.primary : colors.border,
         },
+        dragging ? liftedRowStyle(offset, colors.surface) : null,
       ]}
     >
       <View style={styles.pageEditCopy}>
@@ -278,20 +298,23 @@ function WorkflowPageRow({
       </View>
       <View style={styles.pageEditActions}>
         <View
-          {...panResponder.panHandlers}
-          accessibilityRole="button"
+          {...panHandlers}
+          accessible
+          accessibilityRole="adjustable"
           accessibilityLabel={tr(isArabic, "اسحب المقبض لتحريك الصفحة", "Drag this handle to move the page")}
+          accessibilityActions={[
+            { name: "decrement", label: tr(isArabic, "تحريك الصفحة لأعلى", "Move page up") },
+            { name: "increment", label: tr(isArabic, "تحريك الصفحة لأسفل", "Move page down") },
+          ]}
+          onAccessibilityAction={(event: { nativeEvent: { actionName: string } }) => {
+            if (event.nativeEvent.actionName === "decrement" && index > 0) onMove(edit.sourcePage, -1);
+            if (event.nativeEvent.actionName === "increment" && index < total - 1) onMove(edit.sourcePage, 1);
+          }}
           style={[styles.pageDragHandle, { backgroundColor: `${colors.primary}14` }]}
         >
-          <MaterialIcons name="drag-indicator" color={colors.primary} size={20} />
+          <MaterialIcons name="drag-indicator" color={colors.primary} size={22} />
           <Text style={[styles.pageDragLabel, { color: colors.primary }]}>{tr(isArabic, "اسحب", "Drag")}</Text>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تحريك الصفحة لأعلى", "Move page up")} disabled={index === 0} onPress={() => onMove(edit.sourcePage, -1)} style={styles.pageActionButton}>
-          <MaterialIcons name="keyboard-arrow-up" color={index === 0 ? colors.border : colors.primary} size={20} />
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تحريك الصفحة لأسفل", "Move page down")} disabled={index === total - 1} onPress={() => onMove(edit.sourcePage, 1)} style={styles.pageActionButton}>
-          <MaterialIcons name="keyboard-arrow-down" color={index === total - 1 ? colors.border : colors.primary} size={20} />
-        </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تدوير الصفحة", "Rotate page")} onPress={() => onRotate(edit.sourcePage)} style={styles.pageActionButton}>
           <MaterialIcons name="rotate-90-degrees-ccw" color={colors.primary} size={17} />
         </Pressable>
@@ -339,6 +362,7 @@ export function ToolWorkflowScreen({
   onDeletePage,
   onRotateFile,
   onRotateAllFiles,
+  onRotateSelectedFiles,
   onRemoveFile,
   onSettingChange,
   onRun,
@@ -348,6 +372,22 @@ export function ToolWorkflowScreen({
   const colors = useColors();
   const { width } = useWindowDimensions();
   const isWideLayout = width >= 900;
+  const [checkedUris, setCheckedUris] = useState<string[]>([]);
+  const [zoom, setZoom] = useState(1);
+  const [frameWidth, setFrameWidth] = useState(0);
+  const previewScrollRef = useRef<ScrollView | null>(null);
+  const imageOffsets = useRef<Record<string, number>>({});
+  const fileUris = useMemo(() => files.map((file) => file.uri), [files]);
+  const activeChecked = useMemo(
+    () => pruneSelection(checkedUris, fileUris),
+    [checkedUris, fileUris],
+  );
+  const allChecked = files.length > 0 && activeChecked.length === files.length;
+  const zoomPercent = `${Math.round(zoom * 100)}%`;
+  const frameHeight = isWideLayout ? 620 : 490;
+  const baseWidth = frameWidth || Math.min(width, 900);
+  const previewIsImage = kind === "images" ? files.length > 0 : Boolean(previewFile?.mimeType?.startsWith("image/"));
+  const previewIndex = previewFile ? files.findIndex((file) => file.uri === previewFile.uri) : -1;
   const direction = isArabic ? "row-reverse" : "row";
   const runLabel = useMemo(() => {
     const labels: Record<PreviewKind, [string, string]> = {
@@ -666,16 +706,42 @@ export function ToolWorkflowScreen({
             )}
             {files.length > 0 ? (
               <View style={[styles.fileList, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                {kind === "images" && onRotateAllFiles ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={tr(isArabic, "تدوير كل الصور", "Rotate all images")}
-                    onPress={onRotateAllFiles}
-                    style={[styles.bulkAction, { borderBottomColor: colors.border, flexDirection: direction }]}
-                  >
-                    <MaterialIcons name="rotate-right" color={colors.primary} size={18} />
-                    <Text style={[styles.bulkActionText, { color: colors.primary }]}>{tr(isArabic, "تدوير كل الصور 90°", "Rotate all images 90°")}</Text>
-                  </Pressable>
+                {kind === "images" ? (
+                  <View style={[styles.bulkBar, { borderBottomColor: colors.border, flexDirection: direction }]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={allChecked ? tr(isArabic, "إلغاء تحديد الكل", "Clear selection") : tr(isArabic, "تحديد كل الصور", "Select all images")}
+                      onPress={() => setCheckedUris(allChecked ? [] : fileUris)}
+                      style={[styles.bulkChip, { borderColor: colors.border, flexDirection: direction }]}
+                    >
+                      <MaterialIcons name={allChecked ? "check-box" : "check-box-outline-blank"} color={colors.primary} size={17} />
+                      <Text style={[styles.bulkActionText, { color: colors.primary }]}>{allChecked ? tr(isArabic, "إلغاء التحديد", "Clear") : tr(isArabic, "تحديد الكل", "Select all")}</Text>
+                    </Pressable>
+                    {onRotateSelectedFiles ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={tr(isArabic, "تدوير الصور المحددة", "Rotate selected images")}
+                        accessibilityState={{ disabled: activeChecked.length === 0 }}
+                        disabled={activeChecked.length === 0}
+                        onPress={() => onRotateSelectedFiles(activeChecked)}
+                        style={[styles.bulkChip, { borderColor: activeChecked.length ? colors.primary : colors.border, opacity: activeChecked.length ? 1 : 0.5, flexDirection: direction }]}
+                      >
+                        <MaterialIcons name="rotate-right" color={colors.primary} size={17} />
+                        <Text style={[styles.bulkActionText, { color: colors.primary }]}>{tr(isArabic, `تدوير المحدد (${activeChecked.length})`, `Rotate selected (${activeChecked.length})`)}</Text>
+                      </Pressable>
+                    ) : null}
+                    {onRotateAllFiles ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={tr(isArabic, "تدوير كل الصور", "Rotate all images")}
+                        onPress={onRotateAllFiles}
+                        style={[styles.bulkChip, { borderColor: colors.border, flexDirection: direction }]}
+                      >
+                        <MaterialIcons name="rotate-right" color={colors.muted} size={17} />
+                        <Text style={[styles.bulkActionText, { color: colors.muted }]}>{tr(isArabic, "تدوير الكل 90°", "Rotate all 90°")}</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 ) : null}
                 {files.map((file, index) => (
                   <WorkflowFileRow
@@ -687,9 +753,12 @@ export function ToolWorkflowScreen({
                     selected={previewFile?.uri === file.uri}
                     canReorder={kind === "merge" || kind === "images"}
                     canRotate={kind === "images" && Boolean(file.mimeType?.startsWith("image/"))}
+                    selectable={kind === "images"}
+                    checked={activeChecked.includes(file.uri)}
                     colors={colors}
                     direction={direction}
                     onSelect={() => onSelectPreviewFile(file)}
+                    onToggleChecked={() => setCheckedUris((current) => toggleSelected(pruneSelection(current, fileUris), file.uri))}
                     onMove={onMoveFile}
                     onRotate={() => onRotateFile(index)}
                     onRemove={() => onRemoveFile(index)}
@@ -709,7 +778,7 @@ export function ToolWorkflowScreen({
       {(kind === "merge" || kind === "images") && files.length > 1 ? (
         <View style={[styles.notice, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30`, flexDirection: direction }]}>
           <MaterialIcons name="drag-indicator" color={colors.primary} size={18} />
-          <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اسحب مقبض (اسحب) أو استخدم الأسهم. يمكنك تدوير كل الصور أو تدوير صورة واحدة؛ سيُستخدم هذا الترتيب في الملف الناتج.", "Drag the labeled handle or use the arrows. You can rotate all images or one image; the same order is used in the output.")}</Text>
+          <Text style={[styles.noticeText, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اضغط مطولًا على مقبض (اسحب) وحرّك الملف لأعلى أو لأسفل لترتيبه. حدّد صورة أو أكثر ثم دوّرها دفعة واحدة؛ سيُستخدم هذا الترتيب في الملف الناتج.", "Hold the labeled handle and drag a file up or down to reorder it. Select one or more images and rotate them together; the same order is used in the output.")}</Text>
         </View>
       ) : null}
 
@@ -726,7 +795,7 @@ export function ToolWorkflowScreen({
       {kind === "pages" && pageEdits.length > 0 ? (
         <View testID="workflow-page-editor" style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {sectionTitle(tr(isArabic, "ترتيب صفحات الملف", "Reorder document pages"), "view-list")}
-          <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اسحب المقبض أو استخدم الأسهم. هذا الترتيب والتدوير والحذف يطبّق على الملف الناتج.", "Drag the handle or use the arrows. This order, rotation, and deletion are applied to the output file.")}</Text>
+          <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "اسحب المقبض لتحريك الصفحة لأعلى أو لأسفل. هذا الترتيب والتدوير والحذف يطبّق على الملف الناتج.", "Drag the handle to move a page up or down. This order, rotation, and deletion are applied to the output file.")}</Text>
           <ScrollView style={styles.pageEditList} contentContainerStyle={styles.pageEditRows} nestedScrollEnabled showsVerticalScrollIndicator>
             {pageEdits.map((edit, index) => (
               <WorkflowPageRow
@@ -771,37 +840,98 @@ export function ToolWorkflowScreen({
             ))}
           </ScrollView>
         ) : null}
+        {kind === "images" && files.length > 1 ? (
+          <ScrollView testID="workflow-thumbnail-strip" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.thumbStrip, { flexDirection: direction }]}>
+            {files.map((file, index) => {
+              const active = previewFile?.uri === file.uri;
+              const thumbRotation = normalizeRotation(file.rotation);
+              return (
+                <Pressable
+                  key={file.uri}
+                  accessibilityRole="button"
+                  accessibilityLabel={tr(isArabic, `الانتقال إلى الصورة ${index + 1}`, `Go to image ${index + 1}`)}
+                  accessibilityState={{ selected: active }}
+                  onPress={() => {
+                    onSelectPreviewFile(file);
+                    previewScrollRef.current?.scrollTo?.({ y: Math.max(0, imageOffsets.current[file.uri] ?? 0), animated: true });
+                  }}
+                  style={[styles.stripThumb, { borderColor: active ? colors.primary : colors.border }]}
+                >
+                  <Image source={{ uri: file.uri }} resizeMode="cover" style={[styles.stripThumbImage, thumbRotation ? { transform: [{ rotate: `${thumbRotation}deg` }] } : null]} />
+                  <Text style={[styles.stripThumbIndex, { backgroundColor: active ? colors.primary : "#0008" }]}>{index + 1}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
+        {previewIsImage ? (
+          <View testID="workflow-zoom-bar" style={[styles.zoomBar, { borderColor: colors.border, backgroundColor: colors.background, flexDirection: direction }]}>
+            {kind === "images" && files.length > 1 && previewIndex >= 0 ? (
+              <Text style={[styles.zoomCounter, { color: colors.muted }]}>{tr(isArabic, `صورة ${previewIndex + 1} من ${files.length}`, `Image ${previewIndex + 1} of ${files.length}`)}</Text>
+            ) : <View style={styles.zoomSpacer} />}
+            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تصغير", "Zoom out")} onPress={() => setZoom((current) => stepPreviewZoom(current, -1))} style={styles.zoomButton}>
+              <MaterialIcons name="zoom-out" color={colors.primary} size={22} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "ملاءمة العرض", "Fit to width")} onPress={() => setZoom(1)} style={styles.zoomValue}>
+              <Text style={[styles.zoomValueText, { color: colors.foreground }]}>{zoomPercent}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "تكبير", "Zoom in")} onPress={() => setZoom((current) => stepPreviewZoom(current, 1))} style={styles.zoomButton}>
+              <MaterialIcons name="zoom-in" color={colors.primary} size={22} />
+            </Pressable>
+          </View>
+        ) : null}
         {previewFile && kind !== "id" ? (
           <Text numberOfLines={1} style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{previewFile.name}</Text>
         ) : null}
-        <View style={[styles.previewFrame, { height: isWideLayout ? 620 : 490, backgroundColor: colors.background, borderColor: colors.border }]}>
+        <View
+          onLayout={(event: { nativeEvent: { layout: { width: number } } }) => setFrameWidth(event.nativeEvent.layout.width)}
+          style={[styles.previewFrame, { height: frameHeight, backgroundColor: colors.background, borderColor: colors.border }]}
+        >
           {kind === "id" ? (
             <View style={[styles.idPreviewContent, { flexDirection: direction }]}>
               {idPreviewFace("front", frontUri, frontRotation)}
               {idPreviewFace("back", backUri, backRotation)}
             </View>
           ) : kind === "images" && files.length > 0 ? (
-            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator contentContainerStyle={styles.allImagesContent}>
-              {files.map((file, index) => (
-                <View key={file.uri} style={[styles.imagePreviewPage, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                  <Text numberOfLines={1} style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{index + 1}. {file.name}</Text>
-                  <Image
-                    accessibilityLabel={tr(isArabic, `معاينة الصورة ${index + 1}: ${file.name}`, `Preview image ${index + 1}: ${file.name}`)}
-                    source={{ uri: file.uri }}
-                    resizeMode="contain"
-                    style={[styles.previewImagePageImage, { height: isWideLayout ? 470 : 340 }, normalizeRotation(file.rotation) ? { transform: [{ rotate: `${normalizeRotation(file.rotation)}deg` }] } : null]}
-                  />
-                </View>
-              ))}
+            <ScrollView horizontal nestedScrollEnabled scrollEnabled={zoom > 1} showsHorizontalScrollIndicator={zoom > 1}>
+              <ScrollView
+                ref={previewScrollRef}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+                style={{ width: baseWidth * zoom }}
+                contentContainerStyle={styles.allImagesContent}
+              >
+                {files.map((file, index) => (
+                  <View
+                    key={file.uri}
+                    onLayout={(event: { nativeEvent: { layout: { y: number } } }) => {
+                      imageOffsets.current[file.uri] = event.nativeEvent.layout.y;
+                    }}
+                    style={[styles.imagePreviewPage, { borderColor: previewFile?.uri === file.uri ? colors.primary : colors.border, backgroundColor: colors.surface }]}
+                  >
+                    <Text numberOfLines={1} style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{index + 1}. {file.name}</Text>
+                    <Image
+                      accessibilityLabel={tr(isArabic, `معاينة الصورة ${index + 1}: ${file.name}`, `Preview image ${index + 1}: ${file.name}`)}
+                      source={{ uri: file.uri }}
+                      resizeMode="contain"
+                      style={[styles.previewImagePageImage, { height: (isWideLayout ? 470 : 340) * zoom }, normalizeRotation(file.rotation) ? { transform: [{ rotate: `${normalizeRotation(file.rotation)}deg` }] } : null]}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
             </ScrollView>
           ) : previewFile ? (
             previewFile.mimeType?.startsWith("image/") ? (
-              <Image
-                accessibilityLabel={tr(isArabic, `معاينة ${previewFile.name}`, `Preview ${previewFile.name}`)}
-                source={{ uri: previewFile.uri }}
-                resizeMode="contain"
-                style={[styles.previewImage, normalizeRotation(previewFile.rotation) ? { transform: [{ rotate: `${normalizeRotation(previewFile.rotation)}deg` }] } : null]}
-              />
+              <ScrollView horizontal nestedScrollEnabled scrollEnabled={zoom > 1} showsHorizontalScrollIndicator={zoom > 1}>
+                <ScrollView nestedScrollEnabled scrollEnabled={zoom > 1} style={{ width: baseWidth * zoom }} contentContainerStyle={{ minHeight: frameHeight * zoom }}>
+                  <Image
+                    accessibilityLabel={tr(isArabic, `معاينة ${previewFile.name}`, `Preview ${previewFile.name}`)}
+                    source={{ uri: previewFile.uri }}
+                    resizeMode="contain"
+                    style={[{ width: baseWidth * zoom, height: frameHeight * zoom }, normalizeRotation(previewFile.rotation) ? { transform: [{ rotate: `${normalizeRotation(previewFile.rotation)}deg` }] } : null]}
+                  />
+                </ScrollView>
+              </ScrollView>
             ) : (
               <PdfDocumentPreview uri={previewFile.uri} name={previewFile.name} isArabic={isArabic} style={styles.pdfPreview} unavailableLabel={tr(isArabic, "تعذرت المعاينة المضمنة لهذا الملف على هذا الجهاز.", "This file could not be previewed in the app on this device.")} />
             )
@@ -926,9 +1056,13 @@ const styles = StyleSheet.create({
   pickerOption: { flex: 1, minWidth: 0, paddingHorizontal: 6 },
   pickButtonText: { color: "#fff", fontSize: 12, fontWeight: "900" },
   fileList: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 8 },
-  bulkAction: { minHeight: 40, borderBottomWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center", gap: 7 },
+  bulkBar: { flexWrap: "wrap", alignItems: "center", gap: 6, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  bulkChip: { minHeight: 34, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", gap: 5 },
   bulkActionText: { fontSize: 10.5, fontWeight: "900" },
-  fileRow: { minHeight: 60, alignItems: "center", gap: 4, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6 },
+  fileRow: { height: 62, alignItems: "center", gap: 4, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6 },
+  checkButton: { width: 32, height: 40, alignItems: "center", justifyContent: "center" },
+  fileThumbBox: { width: 42, height: 42, borderRadius: 8, borderWidth: 1.5, overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  fileThumb: { width: 42, height: 42 },
   fileMain: { flex: 1, minWidth: 0, alignItems: "center", gap: 8 },
   fileIcon: { width: 36, height: 42, borderRadius: 7, alignItems: "center", justifyContent: "center" },
   fileCopy: { flex: 1, minWidth: 0, gap: 3 },
@@ -936,12 +1070,22 @@ const styles = StyleSheet.create({
   fileMeta: { fontSize: 9, lineHeight: 14 },
   fileActions: { flexDirection: "row", alignItems: "center", gap: 0 },
   iconButton: { width: 26, height: 30, alignItems: "center", justifyContent: "center" },
-  dragHandle: { width: 46, flexDirection: "row", gap: 1, borderRadius: 7 },
+  dragHandle: { width: 54, height: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 1, borderRadius: 9 },
   fileDragLabel: { fontSize: 8, fontWeight: "900" },
   emptyFiles: { minHeight: 86, borderWidth: 1, borderStyle: "dashed", borderRadius: 12, alignItems: "center", justifyContent: "center", gap: 6 },
   emptyText: { fontSize: 10.5, fontWeight: "700" },
   previewFrame: { minHeight: 320, borderWidth: 1, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   previewImage: { width: "100%", height: "100%" },
+  thumbStrip: { gap: 6, paddingVertical: 2 },
+  stripThumb: { width: 54, height: 54, borderRadius: 8, borderWidth: 2, overflow: "hidden" },
+  stripThumbImage: { width: "100%", height: "100%" },
+  stripThumbIndex: { position: "absolute", bottom: 0, left: 0, minWidth: 16, paddingHorizontal: 3, color: "#fff", fontSize: 9, fontWeight: "900", textAlign: "center" },
+  zoomBar: { minHeight: 40, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "flex-end", gap: 2, paddingHorizontal: 6 },
+  zoomCounter: { flex: 1, fontSize: 10.5, fontWeight: "800" },
+  zoomSpacer: { flex: 1 },
+  zoomButton: { width: 38, height: 36, alignItems: "center", justifyContent: "center" },
+  zoomValue: { minWidth: 52, height: 36, alignItems: "center", justifyContent: "center" },
+  zoomValueText: { fontSize: 11.5, fontWeight: "900" },
   pdfPreview: { width: "100%", height: "100%" },
   previewFilePicker: { alignItems: "center", gap: 6, paddingVertical: 2 },
   previewFileChip: { minHeight: 32, maxWidth: 200, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, alignItems: "center", justifyContent: "center" },
@@ -954,7 +1098,7 @@ const styles = StyleSheet.create({
   idPreviewImage: { width: "100%", height: "86%" },
   pageEditList: { maxHeight: 380 },
   pageEditRows: { gap: 6 },
-  pageEditRow: { minHeight: 52, borderWidth: 1, borderRadius: 10, paddingHorizontal: 5, paddingVertical: 4, alignItems: "center", gap: 4 },
+  pageEditRow: { height: 52, borderWidth: 1, borderRadius: 10, paddingHorizontal: 5, paddingVertical: 4, alignItems: "center", gap: 4 },
   pageEditCopy: { flex: 1, minWidth: 0, gap: 2 },
   pageEditTitle: { fontSize: 9.5, fontWeight: "800" },
   pageEditMeta: { fontSize: 8.5 },

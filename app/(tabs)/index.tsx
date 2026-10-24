@@ -40,7 +40,7 @@ import {
 import { paperOptions, paperPresetById } from "@/shared/print-options";
 import { printProfiles, printProfileById } from "@/shared/print-profiles";
 import { hasBothIdFaces, isValidIpv4 } from "@/shared/device-operations";
-import { moveWorkflowItem, normalizeRotation, rotateWorkflowFile } from "@/shared/workflow-files";
+import { moveWorkflowItem, normalizeRotation, rotateSelectedFiles, rotateWorkflowFile } from "@/shared/workflow-files";
 import { formatNumberValue, getNumberingPages } from "@/shared/numbering";
 import {
   canApplyPageOrder,
@@ -1685,6 +1685,18 @@ export default function HomeScreen() {
     setToolResults((current) => ({ ...current, images: undefined }));
   };
 
+  const rotateSelectedPendingAssets = (uris: string[]) => {
+    if (!uris.length) return;
+    const next = rotateSelectedFiles(pendingAssets, uris);
+    setPendingAssets(next);
+    setSelectedFiles(next.map((asset) => asset.name));
+    if (previewAsset) {
+      const current = next.find((asset) => asset.uri === previewAsset.uri);
+      if (current) setPreviewAsset(current);
+    }
+    setToolResults((current) => ({ ...current, images: undefined }));
+  };
+
   const removePendingAsset = (index: number) => {
     const removed = pendingAssets[index];
     const next = pendingAssets.filter((_, itemIndex) => itemIndex !== index);
@@ -2420,6 +2432,7 @@ export default function HomeScreen() {
           onDeletePage={deleteEditedPage}
           onRotateFile={rotatePendingAsset}
           onRotateAllFiles={rotateAllPendingAssets}
+          onRotateSelectedFiles={rotateSelectedPendingAssets}
           onRemoveFile={removePendingAsset}
           onSettingChange={changeWorkflowSetting}
           onRun={() => { void continuePreviewAction(); }}
