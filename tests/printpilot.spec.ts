@@ -188,12 +188,14 @@ describe("PrintPilot separate previews", () => {
       "extract",
       "numbering",
       "pages",
+      "cut",
       "id",
       "print",
     ]);
-    expect(new Set(previewKinds).size).toBe(7);
+    expect(new Set(previewKinds).size).toBe(8);
     expect(hasPreviewContent("print", ["document.pdf"], null, null)).toBe(true);
     expect(hasPreviewContent("id", [], "front.jpg", null)).toBe(true);
+    expect(hasPreviewContent("cut", ["document.pdf"], null, null)).toBe(true);
     expect(hasPreviewContent("id", [], null, null)).toBe(false);
   });
 });

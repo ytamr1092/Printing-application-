@@ -1,3 +1,9 @@
+export type PdfThumbnailOptions = {
+  quality?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+};
+
 export type PdfPageThumbnailResult = {
   uri: string;
   width: number;
@@ -8,6 +14,7 @@ export type PdfPageThumbnailResult = {
 export async function generatePdfPageThumbnail(
   _uri: string,
   _pageIndex: number,
+  _options?: PdfThumbnailOptions,
 ): Promise<PdfPageThumbnailResult | null> {
   return null;
 }
