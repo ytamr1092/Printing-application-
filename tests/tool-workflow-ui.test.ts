@@ -419,3 +419,71 @@ describe("tool workflow UI", () => {
     expect(appSource).toMatch(/onBack=\{\(\) => setPreviewKind\(null\)\}/);
   });
 });
+
+describe("tool workflow UI: selection, zoom and drag-only ordering", () => {
+  const imageFiles = [
+    { uri: "file:///one.jpg", name: "one.jpg", mimeType: "image/jpeg" },
+    { uri: "file:///two.png", name: "two.png", mimeType: "image/png" },
+  ];
+  const imageProps = () => ({
+    ...workflowProps(true),
+    kind: "images" as const,
+    files: imageFiles,
+    previewFile: imageFiles[0],
+    onRotateAllFiles: vi.fn(),
+    onRotateSelectedFiles: vi.fn(),
+  });
+  const press = (node: ReactTestInstance) => (node.props.onClick ?? node.props.onPress)();
+
+  it("rotates only the checked images together", () => {
+    const props = imageProps();
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "تحديد الصورة" }).length).toBeGreaterThan(0);
+
+    const checkboxes = renderer.root.findAllByProps({ accessibilityLabel: "تحديد الصورة" }).filter((node) => node.type === "button");
+    act(() => press(checkboxes[1]));
+    const rotateSelected = renderer.root.findAllByProps({ accessibilityLabel: "تدوير الصور المحددة" }).filter((node) => node.type === "button")[0];
+    act(() => press(rotateSelected));
+    expect(props.onRotateSelectedFiles).toHaveBeenCalledWith(["file:///two.png"]);
+  });
+
+  it("selects every image at once and rotates the whole selection", () => {
+    const props = imageProps();
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, props));
+    });
+    const selectAll = renderer.root.findAllByProps({ accessibilityLabel: "تحديد كل الصور" }).filter((node) => node.type === "button")[0];
+    act(() => press(selectAll));
+    const rotateSelected = renderer.root.findAllByProps({ accessibilityLabel: "تدوير الصور المحددة" }).filter((node) => node.type === "button")[0];
+    act(() => press(rotateSelected));
+    expect(props.onRotateSelectedFiles).toHaveBeenCalledWith(["file:///one.jpg", "file:///two.png"]);
+  });
+
+  it("zooms the image preview in and back to fit", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, imageProps()));
+    });
+    expect(readText(renderer)).toContain("100%");
+    const zoomIn = renderer.root.findAllByProps({ accessibilityLabel: "تكبير" }).filter((node) => node.type === "button")[0];
+    act(() => press(zoomIn));
+    expect(readText(renderer)).toContain("150%");
+    const fit = renderer.root.findAllByProps({ accessibilityLabel: "ملاءمة العرض" }).filter((node) => node.type === "button")[0];
+    act(() => press(fit));
+    expect(readText(renderer)).toContain("100%");
+  });
+
+  it("orders files by dragging only, without up/down arrow buttons", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(React.createElement(ToolWorkflowScreen, imageProps()));
+    });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "تحريك لأعلى" })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "تحريك لأسفل" })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: "اسحب لتحريك الملف" }).length).toBeGreaterThan(0);
+  });
+});
