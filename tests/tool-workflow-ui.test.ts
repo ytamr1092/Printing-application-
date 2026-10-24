@@ -774,14 +774,15 @@ describe("page grid window", () => {
     expect(buttonByLabel(empty, "حذف").props.disabled).toBe(true);
     expect(buttonByLabel(empty, "تدوير").props.disabled).toBe(true);
 
-    const props = gridProps({ selected: ["a", "b"], onExtractSelected: vi.fn() });
+    const extract = vi.fn();
+    const props = gridProps({ selected: ["a", "b"], onExtractSelected: extract });
     const renderer = render(props);
     act(() => press(buttonByLabel(renderer, "حذف")));
     act(() => press(buttonByLabel(renderer, "تدوير")));
     act(() => press(buttonByLabel(renderer, "استخراج")));
     expect(props.onDeleteSelected).toHaveBeenCalledTimes(1);
     expect(props.onRotateSelected).toHaveBeenCalledTimes(1);
-    expect(props.onExtractSelected).toHaveBeenCalledTimes(1);
+    expect(extract).toHaveBeenCalledTimes(1);
     expect(buttonByLabel(empty, "استخراج")).toBeUndefined();
   });
 
