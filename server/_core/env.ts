@@ -14,3 +14,24 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
 };
+
+export const MIN_SESSION_SECRET_LENGTH = 32;
+
+/**
+ * Returns the session-signing secret or throws when it is missing/weak.
+ * An empty secret must never be used to sign or verify session tokens.
+ */
+export function requireSessionSecret(
+  secret: string,
+  isProduction: boolean,
+): string {
+  if (!secret.trim()) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  if (isProduction && secret.length < MIN_SESSION_SECRET_LENGTH) {
+    throw new Error(
+      `JWT_SECRET must be at least ${MIN_SESSION_SECRET_LENGTH} characters in production`,
+    );
+  }
+  return secret;
+}

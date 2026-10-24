@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { createCorsMiddleware } from "./cors";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { ENV, requireSessionSecret } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -29,6 +30,13 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  if (ENV.isProduction) {
+    // Fail fast: never run in production with a missing or weak session secret.
+    requireSessionSecret(ENV.cookieSecret, true);
+  } else if (!ENV.cookieSecret.trim()) {
+    console.warn("[auth] JWT_SECRET is not set; sign-in will not work.");
+  }
+
   const app = express();
   const server = createServer(app);
 
