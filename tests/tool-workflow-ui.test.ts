@@ -911,12 +911,40 @@ describe("page grid window", () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
+  it("compact preview: a Preview button opens a window whose Layout button opens the grid", () => {
+    const open = vi.fn();
+    const onPreviewOpenChange = vi.fn();
+    const images = [
+      { uri: "file:///one.jpg", name: "one.jpg", mimeType: "image/jpeg" },
+      { uri: "file:///two.png", name: "two.png", mimeType: "image/png" },
+    ];
+    const base = { ...workflowProps(true), kind: "images" as const, files: images, previewFile: images[0], onOpenPageGrid: open, compactPreview: true, onPreviewOpenChange };
+    let closed!: ReactTestRenderer;
+    act(() => {
+      closed = create(React.createElement(ToolWorkflowScreen, { ...base, previewOpen: false }));
+    });
+    expect(closed.root.findAllByProps({ testID: "workflow-preview-pane" })).toHaveLength(0);
+    act(() => press(buttonByLabel(closed, "فتح المعاينة")));
+    expect(onPreviewOpenChange).toHaveBeenCalledWith(true);
+
+    let windowed!: ReactTestRenderer;
+    act(() => {
+      windowed = create(React.createElement(ToolWorkflowScreen, { ...base, previewOpen: true }));
+    });
+    expect(windowed.root.findByProps({ testID: "workflow-preview-window" })).toBeTruthy();
+    expect(windowed.root.findByProps({ testID: "workflow-preview-pane" })).toBeTruthy();
+    act(() => press(buttonByLabel(windowed, "التخطيط")));
+    expect(open).toHaveBeenCalledTimes(1);
+    act(() => press(buttonByLabel(windowed, "رجوع")));
+    expect(onPreviewOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it("is wired into the app: the phone back button closes the window before the tool", () => {
     const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
     expect(appSource).toContain("<PageGridEditor");
     expect(appSource).toContain("onOpenPageGrid=");
     const backStart = appSource.indexOf('"hardwareBackPress"');
-    const backSource = appSource.slice(backStart, backStart + 1400);
+    const backSource = appSource.slice(backStart, backStart + 1800);
     expect(backSource.indexOf("pageGridOpen")).toBeGreaterThan(-1);
     expect(backSource.indexOf("pageGridOpen")).toBeLessThan(backSource.indexOf("closeTool()"));
     expect(backSource).toContain("< 2000");
