@@ -60,6 +60,7 @@ import {
   displayRectToPdfBox,
   displayedAspect,
   isValidCropRect,
+  pagesToRanges,
   parsePageRanges,
   rangePageIndexes,
   type CropRect,
@@ -300,6 +301,9 @@ const copy = {
     pageEditNeedOrder: "اكتب أرقام صفحات صحيحة",
     pageEditSuccess: "تم إنشاء PDF بالترتيب الجديد",
     pageExtractSuccess: "تم استخراج الصفحات المحددة في ملف PDF جديد",
+    gridUseForCut: "قص المحدد",
+    gridUseForNumbering: "ترقيم المحدد",
+    gridPrintSelected: "طباعة المحدد",
     pageEditFailed: "تعذر تعديل ترتيب صفحات PDF",
     progressReading: "جارٍ فتح الملف وقراءته محليًا",
     progressPreparing: "جارٍ تجهيز المعاينة",
@@ -573,6 +577,9 @@ const copy = {
     pageEditNeedOrder: "Enter valid page numbers",
     pageEditSuccess: "PDF created with the new order",
     pageExtractSuccess: "Selected pages extracted to a new PDF",
+    gridUseForCut: "Cut selected",
+    gridUseForNumbering: "Number selected",
+    gridPrintSelected: "Print selected",
     pageEditFailed: "Could not edit PDF page order",
     progressReading: "Opening and reading file locally",
     progressPreparing: "Preparing the preview",
@@ -993,6 +1000,10 @@ export default function HomeScreen() {
   } | null>(null);
   const [pageOrder, setPageOrder] = useState("");
   const [pageGridOpen, setPageGridOpen] = useState(false);
+  // PDF whose page count was read when the grid opened (print / extract tools).
+  const [loadedGridPdf, setLoadedGridPdf] = useState<{ uri: string; pages: number } | null>(null);
+  // First-page thumbnails of PDF files in the merge list, by file uri.
+  const [fileThumbs, setFileThumbs] = useState<Record<string, string>>({});
   const [gridSelected, setGridSelected] = useState<string[]>([]);
   const [pageThumbs, setPageThumbs] = useState<Record<number, string>>({});
   const [cutFile, setCutFile] = useState<CutFile | null>(null);
@@ -1048,6 +1059,8 @@ export default function HomeScreen() {
     setPageGridOpen(false);
     setGridSelected([]);
     setPageThumbs({});
+    setLoadedGridPdf(null);
+    setFileThumbs({});
     setCutFile(null);
     setCutRanges("");
     setCutMode("split");
@@ -1742,6 +1755,19 @@ export default function HomeScreen() {
     setSelectedPageIndex(next.length ? Math.min(index, next.length - 1) : null);
   };
 
+  const isPdfAsset = (asset: PickedAsset) =>
+    Boolean(asset.mimeType?.includes("pdf")) || asset.name.toLowerCase().endsWith(".pdf");
+  // The PDF whose pages the grid shows (page-based tools only).
+  const gridPdf: { uri: string; pages: number } | null =
+    previewKind === "pages"
+      ? pageEditorFile
+      : previewKind === "cut"
+        ? cutFile
+        : previewKind === "numbering"
+          ? numberingFile
+          : previewKind === "print" || previewKind === "extract"
+            ? loadedGridPdf
+            : null;
   const gridItems: GridItem[] =
     previewKind === "pages"
       ? pageEdits.map((edit, index) => ({
@@ -1750,12 +1776,74 @@ export default function HomeScreen() {
           thumbUri: pageThumbs[edit.sourcePage] ?? null,
           rotation: edit.rotation,
         }))
-      : pendingAssets.map((asset, index) => ({
-          key: asset.uri,
-          label: String(index + 1),
-          thumbUri: asset.uri,
-          rotation: normalizeRotation(asset.rotation),
-        }));
+      : previewKind === "merge" || previewKind === "images"
+        ? pendingAssets.map((asset, index) => ({
+            key: asset.uri,
+            label: String(index + 1),
+            thumbUri: isPdfAsset(asset) ? fileThumbs[asset.uri] ?? null : asset.uri,
+            rotation: normalizeRotation(asset.rotation),
+          }))
+        : Array.from({ length: gridPdf?.pages ?? 0 }, (_, index) => ({
+            key: String(index + 1),
+            label: String(index + 1),
+            thumbUri: pageThumbs[index + 1] ?? null,
+            rotation: 0,
+          }));
+  const openPageGrid = async () => {
+    setGridSelected([]);
+    if (previewKind === "print" || previewKind === "extract") {
+      const file = previewKind === "print" ? printAsset : extractFile;
+      if (!file) return;
+      try {
+        const { PDFDocument } = await loadPdfLib();
+        const base64 = await FileSystem.readAsStringAsync(file.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const document = await PDFDocument.load(base64ToBytes(base64));
+        setLoadedGridPdf({ uri: file.uri, pages: document.getPageCount() });
+      } catch {
+        showError(t.errorTitle, t.pickerCancelledHint);
+        return;
+      }
+    }
+    setPageGridOpen(true);
+  };
+  // Selection -> the tool's own setting (cut ranges / numbering span) or print.
+  const applyGridSelection = async () => {
+    const numbers = gridSelected.map(Number).filter((n) => n > 0);
+    if (!numbers.length) return;
+    if (previewKind === "cut") {
+      setCutMode("split");
+      setCutRanges(pagesToRanges(numbers));
+      closePageGrid();
+    } else if (previewKind === "numbering") {
+      setNumberFrom(String(Math.min(...numbers)));
+      setNumberTo(String(Math.max(...numbers)));
+      closePageGrid();
+    } else if (previewKind === "print" && printAsset) {
+      try {
+        const { PDFDocument } = await loadPdfLib();
+        const base64 = await FileSystem.readAsStringAsync(printAsset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const source = await PDFDocument.load(base64ToBytes(base64));
+        const output = await PDFDocument.create();
+        const copied = await output.copyPages(
+          source,
+          [...numbers].sort((a, b) => a - b).map((n) => n - 1),
+        );
+        copied.forEach((page: any) => output.addPage(page));
+        const outputUri = `${FileSystem.cacheDirectory}PrintPilot-Print-${Date.now()}.pdf`;
+        await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await output.save()), {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        closePageGrid();
+        await Print.printAsync({ uri: outputUri });
+      } catch {
+        showError(t.printerUnavailable, t.printerUnavailableHint);
+      }
+    }
+  };
   const closePageGrid = () => {
     setPageGridOpen(false);
     setGridSelected([]);
@@ -1852,9 +1940,9 @@ export default function HomeScreen() {
   const pageThumbsRef = useRef(pageThumbs);
   pageThumbsRef.current = pageThumbs;
   useEffect(() => {
-    if (!pageGridOpen || previewKind !== "pages" || !pageEditorFile) return;
+    if (!pageGridOpen || !gridPdf) return;
     let cancelled = false;
-    const file = pageEditorFile;
+    const file = gridPdf;
     void (async () => {
       for (let page = 1; page <= file.pages; page += 1) {
         if (cancelled) return;
@@ -1876,7 +1964,35 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [pageGridOpen, previewKind, pageEditorFile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageGridOpen, previewKind, gridPdf?.uri]);
+
+  // Merge list: first-page thumbnails for the PDFs.
+  useEffect(() => {
+    if (!pageGridOpen || previewKind !== "merge") return;
+    let cancelled = false;
+    void (async () => {
+      for (const asset of pendingAssets) {
+        if (cancelled) return;
+        if (!isPdfAsset(asset) || fileThumbs[asset.uri]) continue;
+        try {
+          const thumbnail = await generatePdfPageThumbnail(asset.uri, 0, {
+            quality: 70,
+            maxWidth: 420,
+            maxHeight: 600,
+          });
+          if (cancelled || !thumbnail) return;
+          setFileThumbs((current) => ({ ...current, [asset.uri]: thumbnail.uri }));
+        } catch {
+          // Keeps the numbered placeholder.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageGridOpen, previewKind, pendingAssets]);
 
   const continuePrint = async () => {
     if (!printUri) return;
@@ -2864,7 +2980,7 @@ export default function HomeScreen() {
           onDismiss={() => setOperationProgress(null)}
         />
       ) : null}
-      {previewKind && pageGridOpen && (previewKind === "pages" || previewKind === "images") ? (
+      {previewKind && pageGridOpen && previewKind !== "id" ? (
         <PageGridEditor
           title={previewTitleFor(previewKind)}
           items={gridItems}
@@ -2873,10 +2989,26 @@ export default function HomeScreen() {
           onToggle={(key) => setGridSelected((current) => toggleSelected(current, key))}
           onSelectAll={() => setGridSelected(gridItems.map((item) => item.key))}
           onClear={() => setGridSelected([])}
-          onMove={moveGridItem}
-          onRotateSelected={rotateGridSelected}
-          onDeleteSelected={deleteGridSelected}
-          onExtractSelected={previewKind === "pages" ? () => { void extractGridSelected(); } : undefined}
+          onMove={previewKind === "pages" || previewKind === "merge" || previewKind === "images" ? moveGridItem : undefined}
+          onRotateSelected={previewKind === "pages" || previewKind === "images" ? rotateGridSelected : undefined}
+          onDeleteSelected={previewKind === "pages" || previewKind === "merge" || previewKind === "images" ? deleteGridSelected : undefined}
+          onExtractSelected={
+            previewKind === "pages"
+              ? () => { void extractGridSelected(); }
+              : previewKind === "cut" || previewKind === "numbering" || previewKind === "print"
+                ? () => { void applyGridSelection(); }
+                : undefined
+          }
+          extractLabel={
+            previewKind === "cut"
+              ? t.gridUseForCut
+              : previewKind === "numbering"
+                ? t.gridUseForNumbering
+                : previewKind === "print"
+                  ? t.gridPrintSelected
+                  : undefined
+          }
+          extractIcon={previewKind === "print" ? "print" : previewKind === "pages" ? undefined : "check"}
           onClose={closePageGrid}
         />
       ) : previewKind ? (
@@ -2922,7 +3054,7 @@ export default function HomeScreen() {
           onRemoveFile={removePendingAsset}
           onSettingChange={changeWorkflowSetting}
           onRun={() => { void continuePreviewAction(); }}
-          onOpenPageGrid={() => { setGridSelected([]); setPageGridOpen(true); }}
+          onOpenPageGrid={() => { void openPageGrid(); }}
           onSaveResult={() => { void saveWorkflowResult(); }}
           onShareResult={shareWorkflowResult}
           onDismissError={() => setErrorMessage(null)}

@@ -878,7 +878,7 @@ describe("page grid window", () => {
     expect(body).toContain("PrintPilot-Extract-");
     expect(body).toContain("pages: {");
     expect(body).not.toContain("setPageEdits(");
-    expect(appSource).toContain("onExtractSelected={previewKind === \"pages\"");
+    expect(appSource).toMatch(/onExtractSelected=\{\s*previewKind === "pages"/);
   });
 
   it("is opened from the preview for images and pages, and closes back", () => {
@@ -921,5 +921,18 @@ describe("page grid window", () => {
     expect(backSource.indexOf("pageGridOpen")).toBeLessThan(backSource.indexOf("closeTool()"));
     expect(backSource).toContain("< 2000");
     expect(appSource).toContain("setPageGridOpen(false);\n    setGridSelected([]);\n    setPageThumbs({});");
+  });
+
+  it("is available in every PDF tool, with select-only grids where order cannot change", () => {
+    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    expect(appSource).toContain('previewKind && pageGridOpen && previewKind !== "id"');
+    expect(appSource).toContain("const openPageGrid = async");
+    expect(appSource).toContain("const applyGridSelection = async");
+    expect(appSource).toContain("pagesToRanges(numbers)");
+    expect(appSource).toContain("setLoadedGridPdf(null);");
+    const screen = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
+    for (const kind of ["cut", "numbering", "extract", "print", "merge"]) {
+      expect(screen).toContain(`kind === "${kind}"`);
+    }
   });
 });
