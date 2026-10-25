@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Image,
   Pressable,
@@ -12,7 +12,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { useGridDragReorder } from "@/components/use-grid-drag-reorder";
 import { useColors } from "@/hooks/use-colors";
-import { normalizeRotation } from "@/shared/workflow-files";
+import { autoScrollSpeed, normalizeRotation } from "@/shared/workflow-files";
 
 export type GridItem = {
   key: string;
@@ -55,6 +55,11 @@ type CellProps = {
   colors: ReturnType<typeof useColors>;
   onToggle: () => void;
   onMove: (from: number, to: number) => void;
+  scrollY: number;
+  getScrollY: () => number;
+  onDragStart: () => void;
+  onDragPoint: (fingerY: number) => void;
+  onDragEnd: () => void;
 };
 
 function GridCell({
@@ -69,6 +74,11 @@ function GridCell({
   colors,
   onToggle,
   onMove,
+  scrollY,
+  getScrollY,
+  onDragStart,
+  onDragPoint,
+  onDragEnd,
 }: CellProps) {
   const { handlers, dragging, offsetX, offsetY } = useGridDragReorder({
     index,
@@ -78,6 +88,11 @@ function GridCell({
     cellHeight,
     mirror: isArabic,
     onMove,
+    scrollY,
+    getScrollY,
+    onDragStart,
+    onDragPoint,
+    onDragEnd,
   });
   const rotation = normalizeRotation(item.rotation);
   const sideways = rotation === 90 || rotation === 270;
@@ -165,6 +180,40 @@ export function PageGridEditor({
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
   const [measured, setMeasured] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const viewportRef = useRef<View | null>(null);
+  const scrollYRef = useRef(0);
+  const draggingRef = useRef(false);
+  const fingerY = useRef<number | null>(null);
+  const viewport = useRef({ top: 0, height: 0 });
+  const contentHeight = useRef(0);
+  const scrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopAutoScroll = () => {
+    draggingRef.current = false;
+    fingerY.current = null;
+    if (scrollTimer.current) clearInterval(scrollTimer.current);
+    scrollTimer.current = null;
+  };
+  // While a page is being dragged, scroll the grid when the finger nears an edge.
+  const startAutoScroll = () => {
+    stopAutoScroll();
+    draggingRef.current = true;
+    viewportRef.current?.measureInWindow?.((_x: number, y: number, _w: number, height: number) => {
+      viewport.current = { top: y, height };
+    });
+    scrollTimer.current = setInterval(() => {
+      const y = fingerY.current;
+      if (y === null || viewport.current.height <= 0) return;
+      const speed = autoScrollSpeed(y, viewport.current.top, viewport.current.height);
+      if (!speed) return;
+      const max = Math.max(0, contentHeight.current - viewport.current.height);
+      const next = Math.min(Math.max(scrollYRef.current + speed, 0), max);
+      if (next !== scrollYRef.current) scrollRef.current?.scrollTo?.({ y: next, animated: false });
+    }, 16);
+  };
+  useEffect(() => stopAutoScroll, []);
   const available = measured || windowWidth;
   const cols = available >= 900 ? 4 : available >= 600 ? 3 : 2;
   const cellWidth = Math.floor(available / cols);
@@ -216,9 +265,20 @@ export function PageGridEditor({
       <Text style={[styles.hint, { color: colors.muted }]}>
         {tr(isArabic, "اضغط للتحديد، واضغط مطولًا ثم اسحب لإعادة الترتيب", "Tap to select, press and hold then drag to reorder")}
       </Text>
+      <View ref={viewportRef} collapsable={false} style={styles.scroll}>
       <ScrollView
+        testID="page-grid-scroll"
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.gridContent}
+        scrollEventThrottle={16}
+        onContentSizeChange={(_w: number, h: number) => {
+          contentHeight.current = h;
+        }}
+        onScroll={(event: { nativeEvent: { contentOffset: { y: number } } }) => {
+          scrollYRef.current = event.nativeEvent.contentOffset.y;
+          if (draggingRef.current) setScrollY(scrollYRef.current);
+        }}
         onLayout={(event: { nativeEvent: { layout: { width: number } } }) => setMeasured(event.nativeEvent.layout.width)}
       >
         <View testID="page-grid" style={[styles.grid, { flexDirection: direction }]}>
@@ -236,10 +296,18 @@ export function PageGridEditor({
               colors={colors}
               onToggle={() => onToggle(item.key)}
               onMove={onMove}
+              scrollY={scrollY}
+              getScrollY={() => scrollYRef.current}
+              onDragStart={startAutoScroll}
+              onDragPoint={(y) => {
+                fingerY.current = y;
+              }}
+              onDragEnd={stopAutoScroll}
             />
           ))}
         </View>
       </ScrollView>
+      </View>
       <View style={[styles.bottomBar, { borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: direction }]}>
         {action(tr(isArabic, "حذف", "Delete"), "delete-outline", onDeleteSelected, colors.error)}
         {action(tr(isArabic, "تدوير", "Rotate"), "rotate-right", onRotateSelected, colors.primary)}

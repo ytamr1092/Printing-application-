@@ -133,3 +133,65 @@ export function gridTargetIndex(
   );
   return Math.min(row * columns + col, total - 1);
 }
+
+/**
+ * Scroll speed (px per tick, negative = up) while dragging near the edge of a
+ * scrollable window. `pointer` and `top` share the same coordinate space.
+ */
+export function edgeScrollSpeed(
+  pointer: number,
+  top: number,
+  height: number,
+  edge = 90,
+  maxSpeed = 18,
+): number {
+  if (
+    !Number.isFinite(pointer) ||
+    !Number.isFinite(top) ||
+    !(height > 0) ||
+    !(edge > 0) ||
+    height < edge * 2
+  ) {
+    return 0;
+  }
+  const fromTop = pointer - top;
+  const fromBottom = top + height - pointer;
+  if (fromTop < edge) {
+    return -Math.min(1, (edge - fromTop) / edge) * maxSpeed;
+  }
+  if (fromBottom < edge) {
+    return Math.min(1, (edge - fromBottom) / edge) * maxSpeed;
+  }
+  return 0;
+}
+
+/**
+ * Scroll speed (px per frame, negative = up) while dragging near the top or
+ * bottom edge of a scrolling viewport. Zero when the finger is away from edges.
+ */
+export function autoScrollSpeed(
+  fingerY: number,
+  viewportTop: number,
+  viewportHeight: number,
+  zone = 90,
+  maxSpeed = 18,
+): number {
+  if (
+    !Number.isFinite(fingerY) ||
+    !Number.isFinite(viewportTop) ||
+    !(viewportHeight > 0) ||
+    !(zone > 0)
+  ) {
+    return 0;
+  }
+  const effectiveZone = Math.min(zone, viewportHeight / 2);
+  const topEdge = viewportTop + effectiveZone;
+  const bottomEdge = viewportTop + viewportHeight - effectiveZone;
+  if (fingerY < topEdge) {
+    return -Math.min(1, (topEdge - fingerY) / effectiveZone) * maxSpeed;
+  }
+  if (fingerY > bottomEdge) {
+    return Math.min(1, (fingerY - bottomEdge) / effectiveZone) * maxSpeed;
+  }
+  return 0;
+}
