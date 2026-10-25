@@ -192,7 +192,7 @@ function WorkflowFileRow({
       <Pressable onPress={onSelect} style={[styles.fileMain, { flexDirection: direction }]}>
         {isImage ? (
           <View style={[styles.fileThumbBox, { borderColor: selected ? colors.primary : colors.border }]}>
-            <Image
+            <Image resizeMethod="resize"
               source={{ uri: file.uri }}
               resizeMode="cover"
               style={[styles.fileThumb, rotation ? { transform: [{ rotate: `${rotation}deg` }] } : null]}
@@ -781,7 +781,7 @@ export function ToolWorkflowScreen({
         {side === "front" ? tr(isArabic, "الوجه الأمامي", "Front side") : tr(isArabic, "الوجه الخلفي", "Back side")}
       </Text>
       {uri ? (
-        <Image
+        <Image resizeMethod="resize"
           accessibilityLabel={side === "front" ? tr(isArabic, "معاينة الوجه الأمامي", "Front side preview") : tr(isArabic, "معاينة الوجه الخلفي", "Back side preview")}
           source={{ uri }}
           resizeMode="contain"
@@ -1011,7 +1011,7 @@ export function ToolWorkflowScreen({
                   }}
                   style={[styles.stripThumb, { borderColor: active ? colors.primary : colors.border }]}
                 >
-                  <Image source={{ uri: file.uri }} resizeMode="cover" style={[styles.stripThumbImage, thumbRotation ? { transform: [{ rotate: `${thumbRotation}deg` }] } : null]} />
+                  <Image resizeMethod="resize" source={{ uri: file.uri }} resizeMode="cover" style={[styles.stripThumbImage, thumbRotation ? { transform: [{ rotate: `${thumbRotation}deg` }] } : null]} />
                   <Text style={[styles.stripThumbIndex, { backgroundColor: active ? colors.primary : "#0008" }]}>{index + 1}</Text>
                 </Pressable>
               );
@@ -1064,7 +1064,7 @@ export function ToolWorkflowScreen({
                     style={[styles.imagePreviewPage, { borderColor: previewFile?.uri === file.uri ? colors.primary : colors.border, backgroundColor: colors.surface }]}
                   >
                     <Text numberOfLines={1} style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{index + 1}. {file.name}</Text>
-                    <Image
+                    <Image resizeMethod="resize"
                       accessibilityLabel={tr(isArabic, `معاينة الصورة ${index + 1}: ${file.name}`, `Preview image ${index + 1}: ${file.name}`)}
                       source={{ uri: file.uri }}
                       resizeMode="contain"
@@ -1078,7 +1078,7 @@ export function ToolWorkflowScreen({
             previewFile.mimeType?.startsWith("image/") ? (
               <ScrollView horizontal nestedScrollEnabled scrollEnabled={zoom > 1} showsHorizontalScrollIndicator={zoom > 1}>
                 <ScrollView nestedScrollEnabled scrollEnabled={zoom > 1} style={{ width: baseWidth * zoom }} contentContainerStyle={{ minHeight: frameHeight * zoom }}>
-                  <Image
+                  <Image resizeMethod="resize"
                     accessibilityLabel={tr(isArabic, `معاينة ${previewFile.name}`, `Preview ${previewFile.name}`)}
                     source={{ uri: previewFile.uri }}
                     resizeMode="contain"

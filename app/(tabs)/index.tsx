@@ -1944,22 +1944,36 @@ export default function HomeScreen() {
     let cancelled = false;
     const file = gridPdf;
     void (async () => {
+      // Thumbnails arrive in small batches: one state update (and one render of
+      // this big screen) per few pages instead of one per page.
+      let batch: Record<number, string> = {};
+      let count = 0;
+      const flush = () => {
+        if (!count) return;
+        const ready = batch;
+        batch = {};
+        count = 0;
+        setPageThumbs((current) => ({ ...current, ...ready }));
+      };
       for (let page = 1; page <= file.pages; page += 1) {
         if (cancelled) return;
         if (pageThumbsRef.current[page]) continue;
         try {
           const thumbnail = await generatePdfPageThumbnail(file.uri, page - 1, {
-            quality: 70,
-            maxWidth: 420,
-            maxHeight: 600,
+            quality: 60,
+            maxWidth: 300,
+            maxHeight: 424,
           });
           if (cancelled) return;
-          if (!thumbnail) return;
-          setPageThumbs((current) => ({ ...current, [page]: thumbnail.uri }));
+          if (!thumbnail) break;
+          batch[page] = thumbnail.uri;
+          count += 1;
+          if (count >= 6) flush();
         } catch {
           // A page that cannot be rendered keeps its numbered placeholder.
         }
       }
+      if (!cancelled) flush();
     })();
     return () => {
       cancelled = true;
