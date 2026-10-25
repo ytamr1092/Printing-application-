@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -19,6 +19,7 @@ import { PdfDocumentPreview } from "@/components/pdf-document-preview";
 import { useDragReorder } from "@/components/use-drag-reorder";
 import { useColors } from "@/hooks/use-colors";
 import { eachPageRanges, FULL_CROP_RECT, parsePageRanges, type CropRect } from "@/shared/pdf-cut";
+import { fileBaseName } from "@/shared/file-name";
 import { paperOptions } from "@/shared/print-options";
 import type { PreviewKind } from "@/shared/preview";
 import {
@@ -96,8 +97,9 @@ type Props = {
   /** Whether the full preview window is open (controlled by the parent). */
   previewOpen?: boolean;
   onPreviewOpenChange?: (open: boolean) => void;
-  onSaveResult?: () => void;
-  onShareResult: () => void;
+  /** `name` is the file name the person typed (no extension; may be empty). */
+  onSaveResult?: (name: string) => void;
+  onShareResult: (name: string) => void;
   onDismissError: () => void;
 };
 
@@ -789,6 +791,11 @@ export function ToolWorkflowScreen({
   };
 
   const activeResult = result;
+  const [saveName, setSaveName] = useState("");
+  const resultUri = activeResult?.uri;
+  useEffect(() => {
+    setSaveName(resultUri ? fileBaseName(resultUri) : "");
+  }, [resultUri]);
   const completedSteps = activeResult ? 3 : files.length || frontUri || backUri ? 2 : 0;
   const idPreviewFace = (side: "front" | "back", uri: string | null, rotation: number) => (
     <View key={side} style={[styles.idPreviewSide, { borderColor: colors.border, backgroundColor: colors.background }]}>
@@ -1231,16 +1238,32 @@ export function ToolWorkflowScreen({
               <Text style={[styles.resultTitle, { color: colors.success, textAlign: isArabic ? "right" : "left" }]}>{activeResult.title}</Text>
             </View>
             {activeResult.detail ? <Text style={[styles.helper, { color: colors.foreground, textAlign: isArabic ? "right" : "left" }]}>{activeResult.detail}</Text> : null}
-            {activeResult.uri ? <Text numberOfLines={2} style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{activeResult.uri.split("/").pop()}</Text> : null}
+            {activeResult.uri ? (
+              <View>
+                <Text style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+                  {(activeResult.uris?.length ?? 0) > 1 ? tr(isArabic, "اسم الملفات (يُضاف إليه رقم لكل ملف)", "File name (a number is added to each file)") : tr(isArabic, "اسم الملف", "File name")}
+                </Text>
+                <TextInput
+                  testID="result-file-name"
+                  accessibilityLabel={tr(isArabic, "اسم الملف", "File name")}
+                  value={saveName}
+                  onChangeText={setSaveName}
+                  placeholder={tr(isArabic, "اكتب اسم الملف", "Type a file name")}
+                  placeholderTextColor={colors.muted}
+                  autoCorrect={false}
+                  style={[styles.fileNameInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, textAlign: isArabic ? "right" : "left" }]}
+                />
+              </View>
+            ) : null}
             {activeResult.uri ? (
               <View style={[styles.resultActions, { flexDirection: direction }]}>
                 {onSaveResult ? (
-                  <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "حفظ على الجهاز", "Save to device")} onPress={onSaveResult} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, flexDirection: direction }]}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "حفظ على الجهاز", "Save to device")} onPress={() => onSaveResult(saveName)} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, flexDirection: direction }]}>
                     <MaterialIcons name="save-alt" color={colors.primary} size={17} />
                     <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>{tr(isArabic, "حفظ على الجهاز", "Save to device")}</Text>
                   </Pressable>
                 ) : null}
-                {(activeResult.uris?.length ?? 0) > 1 ? null : <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "مشاركة", "Share")} onPress={onShareResult} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.border, flexDirection: direction }]}>
+                {(activeResult.uris?.length ?? 0) > 1 ? null : <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "مشاركة", "Share")} onPress={() => onShareResult(saveName)} style={[styles.secondaryButton, styles.resultAction, { borderColor: colors.border, flexDirection: direction }]}>
                   <MaterialIcons name="share" color={colors.muted} size={17} />
                   <Text style={[styles.secondaryButtonText, { color: colors.muted }]}>{tr(isArabic, "مشاركة", "Share")}</Text>
                 </Pressable>}
@@ -1287,6 +1310,7 @@ const styles = StyleSheet.create({
   workspaceColumns: { gap: 12, alignItems: "stretch" },
   editorPane: { flex: 1, minWidth: 0, gap: 11 },
   previewPane: { flex: 1, minWidth: 0 },
+  fileNameInput: { height: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, fontSize: 14, marginTop: 4 },
   layoutButton: { height: 38, alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12 },
   layoutButtonText: { fontSize: 13, fontWeight: "900" },
   card: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 },
