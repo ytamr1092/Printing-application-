@@ -878,7 +878,7 @@ describe("page grid window", () => {
     expect(body).toContain("PrintPilot-Extract-");
     expect(body).toContain("pages: {");
     expect(body).not.toContain("setPageEdits(");
-    expect(appSource).toContain("onExtractSelected={previewKind === \"pages\"");
+    expect(appSource).toMatch(/onExtractSelected=\{\s*previewKind === "pages"/);
   });
 
   it("is opened from the preview for images and pages, and closes back", () => {
