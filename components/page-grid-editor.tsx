@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Image,
   Pressable,
@@ -42,6 +42,29 @@ type Props = {
 };
 
 const noopMove = () => {};
+
+// Cells re-render only when what they show changes (not when a sibling's
+// thumbnail arrives or the parent re-renders). Callbacks are stable wrappers.
+function areCellPropsEqual(a: CellProps, b: CellProps) {
+  return (
+    a.item.key === b.item.key &&
+    a.item.label === b.item.label &&
+    a.item.thumbUri === b.item.thumbUri &&
+    a.item.rotation === b.item.rotation &&
+    a.index === b.index &&
+    a.total === b.total &&
+    a.cols === b.cols &&
+    a.cellWidth === b.cellWidth &&
+    a.cellHeight === b.cellHeight &&
+    a.checked === b.checked &&
+    a.isArabic === b.isArabic &&
+    a.scrollY === b.scrollY &&
+    Boolean(a.onMove) === Boolean(b.onMove) &&
+    a.colors.primary === b.colors.primary &&
+    a.colors.border === b.colors.border &&
+    a.colors.muted === b.colors.muted
+  );
+}
 const tr = (isArabic: boolean, ar: string, en: string) => (isArabic ? ar : en);
 const PAGE_ASPECT = 0.7071;
 const LABEL_HEIGHT = 30;
@@ -57,7 +80,7 @@ type CellProps = {
   checked: boolean;
   isArabic: boolean;
   colors: ReturnType<typeof useColors>;
-  onToggle: () => void;
+  onToggle: (key: string) => void;
   onMove?: (from: number, to: number) => void;
   scrollY: number;
   getScrollY: () => number;
@@ -66,7 +89,7 @@ type CellProps = {
   onDragEnd: () => void;
 };
 
-function GridCell({
+const GridCell = memo(function GridCell({
   item,
   index,
   total,
@@ -125,7 +148,7 @@ function GridCell({
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
         accessibilityLabel={tr(isArabic, `الصفحة ${item.label}`, `Page ${item.label}`)}
-        onPress={onToggle}
+        onPress={() => onToggle(item.key)}
         style={styles.cellPressable}
       >
         <View
@@ -141,7 +164,7 @@ function GridCell({
           ]}
         >
           {item.thumbUri ? (
-            <Image
+            <Image resizeMethod="resize"
               source={{ uri: item.thumbUri }}
               resizeMode="contain"
               style={[
@@ -160,7 +183,7 @@ function GridCell({
       </Pressable>
     </View>
   );
-}
+}, areCellPropsEqual);
 
 /**
  * Full-window page manager (like a document app's "all pages" view): a grid of
@@ -196,14 +219,22 @@ export function PageGridEditor({
   const contentHeight = useRef(0);
   const scrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const stopAutoScroll = () => {
+  const stopAutoScroll = useCallback(() => {
     draggingRef.current = false;
     fingerY.current = null;
     if (scrollTimer.current) clearInterval(scrollTimer.current);
     scrollTimer.current = null;
-  };
+  }, []);
+  const callbacks = useRef({ onMove, onToggle });
+  callbacks.current = { onMove, onToggle };
+  const stableMove = useCallback((from: number, to: number) => callbacks.current.onMove?.(from, to), []);
+  const stableToggle = useCallback((key: string) => callbacks.current.onToggle(key), []);
+  const getScrollY = useCallback(() => scrollYRef.current, []);
+  const onDragPoint = useCallback((y: number) => {
+    fingerY.current = y;
+  }, []);
   // While a page is being dragged, scroll the grid when the finger nears an edge.
-  const startAutoScroll = () => {
+  const startAutoScroll = useCallback(() => {
     stopAutoScroll();
     draggingRef.current = true;
     viewportRef.current?.measureInWindow?.((_x: number, y: number, _w: number, height: number) => {
@@ -218,8 +249,8 @@ export function PageGridEditor({
       const next = Math.min(Math.max(scrollYRef.current + speed, 0), max);
       if (next !== scrollYRef.current) scrollRef.current?.scrollTo?.({ y: next, animated: false });
     }, 16);
-  };
-  useEffect(() => stopAutoScroll, []);
+  }, [stopAutoScroll]);
+  useEffect(() => stopAutoScroll, [stopAutoScroll]);
   const available = measured || windowWidth;
   const cols = available >= 900 ? 4 : available >= 600 ? 3 : 2;
   const cellWidth = Math.floor(available / cols);
@@ -300,14 +331,12 @@ export function PageGridEditor({
               checked={selected.includes(item.key)}
               isArabic={isArabic}
               colors={colors}
-              onToggle={() => onToggle(item.key)}
-              onMove={onMove}
+              onToggle={stableToggle}
+              onMove={onMove ? stableMove : undefined}
               scrollY={scrollY}
-              getScrollY={() => scrollYRef.current}
+              getScrollY={getScrollY}
               onDragStart={startAutoScroll}
-              onDragPoint={(y) => {
-                fingerY.current = y;
-              }}
+              onDragPoint={onDragPoint}
               onDragEnd={stopAutoScroll}
             />
           ))}
