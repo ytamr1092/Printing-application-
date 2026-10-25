@@ -939,6 +939,25 @@ describe("page grid window", () => {
     expect(onPreviewOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("print tool offers page numbering for PDFs with the numbering options", () => {
+    const pdf = { uri: "file:///doc.pdf", name: "doc.pdf", mimeType: "application/pdf" };
+    const render = (settings: Record<string, string | boolean>, file = pdf) => {
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(React.createElement(ToolWorkflowScreen, { ...workflowProps(true), kind: "print" as const, files: [file], previewFile: file, settings }));
+      });
+      return JSON.stringify(renderer.toJSON());
+    };
+    expect(render({})).toContain("ترقيم الصفحات عند الطباعة");
+    expect(render({})).not.toContain("صيغة الرقم");
+    expect(render({ printNumbering: true })).toContain("صيغة الرقم");
+    const image = { uri: "file:///a.jpg", name: "a.jpg", mimeType: "image/jpeg" };
+    expect(render({}, image)).not.toContain("ترقيم الصفحات عند الطباعة");
+    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    expect(appSource).toContain("applyNumbering(document, StandardFonts, rgb)");
+    expect(appSource).toContain("setPrintNumbering(false);");
+  });
+
   it("is wired into the app: the phone back button closes the window before the tool", () => {
     const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
     expect(appSource).toContain("<PageGridEditor");
