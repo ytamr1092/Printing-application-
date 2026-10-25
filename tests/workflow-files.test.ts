@@ -7,6 +7,7 @@ import {
 } from "../shared/pdf-pages";
 import {
   dragTargetIndex,
+  edgeScrollSpeed,
   gridTargetIndex,
   pruneSelection,
   rotateSelectedFiles,
@@ -98,5 +99,24 @@ describe("selected page operations", () => {
     expect(keepSelectedPages(pages, [3, 1]).map((page) => page.sourcePage)).toEqual([1, 3]);
     expect(keepSelectedPages(pages, [])).toHaveLength(4);
     expect(pages.every((page) => page.rotation === 0)).toBe(true);
+  });
+});
+
+describe("edge auto-scroll", () => {
+  it("scrolls toward the edge the finger is near, faster the closer it gets", () => {
+    expect(edgeScrollSpeed(300, 0, 600)).toBe(0);
+    expect(edgeScrollSpeed(595, 0, 600)).toBeGreaterThan(edgeScrollSpeed(530, 0, 600));
+    expect(edgeScrollSpeed(530, 0, 600)).toBeGreaterThan(0);
+    expect(edgeScrollSpeed(5, 0, 600)).toBeLessThan(0);
+    expect(edgeScrollSpeed(-50, 0, 600)).toBeCloseTo(-18, 6);
+    expect(edgeScrollSpeed(700, 0, 600)).toBeCloseTo(18, 6);
+  });
+
+  it("respects the window's position and ignores invalid or tiny windows", () => {
+    expect(edgeScrollSpeed(160, 100, 600)).toBeLessThan(0);
+    expect(edgeScrollSpeed(400, 100, 600)).toBe(0);
+    expect(edgeScrollSpeed(Number.NaN, 0, 600)).toBe(0);
+    expect(edgeScrollSpeed(10, 0, 0)).toBe(0);
+    expect(edgeScrollSpeed(10, 0, 100)).toBe(0);
   });
 });

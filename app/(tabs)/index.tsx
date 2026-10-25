@@ -299,6 +299,7 @@ const copy = {
     pageEditNeedFile: "اختر ملف PDF أولًا",
     pageEditNeedOrder: "اكتب أرقام صفحات صحيحة",
     pageEditSuccess: "تم إنشاء PDF بالترتيب الجديد",
+    pageExtractSuccess: "تم استخراج الصفحات المحددة في ملف PDF جديد",
     pageEditFailed: "تعذر تعديل ترتيب صفحات PDF",
     progressReading: "جارٍ فتح الملف وقراءته محليًا",
     progressPreparing: "جارٍ تجهيز المعاينة",
@@ -571,6 +572,7 @@ const copy = {
     pageEditNeedFile: "Choose a PDF file first",
     pageEditNeedOrder: "Enter valid page numbers",
     pageEditSuccess: "PDF created with the new order",
+    pageExtractSuccess: "Selected pages extracted to a new PDF",
     pageEditFailed: "Could not edit PDF page order",
     progressReading: "Opening and reading file locally",
     progressPreparing: "Preparing the preview",
@@ -1795,12 +1797,57 @@ export default function HomeScreen() {
     }
     setGridSelected([]);
   };
-  const extractGridSelected = () => {
-    if (previewKind !== "pages" || !gridSelected.length) return;
-    const next = keepSelectedPages(pageEdits, gridSelected.map(Number));
-    setPageEdits(next);
-    setPageOrder(next.map((page) => String(page.sourcePage)).join(", "));
-    setGridSelected([]);
+  // Extract: save just the selected pages (in their current order and rotation)
+  // as a NEW PDF and leave the page editor untouched.
+  const extractGridSelected = async () => {
+    if (previewKind !== "pages" || !pageEditorFile || !gridSelected.length) return;
+    const edits = keepSelectedPages(pageEdits, gridSelected.map(Number));
+    if (!edits.length) return;
+    setProcessing(true);
+    updateProgress(t.progressReading, 1);
+    try {
+      const sourceBase64 = await FileSystem.readAsStringAsync(pageEditorFile.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      updateProgress(t.progressProcessing, 2);
+      const { PDFDocument } = await loadPdfLib();
+      const source = await PDFDocument.load(base64ToBytes(sourceBase64));
+      const output = await PDFDocument.create();
+      const copied = await output.copyPages(
+        source,
+        edits.map((edit) => edit.sourcePage - 1),
+      );
+      copied.forEach((page: any, index: number) => {
+        if (edits[index]?.rotation) page.setRotation({ angle: edits[index].rotation });
+        output.addPage(page);
+      });
+      const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Extract-${Date.now()}.pdf`;
+      updateProgress(t.progressSaving, 3);
+      await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await output.save()), {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const outputName = outputUri.split("/").pop() ?? pageEditorFile.name;
+      setTasks((current) => [`${t.pageExtractSuccess}: ${outputName}`, ...current].slice(0, 4));
+      setToolResults((current) => ({
+        ...current,
+        pages: {
+          title: t.pageExtractSuccess,
+          detail: `${edits.length} ${isArabic ? "صفحات" : "pages"} · ${outputName}`,
+          uri: outputUri,
+          mimeType: "application/pdf",
+        },
+      }));
+      setErrorMessage(null);
+      completeProgress();
+      // Close the window so the result (Save / Share) is visible right away.
+      setPageGridOpen(false);
+      setGridSelected([]);
+    } catch {
+      setOperationProgress(null);
+      showError(t.pageEditFailed, t.pageEditorHint);
+    } finally {
+      setProcessing(false);
+    }
   };
   const pageThumbsRef = useRef(pageThumbs);
   pageThumbsRef.current = pageThumbs;
@@ -2829,7 +2876,7 @@ export default function HomeScreen() {
           onMove={moveGridItem}
           onRotateSelected={rotateGridSelected}
           onDeleteSelected={deleteGridSelected}
-          onExtractSelected={previewKind === "pages" ? extractGridSelected : undefined}
+          onExtractSelected={previewKind === "pages" ? () => { void extractGridSelected(); } : undefined}
           onClose={closePageGrid}
         />
       ) : previewKind ? (

@@ -844,6 +844,43 @@ describe("page grid window", () => {
     }
   });
 
+  it("keeps choosing the slot while the grid scrolls under a held page", () => {
+    vi.useFakeTimers();
+    try {
+      const props = gridProps({ isArabic: false });
+      const renderer = render(props);
+      const cell = renderer.root.findAllByProps({ testID: "grid-cell-0" })[0];
+      const scroll = renderer.root.findAllByProps({ testID: "page-grid-scroll" })[0];
+      act(() => cell.props.onTouchStart(touch(5, 5)));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      act(() => {
+        cell.props.onPanResponderGrant();
+        cell.props.onPanResponderMove({}, { dx: 0, dy: 0, moveY: 600 });
+      });
+      expect(props.onMove).not.toHaveBeenCalled();
+      // The finger stays still but the auto-scroll moved the content one row.
+      act(() => scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 310 } } }));
+      expect(props.onMove).toHaveBeenCalledWith(0, 2);
+      act(() => cell.props.onPanResponderRelease());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("extracts the selected PDF pages into a new file without touching the editor", () => {
+    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const start = appSource.indexOf("const extractGridSelected = async () => {");
+    expect(start).toBeGreaterThan(-1);
+    const body = appSource.slice(start, appSource.indexOf("const pageThumbsRef", start));
+    expect(body).toContain("keepSelectedPages(pageEdits");
+    expect(body).toContain("PrintPilot-Extract-");
+    expect(body).toContain("pages: {");
+    expect(body).not.toContain("setPageEdits(");
+    expect(appSource).toContain("onExtractSelected={previewKind === \"pages\"");
+  });
+
   it("is opened from the preview for images and pages, and closes back", () => {
     const open = vi.fn();
     const images = [

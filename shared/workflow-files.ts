@@ -133,3 +133,34 @@ export function gridTargetIndex(
   );
   return Math.min(row * columns + col, total - 1);
 }
+
+/**
+ * Scroll speed (px per tick, negative = up) while dragging near the edge of a
+ * scrollable window. `pointer` and `top` share the same coordinate space.
+ */
+export function edgeScrollSpeed(
+  pointer: number,
+  top: number,
+  height: number,
+  edge = 90,
+  maxSpeed = 18,
+): number {
+  if (
+    !Number.isFinite(pointer) ||
+    !Number.isFinite(top) ||
+    !(height > 0) ||
+    !(edge > 0) ||
+    height < edge * 2
+  ) {
+    return 0;
+  }
+  const fromTop = pointer - top;
+  const fromBottom = top + height - pointer;
+  if (fromTop < edge) {
+    return -Math.min(1, (edge - fromTop) / edge) * maxSpeed;
+  }
+  if (fromBottom < edge) {
+    return Math.min(1, (edge - fromBottom) / edge) * maxSpeed;
+  }
+  return 0;
+}
