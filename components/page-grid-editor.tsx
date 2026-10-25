@@ -12,7 +12,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { useGridDragReorder } from "@/components/use-grid-drag-reorder";
 import { useColors } from "@/hooks/use-colors";
-import { autoScrollSpeed, normalizeRotation } from "@/shared/workflow-files";
+import { edgeScrollSpeed, normalizeRotation } from "@/shared/workflow-files";
 
 export type GridItem = {
   key: string;
@@ -206,7 +206,7 @@ export function PageGridEditor({
     scrollTimer.current = setInterval(() => {
       const y = fingerY.current;
       if (y === null || viewport.current.height <= 0) return;
-      const speed = autoScrollSpeed(y, viewport.current.top, viewport.current.height);
+      const speed = edgeScrollSpeed(y, viewport.current.top, viewport.current.height);
       if (!speed) return;
       const max = Math.max(0, contentHeight.current - viewport.current.height);
       const next = Math.min(Math.max(scrollYRef.current + speed, 0), max);

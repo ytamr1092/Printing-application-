@@ -164,34 +164,3 @@ export function edgeScrollSpeed(
   }
   return 0;
 }
-
-/**
- * Scroll speed (px per frame, negative = up) while dragging near the top or
- * bottom edge of a scrolling viewport. Zero when the finger is away from edges.
- */
-export function autoScrollSpeed(
-  fingerY: number,
-  viewportTop: number,
-  viewportHeight: number,
-  zone = 90,
-  maxSpeed = 18,
-): number {
-  if (
-    !Number.isFinite(fingerY) ||
-    !Number.isFinite(viewportTop) ||
-    !(viewportHeight > 0) ||
-    !(zone > 0)
-  ) {
-    return 0;
-  }
-  const effectiveZone = Math.min(zone, viewportHeight / 2);
-  const topEdge = viewportTop + effectiveZone;
-  const bottomEdge = viewportTop + viewportHeight - effectiveZone;
-  if (fingerY < topEdge) {
-    return -Math.min(1, (topEdge - fingerY) / effectiveZone) * maxSpeed;
-  }
-  if (fingerY > bottomEdge) {
-    return Math.min(1, (fingerY - bottomEdge) / effectiveZone) * maxSpeed;
-  }
-  return 0;
-}

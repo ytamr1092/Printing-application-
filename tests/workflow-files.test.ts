@@ -120,26 +120,3 @@ describe("edge auto-scroll", () => {
     expect(edgeScrollSpeed(10, 0, 100)).toBe(0);
   });
 });
-
-describe("auto-scroll while dragging", () => {
-  // Viewport from y=100 to y=700 with a 90px edge zone.
-  it("scrolls up near the top edge and down near the bottom edge", () => {
-    expect(autoScrollSpeed(100, 100, 600)).toBe(-18);
-    expect(autoScrollSpeed(145, 100, 600)).toBeCloseTo(-9, 6);
-    expect(autoScrollSpeed(700, 100, 600)).toBe(18);
-    expect(autoScrollSpeed(655, 100, 600)).toBeCloseTo(9, 6);
-  });
-
-  it("does not scroll in the middle and caps beyond the edges", () => {
-    expect(autoScrollSpeed(400, 100, 600)).toBe(0);
-    expect(autoScrollSpeed(190, 100, 600)).toBe(0);
-    expect(autoScrollSpeed(20, 100, 600)).toBe(-18);
-    expect(autoScrollSpeed(900, 100, 600)).toBe(18);
-  });
-
-  it("is safe for invalid input and tiny viewports", () => {
-    expect(autoScrollSpeed(Number.NaN, 100, 600)).toBe(0);
-    expect(autoScrollSpeed(300, 100, 0)).toBe(0);
-    expect(autoScrollSpeed(100, 100, 60)).toBe(-18);
-  });
-});
