@@ -91,6 +91,11 @@ type Props = {
   cropPreview?: { uri: string | null; aspect: number } | null;
   /** Opens the full-window page grid where pages/images are edited by dragging. */
   onOpenPageGrid?: () => void;
+  /** Show a light "Preview" card with a button instead of the heavy inline preview. */
+  compactPreview?: boolean;
+  /** Whether the full preview window is open (controlled by the parent). */
+  previewOpen?: boolean;
+  onPreviewOpenChange?: (open: boolean) => void;
   onSaveResult?: () => void;
   onShareResult: () => void;
   onDismissError: () => void;
@@ -388,6 +393,9 @@ export function ToolWorkflowScreen({
   onCropPageChange,
   cropPreview = null,
   onOpenPageGrid,
+  compactPreview,
+  previewOpen,
+  onPreviewOpenChange,
   onSaveResult,
   onShareResult,
   onDismissError,
@@ -397,6 +405,13 @@ export function ToolWorkflowScreen({
   const isWideLayout = width >= 900;
   const [checkedUris, setCheckedUris] = useState<string[]>([]);
   const [zoom, setZoom] = useState(1);
+  const [localPreviewOpen, setLocalPreviewOpen] = useState(false);
+  const useWindow = Boolean(compactPreview) && kind !== "id";
+  const windowOpen = useWindow && (previewOpen ?? localPreviewOpen);
+  const setWindowOpen = (open: boolean) => {
+    if (onPreviewOpenChange) onPreviewOpenChange(open);
+    else setLocalPreviewOpen(open);
+  };
   const [frameWidth, setFrameWidth] = useState(0);
   const previewScrollRef = useRef<ScrollView | null>(null);
   const imageOffsets = useRef<Record<string, number>>({});
@@ -959,7 +974,7 @@ export function ToolWorkflowScreen({
     <View testID="workflow-preview-pane" style={styles.previewPane}>
       <View style={[styles.card, styles.previewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {sectionTitle(tr(isArabic, "المعاينة الكاملة", "Full preview"), "visibility")}
-        {onOpenPageGrid && gridAvailable ? (
+        {!useWindow && onOpenPageGrid && gridAvailable ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={gridTitle}
@@ -1105,6 +1120,62 @@ export function ToolWorkflowScreen({
     </View>
   );
 
+  const previewCard = (
+    <View testID="workflow-preview-card" style={styles.previewPane}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {sectionTitle(tr(isArabic, "المعاينة", "Preview"), "visibility")}
+        {previewFile ? (
+          <Text numberOfLines={1} style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+            {files.length > 1 ? `${files.length} ${tr(isArabic, "ملفات", "files")}` : previewFile.name}
+          </Text>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tr(isArabic, "فتح المعاينة", "Open preview")}
+          accessibilityState={{ disabled: files.length === 0 }}
+          disabled={files.length === 0}
+          onPress={() => setWindowOpen(true)}
+          style={[styles.openGridButton, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, flexDirection: direction, opacity: files.length === 0 ? 0.5 : 1 }]}
+        >
+          <MaterialIcons name="visibility" color={colors.primary} size={20} />
+          <View style={styles.openGridCopy}>
+            <Text style={[styles.openGridTitle, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "معاينة", "Preview")}</Text>
+            <Text style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
+              {files.length === 0 ? tr(isArabic, "اختر ملفًا أولًا", "Choose a file first") : tr(isArabic, "افتح المعاينة وعدّل من «التخطيط»", "Open the preview and edit from Layout")}
+            </Text>
+          </View>
+          <MaterialIcons name={isArabic ? "chevron-left" : "chevron-right"} color={colors.primary} size={22} />
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  if (windowOpen) {
+    return (
+      <View testID="workflow-preview-window" style={[styles.screen, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { borderBottomColor: colors.border, flexDirection: direction }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "رجوع", "Back")} onPress={() => setWindowOpen(false)} style={[styles.backButton, { borderColor: colors.border, flexDirection: direction }]}>
+            <MaterialIcons name={isArabic ? "arrow-forward" : "arrow-back"} color={colors.foreground} size={20} />
+            <Text style={[styles.backText, { color: colors.foreground }]}>{tr(isArabic, "رجوع", "Back")}</Text>
+          </Pressable>
+          <View style={styles.headerCopy}>
+            <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.foreground, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "المعاينة", "Preview")}</Text>
+            <Text numberOfLines={1} style={[styles.headerHint, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{title}</Text>
+          </View>
+          {gridAvailable && onOpenPageGrid ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={tr(isArabic, "التخطيط", "Layout")} onPress={onOpenPageGrid} style={[styles.layoutButton, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, flexDirection: direction }]}>
+              <MaterialIcons name="grid-view" color={colors.primary} size={18} />
+              <Text style={[styles.layoutButtonText, { color: colors.primary }]}>{tr(isArabic, "التخطيط", "Layout")}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        <ScrollView style={styles.workflowScroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {previewPane}
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView testID="tool-workflow-screen" style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View testID="tool-workflow-header" style={[styles.header, { borderBottomColor: colors.border, flexDirection: direction }]}>
@@ -1151,7 +1222,7 @@ export function ToolWorkflowScreen({
           style={[styles.workspaceColumns, { flexDirection: isWideLayout ? (isArabic ? "row-reverse" : "row") : "column" }]}
         >
           {editorPane}
-          {previewPane}
+          {useWindow ? previewCard : previewPane}
         </View>
         {activeResult ? (
           <View style={[styles.resultCard, { backgroundColor: `${colors.success}12`, borderColor: `${colors.success}55` }]}>
@@ -1216,6 +1287,8 @@ const styles = StyleSheet.create({
   workspaceColumns: { gap: 12, alignItems: "stretch" },
   editorPane: { flex: 1, minWidth: 0, gap: 11 },
   previewPane: { flex: 1, minWidth: 0 },
+  layoutButton: { height: 38, alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12 },
+  layoutButtonText: { fontSize: 13, fontWeight: "900" },
   card: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 },
   previewCard: { flex: 1, minWidth: 0 },
   sectionTitleRow: { alignItems: "center", gap: 7 },

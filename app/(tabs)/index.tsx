@@ -1000,6 +1000,7 @@ export default function HomeScreen() {
   } | null>(null);
   const [pageOrder, setPageOrder] = useState("");
   const [pageGridOpen, setPageGridOpen] = useState(false);
+  const [previewWindowOpen, setPreviewWindowOpen] = useState(false);
   // PDF whose page count was read when the grid opened (print / extract tools).
   const [loadedGridPdf, setLoadedGridPdf] = useState<{ uri: string; pages: number } | null>(null);
   // First-page thumbnails of PDF files in the merge list, by file uri.
@@ -1056,6 +1057,7 @@ export default function HomeScreen() {
     setPageEdits([]);
     setPageOrder("");
     setSelectedPageIndex(null);
+    setPreviewWindowOpen(false);
     setPageGridOpen(false);
     setGridSelected([]);
     setPageThumbs({});
@@ -1091,6 +1093,10 @@ export default function HomeScreen() {
           setGridSelected([]);
           return true;
         }
+        if (previewWindowOpen) {
+          setPreviewWindowOpen(false);
+          return true;
+        }
         if (previewKind) {
           closeTool();
           return true;
@@ -1108,7 +1114,7 @@ export default function HomeScreen() {
       },
     );
     return () => subscription.remove();
-  }, [keyboardShown, previewKind, workspace, pageGridOpen, t]);
+  }, [keyboardShown, previewKind, workspace, pageGridOpen, previewWindowOpen, t]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
   const completeProgress = () =>
@@ -3069,6 +3075,9 @@ export default function HomeScreen() {
           onSettingChange={changeWorkflowSetting}
           onRun={() => { void continuePreviewAction(); }}
           onOpenPageGrid={() => { void openPageGrid(); }}
+          compactPreview
+          previewOpen={previewWindowOpen}
+          onPreviewOpenChange={setPreviewWindowOpen}
           onSaveResult={() => { void saveWorkflowResult(); }}
           onShareResult={shareWorkflowResult}
           onDismissError={() => setErrorMessage(null)}
