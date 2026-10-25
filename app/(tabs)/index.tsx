@@ -920,6 +920,7 @@ export default function HomeScreen() {
   );
   const [printMargins, setPrintMargins] = useState("5");
   const [printCollate, setPrintCollate] = useState(true);
+  const [printNumbering, setPrintNumbering] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState("certificate");
   const [colorMode, setColorMode] = useState<"color" | "bw">("color");
   const [duplex, setDuplex] = useState(false);
@@ -1073,6 +1074,7 @@ export default function HomeScreen() {
     setCropPreview(null);
     setPrintAsset(null);
     setPrintUri(null);
+    setPrintNumbering(false);
     setIdFrontUri(null);
     setIdBackUri(null);
     setIdFrontRotation(0);
@@ -1840,6 +1842,10 @@ export default function HomeScreen() {
           [...numbers].sort((a, b) => a - b).map((n) => n - 1),
         );
         copied.forEach((page: any) => output.addPage(page));
+        if (printNumbering) {
+          const { StandardFonts, rgb } = await loadPdfLib();
+          await applyNumbering(output, StandardFonts, rgb);
+        }
         const outputUri = `${FileSystem.cacheDirectory}PrintPilot-Print-${Date.now()}.pdf`;
         await FileSystem.writeAsStringAsync(outputUri, bytesToBase64(await output.save()), {
           encoding: FileSystem.EncodingType.Base64,
@@ -2018,7 +2024,21 @@ export default function HomeScreen() {
   const continuePrint = async () => {
     if (!printUri) return;
     try {
-      await Print.printAsync({ uri: printUri });
+      let uri = printUri;
+      const isPdf = Boolean(printAsset?.mimeType?.includes("pdf")) || Boolean(printAsset?.name.toLowerCase().endsWith(".pdf"));
+      if (printNumbering && isPdf) {
+        const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
+        const base64 = await FileSystem.readAsStringAsync(printUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const document = await PDFDocument.load(base64ToBytes(base64));
+        await applyNumbering(document, StandardFonts, rgb);
+        uri = `${FileSystem.cacheDirectory}PrintPilot-Print-${Date.now()}.pdf`;
+        await FileSystem.writeAsStringAsync(uri, bytesToBase64(await document.save()), {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      }
+      await Print.printAsync({ uri });
       setTasks((current) =>
         [`${t.printReady}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
       );
@@ -2575,6 +2595,70 @@ export default function HomeScreen() {
     }
   };
 
+  // Draws page numbers on an open pdf-lib document with the numbering
+  // settings; returns how many pages were numbered. Used by the Numbering tool
+  // and by Print ("number pages when printing").
+  const applyNumbering = async (document: any, StandardFonts: any, rgb: any): Promise<number> => {
+    const font = await document.embedFont(
+      getNumberFont(StandardFonts, numberFont, numberBold),
+    );
+    const pages = document.getPages();
+    const from = Math.max(1, Number(numberFrom) || 1);
+    const to = Math.min(pages.length, Number(numberTo) || pages.length);
+    const firstNumber = Math.max(0, Number(numberStart) || 0);
+    const margin = Math.max(0, Number(numberMargin) || 0) * 2.83465;
+    const size = Math.max(4, Math.min(72, Number(numberSize) || 9));
+    const selected = getNumberingPages(pages.length, from, to, numberWhich);
+    const total = selected.length;
+    let sequence = 0;
+    const hex = numberColor.replace("#", "");
+    const red = parseInt(hex.slice(0, 2) || "52", 16) / 255;
+    const green = parseInt(hex.slice(2, 4) || "98", 16) / 255;
+    const blue = parseInt(hex.slice(4, 6) || "112", 16) / 255;
+    pages.forEach((page: any, index: number) => {
+      const pageNo = index + 1;
+      if (!selected.includes(pageNo)) return;
+      const shown = firstNumber + sequence;
+      sequence += 1;
+      let label = numberFormat
+        .replace("{n}", formatNumberValue(shown, numberNumerals))
+        .replace(
+          "{t}",
+          formatNumberValue(firstNumber + total - 1, numberNumerals),
+        );
+      const labelWidth = font.widthOfTextAtSize(label, size);
+      const { width, height } = page.getSize();
+      const mirroredPosition =
+        numberMirror && pageNo % 2 === 0
+          ? numberPosition === "left"
+            ? "right"
+            : numberPosition === "right"
+              ? "left"
+              : "center"
+          : numberPosition;
+      const x =
+        mirroredPosition === "left"
+          ? margin
+          : mirroredPosition === "right"
+            ? width - margin - labelWidth
+            : (width - labelWidth) / 2;
+      const y =
+        numberVertical === "top"
+          ? height - margin - size
+          : numberVertical === "middle"
+            ? (height - size) / 2
+            : margin;
+      page.drawText(label, {
+        x,
+        y,
+        size,
+        font,
+        color: rgb(red, green, blue),
+      });
+    });
+    return selected.length;
+  };
+
   const numberPdf = async () => {
     if (!numberingFile) {
       showError(t.numberingNeedOne, t.chooseNumberingFile);
@@ -2590,63 +2674,7 @@ export default function HomeScreen() {
       );
       const document = await PDFDocument.load(base64ToBytes(sourceBase64));
       updateProgress(t.progressProcessing, 2);
-      const font = await document.embedFont(
-        getNumberFont(StandardFonts, numberFont, numberBold),
-      );
-      const pages = document.getPages();
-      const from = Math.max(1, Number(numberFrom) || 1);
-      const to = Math.min(pages.length, Number(numberTo) || pages.length);
-      const firstNumber = Math.max(0, Number(numberStart) || 0);
-      const margin = Math.max(0, Number(numberMargin) || 0) * 2.83465;
-      const size = Math.max(4, Math.min(72, Number(numberSize) || 9));
-      const selected = getNumberingPages(pages.length, from, to, numberWhich);
-      const total = selected.length;
-      let sequence = 0;
-      const hex = numberColor.replace("#", "");
-      const red = parseInt(hex.slice(0, 2) || "52", 16) / 255;
-      const green = parseInt(hex.slice(2, 4) || "98", 16) / 255;
-      const blue = parseInt(hex.slice(4, 6) || "112", 16) / 255;
-      pages.forEach((page: any, index: number) => {
-        const pageNo = index + 1;
-        if (!selected.includes(pageNo)) return;
-        const shown = firstNumber + sequence;
-        sequence += 1;
-        let label = numberFormat
-          .replace("{n}", formatNumberValue(shown, numberNumerals))
-          .replace(
-            "{t}",
-            formatNumberValue(firstNumber + total - 1, numberNumerals),
-          );
-        const labelWidth = font.widthOfTextAtSize(label, size);
-        const { width, height } = page.getSize();
-        const mirroredPosition =
-          numberMirror && pageNo % 2 === 0
-            ? numberPosition === "left"
-              ? "right"
-              : numberPosition === "right"
-                ? "left"
-                : "center"
-            : numberPosition;
-        const x =
-          mirroredPosition === "left"
-            ? margin
-            : mirroredPosition === "right"
-              ? width - margin - labelWidth
-              : (width - labelWidth) / 2;
-        const y =
-          numberVertical === "top"
-            ? height - margin - size
-            : numberVertical === "middle"
-              ? (height - size) / 2
-              : margin;
-        page.drawText(label, {
-          x,
-          y,
-          size,
-          font,
-          color: rgb(red, green, blue),
-        });
-      });
+      const selectedCount = await applyNumbering(document, StandardFonts, rgb);
       const outputUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-Numbered-${Date.now()}.pdf`;
       updateProgress(t.progressSaving, 3);
       await FileSystem.writeAsStringAsync(
@@ -2656,13 +2684,13 @@ export default function HomeScreen() {
       );
       setSelectedFiles([numberingFile.name]);
       setTasks((current) =>
-        [`${t.numberingSuccess}: ${selected.length}`, ...current].slice(0, 4),
+        [`${t.numberingSuccess}: ${selectedCount}`, ...current].slice(0, 4),
       );
       setToolResults((current) => ({
         ...current,
         numbering: {
           title: t.numberingSuccess,
-          detail: `${selected.length} ${isArabic ? "صفحات" : "pages"}`,
+          detail: `${selectedCount} ${isArabic ? "صفحات" : "pages"}`,
           uri: outputUri,
           mimeType: "application/pdf",
         },
@@ -2860,6 +2888,7 @@ export default function HomeScreen() {
     duplexEdge,
     printMargins,
     printCollate,
+    printNumbering,
     idSize,
     idMargin,
     idQuality,
@@ -2897,6 +2926,7 @@ export default function HomeScreen() {
       case "duplexEdge": setDuplexEdge(value as typeof duplexEdge); break;
       case "printMargins": setPrintMargins(String(value)); break;
       case "printCollate": setPrintCollate(Boolean(value)); break;
+      case "printNumbering": setPrintNumbering(Boolean(value)); break;
       case "idSize": setIdSize(value as typeof idSize); break;
       case "idMargin": setIdMargin(String(value)); break;
       case "idQuality": setIdQuality(value as typeof idQuality); break;

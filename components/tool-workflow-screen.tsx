@@ -532,33 +532,8 @@ export function ToolWorkflowScreen({
     </View>
   );
 
-  const renderOptions = () => {
-    if (kind === "images") {
-      return (
-        <>
-          {sectionTitle(tr(isArabic, "طريقة احتواء الصورة", "Image fit"), "photo-size-select-actual")}
-          {pills("imageFit", [
-            { value: "contain", label: tr(isArabic, "إظهار الصورة كاملة", "Fit whole image") },
-            { value: "fill", label: tr(isArabic, "ملء الصفحة", "Fill page") },
-          ])}
-        </>
-      );
-    }
-    if (kind === "extract") {
-      return (
-        <>
-          {sectionTitle(tr(isArabic, "صيغة الصور الناتجة", "Output image format"), "photo-filter")}
-          {pills("extractFormat", [
-            { value: "jpg", label: "JPG" },
-            { value: "png", label: "PNG" },
-          ])}
-        </>
-      );
-    }
-    if (kind === "numbering") {
-      return (
-        <>
-          {sectionTitle(tr(isArabic, "إعدادات الترقيم", "Numbering options"), "format-list-numbered")}
+  const numberingFields = () => (
+    <>
           {field("numberFormat", tr(isArabic, "صيغة الرقم ({n} الرقم، {t} الإجمالي)", "Number format ({n} number, {t} total)"))}
           <View style={[styles.fieldsRow, { flexDirection: direction }]}>
             {field("numberFrom", tr(isArabic, "من صفحة", "From page"), "1", "number-pad")}
@@ -599,6 +574,36 @@ export function ToolWorkflowScreen({
           ])}
           {toggle("numberBold", tr(isArabic, "خط غامق", "Bold"))}
           {toggle("numberMirror", tr(isArabic, "عكس الموضع في الصفحات الزوجية", "Mirror on even pages"))}
+    </>
+  );
+  const renderOptions = () => {
+    if (kind === "images") {
+      return (
+        <>
+          {sectionTitle(tr(isArabic, "طريقة احتواء الصورة", "Image fit"), "photo-size-select-actual")}
+          {pills("imageFit", [
+            { value: "contain", label: tr(isArabic, "إظهار الصورة كاملة", "Fit whole image") },
+            { value: "fill", label: tr(isArabic, "ملء الصفحة", "Fill page") },
+          ])}
+        </>
+      );
+    }
+    if (kind === "extract") {
+      return (
+        <>
+          {sectionTitle(tr(isArabic, "صيغة الصور الناتجة", "Output image format"), "photo-filter")}
+          {pills("extractFormat", [
+            { value: "jpg", label: "JPG" },
+            { value: "png", label: "PNG" },
+          ])}
+        </>
+      );
+    }
+    if (kind === "numbering") {
+      return (
+        <>
+          {sectionTitle(tr(isArabic, "إعدادات الترقيم", "Numbering options"), "format-list-numbered")}
+          {numberingFields()}
         </>
       );
     }
@@ -705,8 +710,18 @@ export function ToolWorkflowScreen({
       );
     }
     if (kind === "print") {
+      const printIsPdf = Boolean(
+        files[0] && (files[0].mimeType?.includes("pdf") || files[0].name.toLowerCase().endsWith(".pdf")),
+      );
       return (
         <>
+          {printIsPdf ? (
+            <>
+              {sectionTitle(tr(isArabic, "ترقيم الصفحات", "Page numbering"), "format-list-numbered")}
+              {toggle("printNumbering", tr(isArabic, "ترقيم الصفحات عند الطباعة", "Number pages when printing"))}
+              {settings.printNumbering ? numberingFields() : null}
+            </>
+          ) : null}
           {sectionTitle(tr(isArabic, "الورق والطباعة", "Paper & print"), "tune")}
           {pills("selectedPaper", paperOptions.map((option) => ({ value: option.id, label: isArabic ? option.ar : option.en })))}
           {pills("selectedWeight", ["70 g/m²", "80 g/m²", "120 g/m²", "200 g/m²"].map((label) => ({ value: label, label })))}
