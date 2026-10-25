@@ -1809,7 +1809,7 @@ export default function HomeScreen() {
     setPageGridOpen(true);
   };
   // Selection -> the tool's own setting (cut ranges / numbering span) or print.
-  const useGridSelection = async () => {
+  const applyGridSelection = async () => {
     const numbers = gridSelected.map(Number).filter((n) => n > 0);
     if (!numbers.length) return;
     if (previewKind === "cut") {
@@ -1964,6 +1964,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageGridOpen, previewKind, gridPdf?.uri]);
 
   // Merge list: first-page thumbnails for the PDFs.
@@ -1990,6 +1991,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageGridOpen, previewKind, pendingAssets]);
 
   const continuePrint = async () => {
@@ -2994,7 +2996,7 @@ export default function HomeScreen() {
             previewKind === "pages"
               ? () => { void extractGridSelected(); }
               : previewKind === "cut" || previewKind === "numbering" || previewKind === "print"
-                ? () => { void useGridSelection(); }
+                ? () => { void applyGridSelection(); }
                 : undefined
           }
           extractLabel={

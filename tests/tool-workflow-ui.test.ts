@@ -927,7 +927,7 @@ describe("page grid window", () => {
     const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
     expect(appSource).toContain('previewKind && pageGridOpen && previewKind !== "id"');
     expect(appSource).toContain("const openPageGrid = async");
-    expect(appSource).toContain("const useGridSelection = async");
+    expect(appSource).toContain("const applyGridSelection = async");
     expect(appSource).toContain("pagesToRanges(numbers)");
     expect(appSource).toContain("setLoadedGridPdf(null);");
     const screen = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
