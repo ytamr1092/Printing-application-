@@ -922,4 +922,17 @@ describe("page grid window", () => {
     expect(backSource).toContain("< 2000");
     expect(appSource).toContain("setPageGridOpen(false);\n    setGridSelected([]);\n    setPageThumbs({});");
   });
+
+  it("is available in every PDF tool, with select-only grids where order cannot change", () => {
+    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    expect(appSource).toContain('previewKind && pageGridOpen && previewKind !== "id"');
+    expect(appSource).toContain("const openPageGrid = async");
+    expect(appSource).toContain("const useGridSelection = async");
+    expect(appSource).toContain("pagesToRanges(numbers)");
+    expect(appSource).toContain("setLoadedGridPdf(null);");
+    const screen = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
+    for (const kind of ["cut", "numbering", "extract", "print", "merge"]) {
+      expect(screen).toContain(`kind === "${kind}"`);
+    }
+  });
 });

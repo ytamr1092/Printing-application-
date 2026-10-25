@@ -128,3 +128,14 @@ describe("page ranges for splitting", () => {
     expect(rangePageIndexes({ from: 2, to: 4 })).toEqual([1, 2, 3]);
   });
 });
+
+import { pagesToRanges } from "../shared/pdf-cut";
+
+describe("pagesToRanges", () => {
+  it("collapses consecutive pages and ignores duplicates or junk", () => {
+    expect(pagesToRanges([1, 2, 3, 5])).toBe("1-3, 5");
+    expect(pagesToRanges([7, 3, 4, 3])).toBe("3-4, 7");
+    expect(pagesToRanges([])).toBe("");
+    expect(pagesToRanges([0, -1, 2.5, 4])).toBe("4");
+  });
+});

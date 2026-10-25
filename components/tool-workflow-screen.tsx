@@ -935,21 +935,41 @@ export function ToolWorkflowScreen({
     </View>
   );
 
+  const firstIsPdf = Boolean(
+    files[0] && (files[0].mimeType?.includes("pdf") || files[0].name.toLowerCase().endsWith(".pdf")),
+  );
+  const gridAvailable =
+    kind === "pages"
+      ? pageEdits.length > 0
+      : kind === "images" || kind === "merge"
+        ? files.length > 0
+        : kind === "cut" || kind === "numbering" || kind === "extract" || kind === "print"
+          ? files.length > 0 && firstIsPdf
+          : false;
+  const gridTitle =
+    kind === "images"
+      ? tr(isArabic, "عرض كل الصور وتعديلها", "View and edit all images")
+      : kind === "merge"
+        ? tr(isArabic, "عرض كل الملفات وترتيبها", "View and arrange all files")
+        : kind === "pages"
+          ? tr(isArabic, "عرض كل الصفحات وتعديلها", "View and edit all pages")
+          : tr(isArabic, "عرض كل الصفحات", "View all pages");
+
   const previewPane = (
     <View testID="workflow-preview-pane" style={styles.previewPane}>
       <View style={[styles.card, styles.previewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {sectionTitle(tr(isArabic, "المعاينة الكاملة", "Full preview"), "visibility")}
-        {onOpenPageGrid && ((kind === "images" && files.length > 0) || (kind === "pages" && pageEdits.length > 0)) ? (
+        {onOpenPageGrid && gridAvailable ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={kind === "pages" ? tr(isArabic, "عرض كل الصفحات وتعديلها", "View and edit all pages") : tr(isArabic, "عرض كل الصور وتعديلها", "View and edit all images")}
+            accessibilityLabel={gridTitle}
             onPress={onOpenPageGrid}
             style={[styles.openGridButton, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, flexDirection: direction }]}
           >
             <MaterialIcons name="grid-view" color={colors.primary} size={20} />
             <View style={styles.openGridCopy}>
               <Text style={[styles.openGridTitle, { color: colors.primary, textAlign: isArabic ? "right" : "left" }]}>
-                {kind === "pages" ? tr(isArabic, "عرض كل الصفحات وتعديلها", "View and edit all pages") : tr(isArabic, "عرض كل الصور وتعديلها", "View and edit all images")}
+                {gridTitle}
               </Text>
               <Text style={[styles.fileMeta, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
                 {tr(isArabic, "نافذة بكل الصفحات: حدّد، اسحب لإعادة الترتيب، دوّر أو احذف", "A window with every page: select, drag to reorder, rotate or delete")}

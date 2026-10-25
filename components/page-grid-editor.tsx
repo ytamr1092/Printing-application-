@@ -30,14 +30,18 @@ type Props = {
   onToggle: (key: string) => void;
   onSelectAll: () => void;
   onClear: () => void;
-  onMove: (from: number, to: number) => void;
-  onRotateSelected: () => void;
-  onDeleteSelected: () => void;
-  /** Present only where "keep just these pages" makes sense. */
+  /** Present only where reordering makes sense; otherwise the grid is select-only. */
+  onMove?: (from: number, to: number) => void;
+  onRotateSelected?: () => void;
+  onDeleteSelected?: () => void;
+  /** Main action on the selection (extract, print selected, use as range...). */
   onExtractSelected?: () => void;
+  extractLabel?: string;
+  extractIcon?: React.ComponentProps<typeof MaterialIcons>["name"];
   onClose: () => void;
 };
 
+const noopMove = () => {};
 const tr = (isArabic: boolean, ar: string, en: string) => (isArabic ? ar : en);
 const PAGE_ASPECT = 0.7071;
 const LABEL_HEIGHT = 30;
@@ -54,7 +58,7 @@ type CellProps = {
   isArabic: boolean;
   colors: ReturnType<typeof useColors>;
   onToggle: () => void;
-  onMove: (from: number, to: number) => void;
+  onMove?: (from: number, to: number) => void;
   scrollY: number;
   getScrollY: () => number;
   onDragStart: () => void;
@@ -87,7 +91,7 @@ function GridCell({
     cellWidth,
     cellHeight,
     mirror: isArabic,
-    onMove,
+    onMove: onMove ?? noopMove,
     scrollY,
     getScrollY,
     onDragStart,
@@ -104,7 +108,7 @@ function GridCell({
   return (
     <View
       testID={`grid-cell-${index}`}
-      {...handlers}
+      {...(onMove ? handlers : {})}
       style={[
         styles.cell,
         { width: cellWidth, height: cellHeight },
@@ -175,6 +179,8 @@ export function PageGridEditor({
   onRotateSelected,
   onDeleteSelected,
   onExtractSelected,
+  extractLabel,
+  extractIcon,
   onClose,
 }: Props) {
   const colors = useColors();
@@ -308,11 +314,13 @@ export function PageGridEditor({
         </View>
       </ScrollView>
       </View>
-      <View style={[styles.bottomBar, { borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: direction }]}>
-        {action(tr(isArabic, "حذف", "Delete"), "delete-outline", onDeleteSelected, colors.error)}
-        {action(tr(isArabic, "تدوير", "Rotate"), "rotate-right", onRotateSelected, colors.primary)}
-        {onExtractSelected ? action(tr(isArabic, "استخراج", "Extract"), "file-upload", onExtractSelected, colors.primary) : null}
-      </View>
+      {onDeleteSelected || onRotateSelected || onExtractSelected ? (
+        <View style={[styles.bottomBar, { borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: direction }]}>
+          {onDeleteSelected ? action(tr(isArabic, "حذف", "Delete"), "delete-outline", onDeleteSelected, colors.error) : null}
+          {onRotateSelected ? action(tr(isArabic, "تدوير", "Rotate"), "rotate-right", onRotateSelected, colors.primary) : null}
+          {onExtractSelected ? action(extractLabel ?? tr(isArabic, "استخراج", "Extract"), extractIcon ?? "file-upload", onExtractSelected, colors.primary) : null}
+        </View>
+      ) : null}
     </View>
   );
 }

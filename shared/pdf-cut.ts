@@ -158,3 +158,17 @@ export function eachPageRanges(pageCount: number): string {
 export function rangePageIndexes(range: PageRange): number[] {
   return Array.from({ length: range.to - range.from + 1 }, (_, i) => range.from - 1 + i);
 }
+
+/** [1,2,3,5] -> "1-3, 5": consecutive pages collapse into one range. */
+export function pagesToRanges(pages: number[]): string {
+  const sorted = Array.from(new Set(pages.filter((p) => Number.isInteger(p) && p > 0))).sort((a, b) => a - b);
+  const parts: string[] = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j += 1;
+    parts.push(j > i ? `${sorted[i]}-${sorted[j]}` : String(sorted[i]));
+    i = j + 1;
+  }
+  return parts.join(", ");
+}
