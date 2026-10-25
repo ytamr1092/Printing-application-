@@ -55,6 +55,7 @@ import {
   togglePageOrientation,
   type PdfPageEdit,
 } from "@/shared/pdf-pages";
+import { fileBaseName, fileExtension, numberedFileName, sanitizeFileName } from "@/shared/file-name";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 import {
   displayRectToPdfBox,
@@ -2934,25 +2935,44 @@ export default function HomeScreen() {
                 : previewKind === "print"
                   ? Boolean(printUri)
                   : false;
-  const saveWorkflowResult = async () => {
+  // Copies a result to the name the person typed (cache copy) so sharing and
+  // iOS "Save to Files" show it; returns the original uri when unchanged.
+  const renamedUri = async (uri: string, name: string, index: number, total: number) => {
+    const base = sanitizeFileName(name);
+    if (!base) return uri;
+    const target = `${FileSystem.cacheDirectory}${numberedFileName(base, index, total)}${fileExtension(uri)}`;
+    if (target === uri) return uri;
+    try {
+      await FileSystem.deleteAsync(target, { idempotent: true });
+      await FileSystem.copyAsync({ from: uri, to: target });
+      return target;
+    } catch {
+      return uri;
+    }
+  };
+  const saveWorkflowResult = async (name = "") => {
     if (!previewKind) return;
     const result = toolResults[previewKind];
     if (!result?.uri) return;
     const uris = result.uris?.length ? result.uris : [result.uri];
     const mimeType = result.mimeType ?? "application/pdf";
+    const chosen = sanitizeFileName(name);
+    const nameFor = (uri: string, index: number) =>
+      chosen
+        ? numberedFileName(chosen, index, uris.length)
+        : sanitizeFileName(fileBaseName(uri), `PrintPilot-${Date.now()}`);
     try {
       if (Platform.OS === "android") {
         const access =
           await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
         if (!access.granted) return;
-        for (const uri of uris) {
-          const fileName = (uri.split("/").pop() ?? `PrintPilot-${Date.now()}`).replace(/\.[^.]+$/, "");
+        for (const [index, uri] of uris.entries()) {
           const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
           const target = await FileSystem.StorageAccessFramework.createFileAsync(
             access.directoryUri,
-            fileName,
+            nameFor(uri, index),
             mimeType,
           );
           await FileSystem.writeAsStringAsync(target, base64, {
@@ -2961,28 +2981,31 @@ export default function HomeScreen() {
         }
         Alert.alert(t.saveResultDone);
       } else if (Platform.OS === "web") {
-        for (const uri of uris) {
+        for (const [index, uri] of uris.entries()) {
           const blob = await (await fetch(uri)).blob();
           const webDocument = (globalThis as any).document;
           const link = webDocument.createElement("a");
           link.href = (globalThis as any).URL.createObjectURL(blob);
-          link.download = uri.split("/").pop() ?? "PrintPilot-file";
+          link.download = `${nameFor(uri, index)}${fileExtension(uri)}`;
           link.click();
           (globalThis as any).URL.revokeObjectURL(link.href);
         }
       } else {
         // iOS has no folder picker: the share sheet's "Save to Files" saves it.
-        await openUriOutsideApp(uris[0], mimeType);
+        await openUriOutsideApp(await renamedUri(uris[0], name, 0, uris.length), mimeType);
       }
     } catch {
       showError(t.saveResultFailed, t.saveResultHint);
     }
   };
-  const shareWorkflowResult = () => {
+  const shareWorkflowResult = (name = "") => {
     if (!previewKind) return;
     const result = toolResults[previewKind];
-    if (result?.uri)
-      void openUriOutsideApp(result.uri, result.mimeType ?? "application/pdf");
+    if (!result?.uri) return;
+    const { uri, mimeType } = result;
+    void renamedUri(uri, name, 0, 1).then((shared) =>
+      openUriOutsideApp(shared, mimeType ?? "application/pdf"),
+    );
   };
 
   return (
@@ -3078,7 +3101,7 @@ export default function HomeScreen() {
           compactPreview
           previewOpen={previewWindowOpen}
           onPreviewOpenChange={setPreviewWindowOpen}
-          onSaveResult={() => { void saveWorkflowResult(); }}
+          onSaveResult={(name) => { void saveWorkflowResult(name); }}
           onShareResult={shareWorkflowResult}
           onDismissError={() => setErrorMessage(null)}
         />
