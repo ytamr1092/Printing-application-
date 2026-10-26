@@ -20,6 +20,7 @@
     "qr": "node scripts/generate_qr.mjs"
   },
   "dependencies": {
+    "@expo-google-fonts/aref-ruqaa": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@kishannareshpal/expo-pdf": "0.3.2",
     "@react-native-async-storage/async-storage": "^2.2.0",

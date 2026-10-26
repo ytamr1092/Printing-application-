@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "expo-router";
+import { useFonts } from "expo-font";
+import { ArefRuqaa_400Regular } from "@expo-google-fonts/aref-ruqaa";
 import {
   Alert,
   ActivityIndicator,
@@ -969,6 +971,9 @@ const loadImagePicker = () => import("expo-image-picker");
 const loadNetwork = () => import("expo-network");
 
 export default function HomeScreen() {
+  const [greetingFontLoaded] = useFonts({
+    ArefRuqaa: ArefRuqaa_400Regular,
+  });
   const navigation = useNavigation();
   const [language, setLanguage] = useState<Language>("ar");
   const [selectedPaper, setSelectedPaper] = useState("certificate");
@@ -3535,17 +3540,28 @@ export default function HomeScreen() {
           style={[
             styles.header,
             { flexDirection: isArabic ? "row-reverse" : "row" },
-          ]}
-        >
-          <View
-            style={[
-              styles.brandBlock,
-              { alignItems: isArabic ? "flex-end" : "flex-start" },
             ]}
           >
-            <Text style={[styles.eyebrow, { color: colors.muted }]}>
-              {t.greeting}
-            </Text>
+            <View
+              style={[
+                styles.brandBlock,
+                { alignItems: isArabic ? "flex-end" : "flex-start" },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.personalGreeting,
+                  {
+                    color: colors.primary,
+                    fontFamily: greetingFontLoaded ? "ArefRuqaa" : undefined,
+                  },
+                ]}
+              >
+                أهلا د.يوسف
+              </Text>
+              <Text style={[styles.eyebrow, { color: colors.muted }]}> 
+                {t.greeting}
+              </Text>
             <View
               style={{
                 flexDirection: isArabic ? "row-reverse" : "row",
@@ -6969,6 +6985,12 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   brandBlock: { gap: 3 },
+  personalGreeting: {
+    fontSize: 28,
+    lineHeight: 39,
+    fontWeight: "400",
+    marginBottom: 1,
+  },
   eyebrow: { fontSize: 12, fontWeight: "600", letterSpacing: 0.2 },
   brandName: { fontSize: 25, fontWeight: "800", letterSpacing: -0.8 },
   brandMark: {
