@@ -55,6 +55,16 @@ import {
   togglePageOrientation,
   type PdfPageEdit,
 } from "@/shared/pdf-pages";
+import { ESCL_MIME } from "@/shared/escl";
+import {
+  discoverDevices,
+  fetchWithTimeout,
+  probeEscl,
+  probeIpp,
+  runEsclScan,
+  sendIppPrintJob,
+  type FoundDevice,
+} from "@/shared/network-devices";
 import { fileBaseName, fileExtension, numberedFileName, sanitizeFileName } from "@/shared/file-name";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 import {
@@ -118,6 +128,18 @@ const copy = {
     scanIdFace: "مسح من Kyocera",
     scanIdFaceHint: "ضع البطاقة على زجاج السكانر ثم ابدأ المسح",
     scanNeedsConnection: "أدخل IP الطابعة واختبر الاتصال أولًا",
+    fileNameLabel: "اسم الملف",
+    saveToDevice: "حفظ على الجهاز",
+    shareFile: "مشاركة",
+    scanFailed: "تعذر المسح من الطابعة",
+    scanFailedHint: "تأكد أن الطابعة تدعم المسح عبر الشبكة (eSCL/AirScan) وأن الورقة موضوعة، ثم حاول مرة أخرى.",
+    scanDone: "تم المسح",
+    discovering: "جارٍ البحث عن الطابعة في الشبكة…",
+    discoverNone: "لم يتم العثور على طابعة. تأكد أن الهاتف والطابعة على نفس شبكة الواي فاي، أو اكتب العنوان يدويًا.",
+    startScan: "بدء المسح",
+    autoDiscover: "بحث تلقائي عن الطابعة",
+    directPrintSent: "أُرسلت المهمة إلى الطابعة مباشرة",
+    directPrintFallback: "تعذرت الطباعة المباشرة، فُتحت طباعة النظام",
     scanProtocolMissing:
       "تم تجهيز الخانة للمسح من Kyocera، لكن استقبال الملف يحتاج إعداد Scan-to-FTP/SMB أو TWAIN للطابعة.",
     takePhoto: "تصوير",
@@ -392,6 +414,18 @@ const copy = {
     scanIdFace: "Scan from Kyocera",
     scanIdFaceHint: "Place the card on the scanner glass, then start scanning",
     scanNeedsConnection: "Enter the printer IP and test the connection first",
+    fileNameLabel: "File name",
+    saveToDevice: "Save to device",
+    shareFile: "Share",
+    scanFailed: "Could not scan from the printer",
+    scanFailedHint: "Make sure the printer supports network scanning (eSCL/AirScan) and the paper is loaded, then try again.",
+    scanDone: "Scan finished",
+    discovering: "Looking for the printer on the network…",
+    discoverNone: "No printer found. Make sure the phone and printer are on the same Wi-Fi, or type the address manually.",
+    startScan: "Start scan",
+    autoDiscover: "Find printer automatically",
+    directPrintSent: "Job sent straight to the printer",
+    directPrintFallback: "Direct printing failed, opened system printing",
     scanProtocolMissing:
       "The Kyocera scan slot is ready, but receiving the file requires Scan-to-FTP/SMB or the printer TWAIN setup.",
     takePhoto: "Camera",
@@ -921,6 +955,10 @@ export default function HomeScreen() {
   const [printMargins, setPrintMargins] = useState("5");
   const [printCollate, setPrintCollate] = useState(true);
   const [printNumbering, setPrintNumbering] = useState(false);
+  const printerCaps = useRef<FoundDevice | null>(null);
+  const [discovering, setDiscovering] = useState(false);
+  const [scanResult, setScanResult] = useState<WorkflowResult | null>(null);
+  const [scanName, setScanName] = useState("");
   const [selectedProfile, setSelectedProfile] = useState("certificate");
   const [colorMode, setColorMode] = useState<"color" | "bw">("color");
   const [duplex, setDuplex] = useState(false);
@@ -1550,21 +1588,37 @@ export default function HomeScreen() {
   };
 
   const scanIdFaceFromKyocera = async (side: "front" | "back") => {
-    if (!isValidIpv4(printerIp.trim())) {
+    const ip = printerIp.trim();
+    if (!isValidIpv4(ip)) {
       showError(t.scanNeedsConnection, t.scannerIpHint);
       return;
     }
-    if (deviceMessage !== "connected") {
-      await checkPrinterConnection();
-      return;
+    setIdBusy(true);
+    try {
+      const [page] = await runEsclScan(ip, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" });
+      const uri = `${FileSystem.cacheDirectory}PrintPilot-IDScan-${side}-${Date.now()}.jpg`;
+      await FileSystem.writeAsStringAsync(uri, bytesToBase64(page), {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (side === "front") {
+        setIdFrontUri(uri);
+        setIdFrontMimeType("image/jpeg");
+        setIdFrontRotation(0);
+      } else {
+        setIdBackUri(uri);
+        setIdBackMimeType("image/jpeg");
+        setIdBackRotation(0);
+      }
+      setToolResults((current) => ({ ...current, id: undefined }));
+      setTasks((current) =>
+        [`${t.scanIdFace}: ${side === "front" ? t.idFront : t.idBack}`, ...current].slice(0, 4),
+      );
+      setErrorMessage(null);
+    } catch {
+      showError(t.scanFailed, t.scanFailedHint);
+    } finally {
+      setIdBusy(false);
     }
-    setTasks((current) =>
-      [
-        `${t.scanIdFace}: ${side === "front" ? t.idFront : t.idBack}`,
-        ...current,
-      ].slice(0, 4),
-    );
-    Alert.alert(t.scanIdFace, t.scanProtocolMissing);
   };
 
   const createIdCardPdf = async () => {
@@ -1651,27 +1705,128 @@ export default function HomeScreen() {
         showError(t.connectionFailed, t.scanUnavailableHint);
         return;
       }
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
-      try {
-        const response = await fetch(`http://${ip}`, {
-          method: "GET",
-          signal: controller.signal,
-        });
-        setDeviceChecked(true);
-        setDeviceMessage(response.ok ? "connected" : "not-found");
-        if (response.ok)
-          setTasks((current) =>
-            [`${t.connected}: ${ip}`, ...current].slice(0, 4),
-          );
-        else showError(t.connectionFailed, t.scanUnavailableHint);
-      } finally {
-        clearTimeout(timeout);
+      // A printer answers IPP (printing) and/or eSCL (scanning); a plain web page counts too.
+      const [ipp, escl] = await Promise.all([probeIpp(ip, 2500), probeEscl(ip, 2500)]);
+      let reachable = Boolean(ipp || escl);
+      if (!reachable) {
+        try {
+          reachable = (await fetchWithTimeout(`http://${ip}`, { method: "GET" }, 3500)).ok;
+        } catch {
+          reachable = false;
+        }
       }
+      printerCaps.current = { ip, ipp, escl };
+      setDeviceChecked(true);
+      setDeviceMessage(reachable ? "connected" : "not-found");
+      if (reachable) setTasks((current) => [`${t.connected}: ${ip}`, ...current].slice(0, 4));
+      else showError(t.connectionFailed, t.scanUnavailableHint);
     } catch {
       setDeviceChecked(true);
       setDeviceMessage("not-found");
       showError(t.connectionFailed, t.scanUnavailableHint);
+    }
+  };
+
+  // Looks for printers/scanners on the phone's own Wi-Fi network.
+  const discoverPrinters = async () => {
+    if (Platform.OS === "web") {
+      showError(t.connectionFailed, t.scanUnavailableHint);
+      return;
+    }
+    setDiscovering(true);
+    updateProgress(t.discovering, 1);
+    try {
+      const Network = await loadNetwork();
+      const localIp = await Network.getIpAddressAsync();
+      setPhoneIp(localIp);
+      const found = await discoverDevices(localIp, (done, total) =>
+        updateProgress(t.discovering, done > (total * 2) / 3 ? 3 : done > total / 3 ? 2 : 1),
+      );
+      setDeviceChecked(true);
+      if (!found.length) {
+        setDeviceMessage("not-found");
+        setOperationProgress(null);
+        showError(t.connectionFailed, t.discoverNone);
+        return;
+      }
+      const best = found.find((device) => device.ipp && device.escl) ?? found[0];
+      printerCaps.current = best;
+      setPrinterIp(best.ip);
+      setDeviceMessage("connected");
+      setTasks((current) => [`${t.connected}: ${best.ip}`, ...current].slice(0, 4));
+      setErrorMessage(null);
+      completeProgress();
+    } catch {
+      setDeviceMessage("not-found");
+      setOperationProgress(null);
+      showError(t.connectionFailed, t.discoverNone);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  // Scans with the saved scanner settings and keeps the result for Save / Share.
+  const startScan = async () => {
+    const ip = printerIp.trim();
+    if (!isValidIpv4(ip)) {
+      showError(t.scanNeedsConnection, t.scannerIpHint);
+      return;
+    }
+    setProcessing(true);
+    updateProgress(t.progressPreparing, 1);
+    try {
+      const settings = {
+        dpi: Number(scannerDpi) || 300,
+        color: scannerColor,
+        source: scannerSource,
+        duplex: scannerDuplex,
+        format: scannerFormat,
+      } as const;
+      updateProgress(t.progressProcessing, 2);
+      const documents = await runEsclScan(ip, settings);
+      updateProgress(t.progressSaving, 3);
+      const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      const stamp = Date.now();
+      const extension = settings.format === "pdf" ? "pdf" : settings.format === "png" ? "png" : "jpg";
+      let uris: string[] = [];
+      if (settings.format === "pdf" && documents.length > 1) {
+        const { PDFDocument } = await loadPdfLib();
+        const merged = await PDFDocument.create();
+        for (const bytes of documents) {
+          const source = await PDFDocument.load(bytes);
+          const pages = await merged.copyPages(source, source.getPageIndices());
+          pages.forEach((page: any) => merged.addPage(page));
+        }
+        const uri = `${directory}PrintPilot-Scan-${stamp}.pdf`;
+        await FileSystem.writeAsStringAsync(uri, bytesToBase64(await merged.save()), {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        uris = [uri];
+      } else {
+        for (const [index, bytes] of documents.entries()) {
+          const uri = `${directory}PrintPilot-Scan-${stamp}-${String(index + 1).padStart(2, "0")}.${extension}`;
+          await FileSystem.writeAsStringAsync(uri, bytesToBase64(bytes), {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          uris.push(uri);
+        }
+      }
+      setScanResult({
+        title: t.scanDone,
+        detail: `${documents.length} ${isArabic ? "صفحة" : "page(s)"}`,
+        uri: uris[0],
+        uris: uris.length > 1 ? uris : undefined,
+        mimeType: ESCL_MIME[settings.format],
+      });
+      setScanName(fileBaseName(uris[0]));
+      setTasks((current) => [`${t.scanDone}: ${documents.length}`, ...current].slice(0, 4));
+      setErrorMessage(null);
+      completeProgress();
+    } catch {
+      setOperationProgress(null);
+      showError(t.scanFailed, t.scanFailedHint);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -1851,7 +2006,7 @@ export default function HomeScreen() {
           encoding: FileSystem.EncodingType.Base64,
         });
         closePageGrid();
-        await Print.printAsync({ uri: outputUri });
+        await printDocument(outputUri, "application/pdf");
       } catch {
         showError(t.printerUnavailable, t.printerUnavailableHint);
       }
@@ -2021,6 +2176,45 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageGridOpen, previewKind, pendingAssets]);
 
+  // Sends a document straight to the printer over IPP when its address is
+  // set; otherwise (or if that fails) falls back to the system print dialog.
+  const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "system" | "fallback"> => {
+    const ip = printerIp.trim();
+    const wantsDirect = isValidIpv4(ip) && Platform.OS !== "web";
+    if (wantsDirect) {
+      const lower = mimeType.toLowerCase();
+      const documentFormat = lower.includes("pdf")
+        ? "application/pdf"
+        : lower.includes("jpeg") || lower.includes("jpg")
+          ? "image/jpeg"
+          : null;
+      if (documentFormat) {
+        try {
+          const base64 = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const known = printerCaps.current?.ip === ip ? printerCaps.current.ipp : null;
+          const sent = await sendIppPrintJob(
+            ip,
+            base64ToBytes(base64),
+            {
+              mimeType: documentFormat,
+              jobName: fileBaseName(uri) || "PrintPilot",
+              copies: Math.max(1, Number(copies) || 1),
+              sides: duplex ? (duplexEdge === "short" ? "two-sided-short-edge" : "two-sided-long-edge") : "one-sided",
+              colorMode: colorMode === "bw" ? "monochrome" : "color",
+            },
+            known,
+          );
+          if (sent) return "direct";
+        } catch {
+          // Falls through to the system dialog below.
+        }
+      }
+    }
+    await Print.printAsync({ uri });
+    return wantsDirect ? "fallback" : "system";
+  };
   const continuePrint = async () => {
     if (!printUri) return;
     try {
@@ -2038,9 +2232,9 @@ export default function HomeScreen() {
           encoding: FileSystem.EncodingType.Base64,
         });
       }
-      await Print.printAsync({ uri });
+      const mode = await printDocument(uri, printAsset?.mimeType ?? (isPdf ? "application/pdf" : "image/jpeg"));
       setTasks((current) =>
-        [`${t.printReady}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
+        [`${mode === "direct" ? t.directPrintSent : mode === "fallback" ? t.directPrintFallback : t.printReady}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
       );
       setToolResults((current) => ({
         ...current,
@@ -2834,9 +3028,7 @@ export default function HomeScreen() {
       void checkPrinterConnection();
       return;
     }
-    setDeviceChecked(true);
-    setDeviceMessage("not-found");
-    showError(t.connectionFailed, t.scannerIpHint);
+    void discoverPrinters();
   };
 
   const workflowFiles: PickedAsset[] =
@@ -2889,6 +3081,7 @@ export default function HomeScreen() {
     printMargins,
     printCollate,
     printNumbering,
+    printerIp,
     idSize,
     idMargin,
     idQuality,
@@ -2927,6 +3120,7 @@ export default function HomeScreen() {
       case "printMargins": setPrintMargins(String(value)); break;
       case "printCollate": setPrintCollate(Boolean(value)); break;
       case "printNumbering": setPrintNumbering(Boolean(value)); break;
+      case "printerIp": setPrinterIp(String(value)); break;
       case "idSize": setIdSize(value as typeof idSize); break;
       case "idMargin": setIdMargin(String(value)); break;
       case "idQuality": setIdQuality(value as typeof idQuality); break;
@@ -2980,9 +3174,7 @@ export default function HomeScreen() {
       return uri;
     }
   };
-  const saveWorkflowResult = async (name = "") => {
-    if (!previewKind) return;
-    const result = toolResults[previewKind];
+  const saveResultFile = async (result: WorkflowResult | null | undefined, name = "") => {
     if (!result?.uri) return;
     const uris = result.uris?.length ? result.uris : [result.uri];
     const mimeType = result.mimeType ?? "application/pdf";
@@ -3028,14 +3220,18 @@ export default function HomeScreen() {
       showError(t.saveResultFailed, t.saveResultHint);
     }
   };
-  const shareWorkflowResult = (name = "") => {
-    if (!previewKind) return;
-    const result = toolResults[previewKind];
+  const shareResultFile = (result: WorkflowResult | null | undefined, name = "") => {
     if (!result?.uri) return;
     const { uri, mimeType } = result;
     void renamedUri(uri, name, 0, 1).then((shared) =>
       openUriOutsideApp(shared, mimeType ?? "application/pdf"),
     );
+  };
+  const saveWorkflowResult = async (name = "") => {
+    if (previewKind) await saveResultFile(toolResults[previewKind], name);
+  };
+  const shareWorkflowResult = (name = "") => {
+    if (previewKind) shareResultFile(toolResults[previewKind], name);
   };
 
   return (
@@ -6009,6 +6205,18 @@ export default function HomeScreen() {
                   <Icon name="wifi" color="#fff" size={18} />
                   <Text style={styles.printButtonText}>{t.checkDevices}</Text>
                 </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={discovering}
+                  onPress={() => { void discoverPrinters(); }}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1, opacity: discovering ? 0.6 : 1 },
+                  ]}
+                >
+                  <Icon name="search" color={colors.primary} size={18} />
+                  <Text style={[styles.printButtonText, { color: colors.primary }]}>{t.autoDiscover}</Text>
+                </Pressable>
                 <View
                   style={[
                     styles.advancedCard,
@@ -6136,6 +6344,51 @@ export default function HomeScreen() {
                     {t.adf}: {scannerAdf ? "ON" : "OFF"}
                   </Text>
                 </View>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={processing}
+                  onPress={() => { void startScan(); }}
+                  style={[styles.workspacePrimary, { backgroundColor: colors.success, opacity: processing ? 0.6 : 1 }]}
+                >
+                  <Icon name="document-scanner" color="#fff" size={18} />
+                  <Text style={styles.printButtonText}>{t.startScan}</Text>
+                </Pressable>
+                {scanResult ? (
+                  <View style={[styles.advancedCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.workspacePreviewTitle, { color: colors.success }]}>{scanResult.title}</Text>
+                    {scanResult.detail ? <Text style={[styles.workspaceHint, { color: colors.muted }]}>{scanResult.detail}</Text> : null}
+                    <TextInput
+                      testID="scan-file-name"
+                      accessibilityLabel={t.fileNameLabel}
+                      value={scanName}
+                      onChangeText={setScanName}
+                      placeholder={t.fileNameLabel}
+                      placeholderTextColor={colors.muted}
+                      autoCorrect={false}
+                      style={[styles.workspaceInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                    />
+                    <View style={{ flexDirection: isArabic ? "row-reverse" : "row", gap: 10 }}>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => { void saveResultFile(scanResult, scanName); }}
+                        style={[styles.workspacePrimary, { flex: 1, backgroundColor: colors.primary }]}
+                      >
+                        <Icon name="save-alt" color="#fff" size={18} />
+                        <Text style={styles.printButtonText}>{t.saveToDevice}</Text>
+                      </Pressable>
+                      {(scanResult.uris?.length ?? 0) > 1 ? null : (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => shareResultFile(scanResult, scanName)}
+                          style={[styles.workspacePrimary, { flex: 1, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
+                        >
+                          <Icon name="share" color={colors.primary} size={18} />
+                          <Text style={[styles.printButtonText, { color: colors.primary }]}>{t.shareFile}</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                ) : null}
               </View>
             )}
             {workspace === "id" && (

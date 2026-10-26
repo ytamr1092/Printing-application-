@@ -52,6 +52,8 @@ const config: ExpoConfig = {
     bundleIdentifier: env.iosBundleId,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+      NSLocalNetworkUsageDescription: "Find and use printers and scanners on your Wi-Fi network.",
     },
   },
   android: {
@@ -126,6 +128,8 @@ const config: ExpoConfig = {
         android: {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
+          // The printer/scanner is reached over plain http on the local network.
+          usesCleartextTraffic: true,
         },
       },
     ],
