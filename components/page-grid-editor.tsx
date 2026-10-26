@@ -37,6 +37,14 @@ type Props = {
   /** Main action on the selection (extract, print selected, use as range...). */
   onExtractSelected?: () => void;
   extractLabel?: string;
+  /** Extra content under the top bar (e.g. correction switches). */
+  header?: React.ReactNode;
+  /** Always-enabled main button above the action bar (e.g. "Continue"). */
+  onConfirm?: () => void;
+  confirmLabel?: string;
+  /** Opens a large preview of the selected pages. */
+  onPreviewSelected?: () => void;
+  previewLabel?: string;
   extractIcon?: React.ComponentProps<typeof MaterialIcons>["name"];
   onClose: () => void;
 };
@@ -204,6 +212,11 @@ export function PageGridEditor({
   onExtractSelected,
   extractLabel,
   extractIcon,
+  header,
+  onConfirm,
+  confirmLabel,
+  onPreviewSelected,
+  previewLabel,
   onClose,
 }: Props) {
   const colors = useColors();
@@ -299,8 +312,9 @@ export function PageGridEditor({
           <MaterialIcons name={isArabic ? "chevron-left" : "chevron-right"} color={colors.foreground} size={30} />
         </Pressable>
       </View>
+      {header}
       <Text style={[styles.hint, { color: colors.muted }]}>
-        {tr(isArabic, "اضغط للتحديد، واضغط مطولًا ثم اسحب لإعادة الترتيب", "Tap to select, press and hold then drag to reorder")}
+        {onMove ? tr(isArabic, "اضغط للتحديد، واضغط مطولًا ثم اسحب لإعادة الترتيب", "Tap to select, press and hold then drag to reorder") : tr(isArabic, "اضغط للتحديد", "Tap to select")}
       </Text>
       <View ref={viewportRef} collapsable={false} style={styles.scroll}>
       <ScrollView
@@ -343,8 +357,20 @@ export function PageGridEditor({
         </View>
       </ScrollView>
       </View>
-      {onDeleteSelected || onRotateSelected || onExtractSelected ? (
+      {onConfirm ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={confirmLabel}
+          onPress={onConfirm}
+          style={[styles.confirm, { backgroundColor: colors.primary }]}
+        >
+          <MaterialIcons name="check" color="#fff" size={20} />
+          <Text style={styles.confirmText}>{confirmLabel}</Text>
+        </Pressable>
+      ) : null}
+      {onDeleteSelected || onRotateSelected || onExtractSelected || onPreviewSelected ? (
         <View style={[styles.bottomBar, { borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: direction }]}>
+          {onPreviewSelected ? action(previewLabel ?? tr(isArabic, "معاينة", "Preview"), "visibility", onPreviewSelected, colors.primary) : null}
           {onDeleteSelected ? action(tr(isArabic, "حذف", "Delete"), "delete-outline", onDeleteSelected, colors.error) : null}
           {onRotateSelected ? action(tr(isArabic, "تدوير", "Rotate"), "rotate-right", onRotateSelected, colors.primary) : null}
           {onExtractSelected ? action(extractLabel ?? tr(isArabic, "استخراج", "Extract"), extractIcon ?? "file-upload", onExtractSelected, colors.primary) : null}
@@ -356,6 +382,8 @@ export function PageGridEditor({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  confirm: { height: 48, marginHorizontal: 12, marginVertical: 8, borderRadius: 12, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  confirmText: { color: "#fff", fontSize: 15, fontWeight: "900" },
   topBar: { minHeight: 58, alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 6 },
   topButton: { minWidth: 64, height: 48, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
   topButtonText: { fontSize: 13, fontWeight: "900" },

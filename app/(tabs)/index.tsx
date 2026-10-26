@@ -56,6 +56,10 @@ import {
   type PdfPageEdit,
 } from "@/shared/pdf-pages";
 import { ESCL_MIME } from "@/shared/escl";
+import { decodeJpegDc } from "@/shared/jpeg-dc";
+import { withJpegRotation } from "@/shared/jpeg-orientation";
+import { estimateSkew, isBlankPage } from "@/shared/scan-analysis";
+import { pagesForOutput, scanPageGeometry, type ScanPage } from "@/shared/scan-pages";
 import {
   discoverDevices,
   fetchWithTimeout,
@@ -78,6 +82,7 @@ import {
 } from "@/shared/pdf-cut";
 import { generatePdfPageThumbnail } from "@/shared/pdf-thumbnail";
 import { PageGridEditor, type GridItem } from "@/components/page-grid-editor";
+import { ScanPagePreview } from "@/components/scan-page-preview";
 import { type WorkspaceKind } from "@/shared/workspaces";
 import {
   createIdCardLayout,
@@ -131,6 +136,18 @@ const copy = {
     fileNameLabel: "اسم الملف",
     saveToDevice: "حفظ على الجهاز",
     shareFile: "مشاركة",
+    scanNoPages: "لا توجد صفحات للحفظ",
+    scanNoPagesHint: "كل الصفحات محذوفة أو معلَّمة كفارغة. ألغِ حذف الصفحات الفارغة أو امسح من جديد.",
+    scanBlankTag: "فارغة؟",
+    scanSkewTag: "ميل",
+    scanReviewTitle: "مراجعة المسح",
+    scanReviewContinue: "متابعة للحفظ",
+    scanReviewOpen: "مراجعة الصفحات الممسوحة",
+    scanFixSkew: "تصحيح الميل",
+    scanDropBlank: "حذف الصفحات الفارغة",
+    scanSkewPdfOnly: "تصحيح الميل يُطبَّق عند الحفظ بصيغة PDF فقط.",
+    scanRotateJpgNote: "التدوير غير متاح لصيغة PNG؛ اختر PDF أو JPG.",
+    scanPreview: "معاينة",
     scanFailed: "تعذر المسح من الطابعة",
     scanFailedHint: "تأكد أن الطابعة تدعم المسح عبر الشبكة (eSCL/AirScan) وأن الورقة موضوعة، ثم حاول مرة أخرى.",
     scanDone: "تم المسح",
@@ -417,6 +434,18 @@ const copy = {
     fileNameLabel: "File name",
     saveToDevice: "Save to device",
     shareFile: "Share",
+    scanNoPages: "No pages to save",
+    scanNoPagesHint: "Every page was deleted or flagged blank. Turn off blank-page removal or scan again.",
+    scanBlankTag: "blank?",
+    scanSkewTag: "tilt",
+    scanReviewTitle: "Review scan",
+    scanReviewContinue: "Continue to save",
+    scanReviewOpen: "Review scanned pages",
+    scanFixSkew: "Straighten tilted pages",
+    scanDropBlank: "Remove blank pages",
+    scanSkewPdfOnly: "Straightening is applied when saving as PDF only.",
+    scanRotateJpgNote: "Rotation is not available for PNG; choose PDF or JPG.",
+    scanPreview: "Preview",
     scanFailed: "Could not scan from the printer",
     scanFailedHint: "Make sure the printer supports network scanning (eSCL/AirScan) and the paper is loaded, then try again.",
     scanDone: "Scan finished",
@@ -959,6 +988,11 @@ export default function HomeScreen() {
   const [discovering, setDiscovering] = useState(false);
   const [scanResult, setScanResult] = useState<WorkflowResult | null>(null);
   const [scanName, setScanName] = useState("");
+  // Pages just scanned, waiting for the person to review them before saving.
+  const [scanPages, setScanPages] = useState<ScanPage[]>([]);
+  const [scanReviewOpen, setScanReviewOpen] = useState(false);
+  const [scanPreviewOpen, setScanPreviewOpen] = useState(false);
+  const [scanSelected, setScanSelected] = useState<string[]>([]);
   const [selectedProfile, setSelectedProfile] = useState("certificate");
   const [colorMode, setColorMode] = useState<"color" | "bw">("color");
   const [duplex, setDuplex] = useState(false);
@@ -988,8 +1022,8 @@ export default function HomeScreen() {
   const [scannerFormat, setScannerFormat] = useState<"pdf" | "jpg" | "png">(
     "pdf",
   );
-  const [scannerDeskew, setScannerDeskew] = useState(true);
-  const [scannerBlankPages, setScannerBlankPages] = useState(true);
+  const [scannerDeskew, setScannerDeskew] = useState(false);
+  const [scannerBlankPages, setScannerBlankPages] = useState(false);
   const [idFrontUri, setIdFrontUri] = useState<string | null>(null);
   const [idBackUri, setIdBackUri] = useState<string | null>(null);
   const [idFrontMimeType, setIdFrontMimeType] = useState("image/jpeg");
@@ -1134,6 +1168,14 @@ export default function HomeScreen() {
           setGridSelected([]);
           return true;
         }
+        if (scanPreviewOpen) {
+          setScanPreviewOpen(false);
+          return true;
+        }
+        if (scanReviewOpen) {
+          setScanReviewOpen(false);
+          return true;
+        }
         if (previewWindowOpen) {
           setPreviewWindowOpen(false);
           return true;
@@ -1155,7 +1197,7 @@ export default function HomeScreen() {
       },
     );
     return () => subscription.remove();
-  }, [keyboardShown, previewKind, workspace, pageGridOpen, previewWindowOpen, t]);
+  }, [keyboardShown, previewKind, workspace, pageGridOpen, previewWindowOpen, scanReviewOpen, scanPreviewOpen, t]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
   const completeProgress = () =>
@@ -1765,7 +1807,7 @@ export default function HomeScreen() {
     }
   };
 
-  // Scans with the saved scanner settings and keeps the result for Save / Share.
+  // Scans, then opens a review window (preview, rotate, delete) before saving.
   const startScan = async () => {
     const ip = printerIp.trim();
     if (!isValidIpv4(ip)) {
@@ -1775,51 +1817,42 @@ export default function HomeScreen() {
     setProcessing(true);
     updateProgress(t.progressPreparing, 1);
     try {
-      const settings = {
+      // JPEG comes back from every scanner and can be analysed; PNG only when asked for.
+      const wantPng = scannerFormat === "png";
+      updateProgress(t.progressProcessing, 2);
+      const documents = await runEsclScan(ip, {
         dpi: Number(scannerDpi) || 300,
         color: scannerColor,
         source: scannerSource,
         duplex: scannerDuplex,
-        format: scannerFormat,
-      } as const;
-      updateProgress(t.progressProcessing, 2);
-      const documents = await runEsclScan(ip, settings);
+        format: wantPng ? "png" : "jpg",
+      });
       updateProgress(t.progressSaving, 3);
-      const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      const directory = FileSystem.cacheDirectory;
       const stamp = Date.now();
-      const extension = settings.format === "pdf" ? "pdf" : settings.format === "png" ? "png" : "jpg";
-      let uris: string[] = [];
-      if (settings.format === "pdf" && documents.length > 1) {
-        const { PDFDocument } = await loadPdfLib();
-        const merged = await PDFDocument.create();
-        for (const bytes of documents) {
-          const source = await PDFDocument.load(bytes);
-          const pages = await merged.copyPages(source, source.getPageIndices());
-          pages.forEach((page: any) => merged.addPage(page));
-        }
-        const uri = `${directory}PrintPilot-Scan-${stamp}.pdf`;
-        await FileSystem.writeAsStringAsync(uri, bytesToBase64(await merged.save()), {
+      const pages: ScanPage[] = [];
+      for (const [index, bytes] of documents.entries()) {
+        const uri = `${directory}PrintPilot-ScanPage-${stamp}-${String(index + 1).padStart(2, "0")}.${wantPng ? "png" : "jpg"}`;
+        await FileSystem.writeAsStringAsync(uri, bytesToBase64(bytes), {
           encoding: FileSystem.EncodingType.Base64,
         });
-        uris = [uri];
-      } else {
-        for (const [index, bytes] of documents.entries()) {
-          const uri = `${directory}PrintPilot-Scan-${stamp}-${String(index + 1).padStart(2, "0")}.${extension}`;
-          await FileSystem.writeAsStringAsync(uri, bytesToBase64(bytes), {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          uris.push(uri);
+        let blank = false;
+        let skew = 0;
+        if (!wantPng) {
+          const gray = decodeJpegDc(bytes);
+          if (gray) {
+            blank = isBlankPage(gray);
+            skew = estimateSkew(gray);
+          }
+          // Let the screen breathe between pages.
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
+        pages.push({ id: `${stamp}-${index}`, uri, rotation: 0, blank, skew });
       }
-      setScanResult({
-        title: t.scanDone,
-        detail: `${documents.length} ${isArabic ? "صفحة" : "page(s)"}`,
-        uri: uris[0],
-        uris: uris.length > 1 ? uris : undefined,
-        mimeType: ESCL_MIME[settings.format],
-      });
-      setScanName(fileBaseName(uris[0]));
-      setTasks((current) => [`${t.scanDone}: ${documents.length}`, ...current].slice(0, 4));
+      setScanResult(null);
+      setScanPages(pages);
+      setScanSelected([]);
+      setScanReviewOpen(true);
       setErrorMessage(null);
       completeProgress();
     } catch {
@@ -1829,6 +1862,88 @@ export default function HomeScreen() {
       setProcessing(false);
     }
   };
+
+  // Builds the final file(s) from the reviewed pages in the chosen format.
+  const finishScanReview = async () => {
+    const pages = pagesForOutput(scanPages, scannerBlankPages);
+    if (!pages.length) {
+      showError(t.scanNoPages, t.scanNoPagesHint);
+      return;
+    }
+    setProcessing(true);
+    updateProgress(t.progressSaving, 2);
+    try {
+      const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      const stamp = Date.now();
+      const dpi = Number(scannerDpi) || 300;
+      let uris: string[] = [];
+      let mimeType = ESCL_MIME[scannerFormat];
+      if (scannerFormat === "pdf") {
+        const { PDFDocument, degrees } = await loadPdfLib();
+        const output = await PDFDocument.create();
+        for (const page of pages) {
+          const base64 = await FileSystem.readAsStringAsync(page.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const image = await output.embedJpg(base64ToBytes(base64));
+          const width = (image.width * 72) / dpi;
+          const height = (image.height * 72) / dpi;
+          const place = scanPageGeometry(width, height, page.rotation, scannerDeskew ? page.skew : 0);
+          const target = output.addPage([place.pageWidth, place.pageHeight]);
+          target.drawImage(image, { x: place.x, y: place.y, width, height, rotate: degrees(place.angle) });
+        }
+        const uri = `${directory}PrintPilot-Scan-${stamp}.pdf`;
+        await FileSystem.writeAsStringAsync(uri, bytesToBase64(await output.save()), {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        uris = [uri];
+      } else {
+        const extension = scannerFormat === "png" ? "png" : "jpg";
+        for (const [index, page] of pages.entries()) {
+          const uri = `${directory}PrintPilot-Scan-${stamp}-${String(index + 1).padStart(2, "0")}.${extension}`;
+          const base64 = await FileSystem.readAsStringAsync(page.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const bytes = base64ToBytes(base64);
+          await FileSystem.writeAsStringAsync(
+            uri,
+            bytesToBase64(scannerFormat === "jpg" ? withJpegRotation(bytes, page.rotation) : bytes),
+            { encoding: FileSystem.EncodingType.Base64 },
+          );
+          uris.push(uri);
+        }
+      }
+      setScanResult({
+        title: t.scanDone,
+        detail: `${pages.length} ${isArabic ? "صفحة" : "page(s)"}`,
+        uri: uris[0],
+        uris: uris.length > 1 ? uris : undefined,
+        mimeType,
+      });
+      setScanName(fileBaseName(uris[0]));
+      setTasks((current) => [`${t.scanDone}: ${pages.length}`, ...current].slice(0, 4));
+      setScanReviewOpen(false);
+      setScanPages([]);
+      setScanSelected([]);
+      completeProgress();
+    } catch {
+      setOperationProgress(null);
+      showError(t.scanFailed, t.scanFailedHint);
+    } finally {
+      setProcessing(false);
+    }
+  };
+  const scanItems: GridItem[] = scanPages.map((page, index) => ({
+    key: page.id,
+    label:
+      String(index + 1) +
+      (page.blank ? ` · ${t.scanBlankTag}` : "") +
+      (page.skew ? ` · ${t.scanSkewTag} ${Math.abs(page.skew)}°` : ""),
+    thumbUri: page.uri,
+    rotation: page.rotation,
+  }));
+  const blankCount = scanPages.filter((page) => page.blank).length;
+  const skewCount = scanPages.filter((page) => page.skew).length;
 
   const previewTitleFor = (kind: PreviewKind) =>
     ({
@@ -3249,7 +3364,82 @@ export default function HomeScreen() {
           onDismiss={() => setOperationProgress(null)}
         />
       ) : null}
-      {previewKind && pageGridOpen && previewKind !== "id" ? (
+      {scanReviewOpen ? (
+        <>
+          <PageGridEditor
+            title={t.scanReviewTitle}
+            items={scanItems}
+            selected={scanSelected}
+            isArabic={isArabic}
+            onToggle={(key) => setScanSelected((current) => toggleSelected(current, key))}
+            onSelectAll={() => setScanSelected(scanItems.map((item) => item.key))}
+            onClear={() => setScanSelected([])}
+            onMove={(from, to) =>
+              setScanPages((current) => (from < 0 || to < 0 || from >= current.length || to >= current.length ? current : moveWorkflowItem(current, from, to)))
+            }
+            onRotateSelected={
+              scannerFormat === "png"
+                ? undefined
+                : () =>
+                    setScanPages((current) =>
+                      current.map((page) =>
+                        scanSelected.includes(page.id) ? { ...page, rotation: (normalizeRotation(page.rotation) + 90) % 360 } : page,
+                      ),
+                    )
+            }
+            onDeleteSelected={() => {
+              setScanPages((current) => current.filter((page) => !scanSelected.includes(page.id)));
+              setScanSelected([]);
+            }}
+            onPreviewSelected={() => setScanPreviewOpen(true)}
+            previewLabel={t.scanPreview}
+            onConfirm={() => { void finishScanReview(); }}
+            confirmLabel={t.scanReviewContinue}
+            onClose={() => setScanReviewOpen(false)}
+            header={
+              <View style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 6 }}>
+                {scannerFormat !== "png" ? (
+                  <>
+                    <Pressable
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: scannerBlankPages }}
+                      onPress={() => setScannerBlankPages((value) => !value)}
+                      style={{ flexDirection: isArabic ? "row-reverse" : "row", alignItems: "center", gap: 8 }}
+                    >
+                      <Icon name={scannerBlankPages ? "check-circle" : "radio-button-unchecked"} color={scannerBlankPages ? colors.primary : colors.muted} size={20} />
+                      <Text style={{ flex: 1, color: colors.foreground, fontWeight: "800", fontSize: 13, textAlign: isArabic ? "right" : "left" }}>
+                        {t.scanDropBlank} ({blankCount})
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: scannerDeskew }}
+                      onPress={() => setScannerDeskew((value) => !value)}
+                      style={{ flexDirection: isArabic ? "row-reverse" : "row", alignItems: "center", gap: 8 }}
+                    >
+                      <Icon name={scannerDeskew ? "check-circle" : "radio-button-unchecked"} color={scannerDeskew ? colors.primary : colors.muted} size={20} />
+                      <Text style={{ flex: 1, color: colors.foreground, fontWeight: "800", fontSize: 13, textAlign: isArabic ? "right" : "left" }}>
+                        {t.scanFixSkew} ({skewCount})
+                      </Text>
+                    </Pressable>
+                    {scannerDeskew && scannerFormat !== "pdf" ? (
+                      <Text style={{ color: colors.warning, fontSize: 12, textAlign: isArabic ? "right" : "left" }}>{t.scanSkewPdfOnly}</Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={{ color: colors.muted, fontSize: 12, textAlign: isArabic ? "right" : "left" }}>{t.scanRotateJpgNote}</Text>
+                )}
+              </View>
+            }
+          />
+          <ScanPagePreview
+            visible={scanPreviewOpen}
+            pages={scanPages.filter((page) => scanSelected.includes(page.id))}
+            isArabic={isArabic}
+            onClose={() => setScanPreviewOpen(false)}
+          />
+        </>
+      ) : previewKind && pageGridOpen && previewKind !== "id" ? (
         <PageGridEditor
           title={previewTitleFor(previewKind)}
           items={gridItems}
@@ -6344,6 +6534,16 @@ export default function HomeScreen() {
                     {t.adf}: {scannerAdf ? "ON" : "OFF"}
                   </Text>
                 </View>
+                {scanPages.length > 0 && !scanReviewOpen ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setScanReviewOpen(true)}
+                    style={[styles.workspacePrimary, { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1 }]}
+                  >
+                    <Icon name="grid-view" color={colors.primary} size={18} />
+                    <Text style={[styles.printButtonText, { color: colors.primary }]}>{t.scanReviewOpen} ({scanPages.length})</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   accessibilityRole="button"
                   disabled={processing}

@@ -547,7 +547,7 @@ describe("tool workflow UI: separate save and share, isolated tools", () => {
     expect(appSource).toContain("onBack={closeTool}");
     expect(appSource).not.toMatch(/onBack=\{\(\) => setPreviewKind\(null\)\}/);
     const backStart = appSource.indexOf('"hardwareBackPress"');
-    const backSource = appSource.slice(backStart, backStart + 900);
+    const backSource = appSource.slice(backStart, backStart + 2600);
     expect(backSource).toContain("closeTool()");
     expect(backSource).toContain("ToastAndroid.show(t.pressBackAgain");
     expect(backSource).toContain("< 2000");
@@ -963,7 +963,7 @@ describe("page grid window", () => {
     expect(appSource).toContain("<PageGridEditor");
     expect(appSource).toContain("onOpenPageGrid=");
     const backStart = appSource.indexOf('"hardwareBackPress"');
-    const backSource = appSource.slice(backStart, backStart + 1800);
+    const backSource = appSource.slice(backStart, backStart + 2600);
     expect(backSource.indexOf("pageGridOpen")).toBeGreaterThan(-1);
     expect(backSource.indexOf("pageGridOpen")).toBeLessThan(backSource.indexOf("closeTool()"));
     expect(backSource).toContain("< 2000");
