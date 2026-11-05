@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "expo-router";
 import { useFonts } from "expo-font";
-import { ArefRuqaa_400Regular } from "@expo-google-fonts/aref-ruqaa";
 import {
   Alert,
   ActivityIndicator,
@@ -972,7 +971,7 @@ const loadNetwork = () => import("expo-network");
 
 export default function HomeScreen() {
   const [greetingFontLoaded] = useFonts({
-    ArefRuqaa: ArefRuqaa_400Regular,
+    DiwaniJali: require("../../assets/fonts/diwani-jali.ttf"),
   });
   const navigation = useNavigation();
   const [language, setLanguage] = useState<Language>("ar");
@@ -3553,7 +3552,7 @@ export default function HomeScreen() {
                   styles.personalGreeting,
                   {
                     color: colors.primary,
-                    fontFamily: greetingFontLoaded ? "ArefRuqaa" : undefined,
+                    fontFamily: greetingFontLoaded ? "DiwaniJali" : undefined,
                   },
                 ]}
               >
