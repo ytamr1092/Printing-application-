@@ -158,6 +158,8 @@ const copy = {
     startScan: "بدء المسح",
     autoDiscover: "بحث تلقائي عن الطابعة",
     directPrintSent: "أُرسلت المهمة إلى الطابعة مباشرة",
+    printingNow: "جارٍ الطباعة… لا تضغط مرة أخرى",
+    printUnconfirmed: "أُرسلت المهمة والطابعة بطيئة في الرد. انتظر قليلًا وتأكد من الطابعة قبل إعادة الطباعة",
     directPrintFallback: "تعذرت الطباعة المباشرة، فُتحت طباعة النظام",
     scanProtocolMissing:
       "تم تجهيز الخانة للمسح من Kyocera، لكن استقبال الملف يحتاج إعداد Scan-to-FTP/SMB أو TWAIN للطابعة.",
@@ -456,6 +458,8 @@ const copy = {
     startScan: "Start scan",
     autoDiscover: "Find printer automatically",
     directPrintSent: "Job sent straight to the printer",
+    printingNow: "Printing… please do not tap again",
+    printUnconfirmed: "Job sent, but the printer is slow to answer. Wait and check the printer before printing again",
     directPrintFallback: "Direct printing failed, opened system printing",
     scanProtocolMissing:
       "The Kyocera scan slot is ready, but receiving the file requires Scan-to-FTP/SMB or the printer TWAIN setup.",
@@ -2334,7 +2338,7 @@ export default function HomeScreen() {
 
   // Sends a document straight to the printer over IPP when its address is
   // set; otherwise (or if that fails) falls back to the system print dialog.
-  const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "system" | "fallback"> => {
+  const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "unconfirmed" | "system" | "fallback"> => {
     const ip = printerIp.trim();
     const wantsDirect = isValidIpv4(ip) && Platform.OS !== "web";
     if (wantsDirect) {
@@ -2362,6 +2366,7 @@ export default function HomeScreen() {
             },
             known,
           );
+          if (sent === "unconfirmed") return "unconfirmed";
           if (sent) return "direct";
         } catch {
           // Falls through to the system dialog below.
@@ -2371,8 +2376,12 @@ export default function HomeScreen() {
     await Print.printAsync({ uri });
     return wantsDirect ? "fallback" : "system";
   };
+  const printingRef = useRef(false);
   const continuePrint = async () => {
-    if (!printUri) return;
+    if (!printUri || printingRef.current) return;
+    printingRef.current = true;
+    setProcessing(true);
+    updateProgress(t.printingNow, 2);
     try {
       let uri = printUri;
       const isPdf = Boolean(printAsset?.mimeType?.includes("pdf")) || Boolean(printAsset?.name.toLowerCase().endsWith(".pdf"));
@@ -2390,15 +2399,20 @@ export default function HomeScreen() {
       }
       const mode = await printDocument(uri, printAsset?.mimeType ?? (isPdf ? "application/pdf" : "image/jpeg"));
       setTasks((current) =>
-        [`${mode === "direct" ? t.directPrintSent : mode === "fallback" ? t.directPrintFallback : t.printReady}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
+        [`${mode === "direct" ? t.directPrintSent : mode === "unconfirmed" ? t.printUnconfirmed : mode === "fallback" ? t.directPrintFallback : t.printReady}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
       );
       setToolResults((current) => ({
         ...current,
         print: { title: t.printReady, detail: selectedFiles[0] },
       }));
       setErrorMessage(null);
+      completeProgress();
     } catch {
+      setOperationProgress(null);
       showError(t.printerUnavailable, t.printerUnavailableHint);
+    } finally {
+      printingRef.current = false;
+      setProcessing(false);
     }
   };
 

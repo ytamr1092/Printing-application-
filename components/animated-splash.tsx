@@ -1,10 +1,10 @@
 import * as SplashScreen from "expo-splash-screen";
 import { memo, useEffect, useRef, useState } from "react";
 import { Animated, StyleSheet, View, useWindowDimensions } from "react-native";
-import Svg, { ClipPath, Defs, G, Line, Path, Polygon } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 
 import { GREETING_LINES, GREETING_VIEW } from "@/shared/welcome-greeting-data";
-import { WRITING_SLANT, lineProgress, revealEdge, revealPolygon } from "@/shared/welcome-writing";
+import { lineProgress, revealEdge } from "@/shared/welcome-writing";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -27,37 +27,40 @@ const GreetingLine = memo(function GreetingLine({ index }: { index: number }) {
 function Greeting({ progress }: { progress: number }) {
   const { width: screenWidth } = useWindowDimensions();
   const width = screenWidth - 8;
-  const height = (width * GREETING_VIEW.height) / GREETING_VIEW.width;
+  const k = width / GREETING_VIEW.width;
+  const height = GREETING_VIEW.height * k;
   const steps = lineProgress(progress);
+  const viewBox = `0 0 ${GREETING_VIEW.width} ${GREETING_VIEW.height}`;
+  // Each line is revealed by a plain clipping view growing from the right edge
+  // (no SVG clip paths, which are unreliable on some Android devices).
   return (
-    <Svg width={width} height={height} viewBox={`0 0 ${GREETING_VIEW.width} ${GREETING_VIEW.height}`}>
-      <Defs>
-        {GREETING_LINES.map((line, index) => (
-          <ClipPath key={index} id={`written-${index}`}>
-            <Polygon points={revealPolygon(line, steps[index])} />
-          </ClipPath>
-        ))}
-      </Defs>
-      {GREETING_LINES.map((line, index) => (
-        <G key={index} clipPath={`url(#written-${index})`}>
-          <GreetingLine index={index} />
-        </G>
-      ))}
+    <View style={{ width, height }}>
       {GREETING_LINES.map((line, index) => {
         const u = steps[index];
-        if (u <= 0 || u >= 1) return null;
-        // A soft light travels with the writing front, like the pen's tip.
+        if (u <= 0) return null;
         const edge = revealEdge(line, u);
-        const mid = (line.top + line.bottom) / 2;
-        const x = (y: number) => edge - (y - mid) * WRITING_SLANT;
+        const revealPx = Math.max(0, Math.min(width, (GREETING_VIEW.width - edge) * k));
+        const mid = ((line.top + line.bottom) / 2) * k;
+        const bar = (line.bottom - line.top) * k;
         return (
-          <G key={`front-${index}`}>
-            <Line x1={x(line.top)} y1={line.top} x2={x(line.bottom)} y2={line.bottom} stroke={GLOW} strokeOpacity={0.18} strokeWidth={90} strokeLinecap="round" />
-            <Line x1={x(line.top)} y1={line.top} x2={x(line.bottom)} y2={line.bottom} stroke={GLOW} strokeOpacity={0.55} strokeWidth={18} strokeLinecap="round" />
-          </G>
+          <View key={index} style={StyleSheet.absoluteFill} pointerEvents="none">
+            <View style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: revealPx, overflow: "hidden" }}>
+              <View style={{ position: "absolute", top: 0, right: 0, width, height }}>
+                <Svg width={width} height={height} viewBox={viewBox}>
+                  <GreetingLine index={index} />
+                </Svg>
+              </View>
+            </View>
+            {u < 1 ? (
+              <>
+                <View style={{ position: "absolute", right: revealPx - 14, top: mid - bar / 2, width: 28, height: bar, backgroundColor: GLOW, opacity: 0.16, borderRadius: 14, transform: [{ skewX: "-12deg" }] }} />
+                <View style={{ position: "absolute", right: revealPx - 2, top: mid - bar / 2, width: 4, height: bar, backgroundColor: GLOW, opacity: 0.7, borderRadius: 2, transform: [{ skewX: "-12deg" }] }} />
+              </>
+            ) : null}
+          </View>
         );
       })}
-    </Svg>
+    </View>
   );
 }
 
