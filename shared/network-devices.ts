@@ -135,3 +135,44 @@ export async function runEsclScan(ip: string, settings: EsclSettings): Promise<U
   if (!documents.length) throw new Error("scan-empty");
   return documents;
 }
+
+/** Probes the usual printer ports and reports, in plain lines, what each one answered. */
+export async function diagnoseDevice(ip: string): Promise<string[]> {
+  const describe = async (label: string, run: () => Promise<string>) => {
+    try {
+      return `${label}: ${await run()}`;
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "error";
+      return `${label}: ${name === "AbortError" ? "no answer" : "refused/blocked"}`;
+    }
+  };
+  const ippPort = (port: number) =>
+    describe(`IPP ${port}`, async () => {
+      const response = await fetchWithTimeout(
+        ippHttpUrl(ip, port, "/ipp/print"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/ipp" },
+          body: buildIppRequest(IPP_OPERATION.getPrinterAttributes, ippPrinterUri(ip, port, "/ipp/print"), {}, undefined) as any,
+        },
+        2500,
+      );
+      const parsed = parseIppResponse(new Uint8Array(await response.arrayBuffer()));
+      return `HTTP ${response.status}${parsed ? `, IPP 0x${parsed.statusCode.toString(16)}` : ""}`;
+    });
+  const esclPort = (port: number) =>
+    describe(`eSCL ${port}`, async () => {
+      const response = await fetchWithTimeout(`${esclBaseUrl(ip, port)}/ScannerCapabilities`, {}, 2500);
+      return `HTTP ${response.status}`;
+    });
+  return Promise.all([
+    ippPort(631),
+    ippPort(80),
+    ippPort(8000),
+    ippPort(8080),
+    esclPort(80),
+    esclPort(8080),
+    esclPort(9095),
+    describe("Web 80", async () => `HTTP ${(await fetchWithTimeout(`http://${ip}`, {}, 2500)).status}`),
+  ]);
+}

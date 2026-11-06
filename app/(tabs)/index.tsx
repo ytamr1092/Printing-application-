@@ -62,6 +62,7 @@ import { withJpegRotation } from "@/shared/jpeg-orientation";
 import { estimateSkew, isBlankPage } from "@/shared/scan-analysis";
 import { pagesForOutput, scanPageGeometry, type ScanPage } from "@/shared/scan-pages";
 import {
+  diagnoseDevice,
   discoverDevices,
   fetchWithTimeout,
   probeEscl,
@@ -1765,7 +1766,7 @@ export default function HomeScreen() {
       setDeviceChecked(true);
       setDeviceMessage(reachable ? "connected" : "not-found");
       if (reachable) setTasks((current) => [`${t.connected}: ${ip}`, ...current].slice(0, 4));
-      else showError(t.connectionFailed, t.scanUnavailableHint);
+      else showError(t.connectionFailed, `${t.scanUnavailableHint}\n\n${(await diagnoseDevice(ip)).join("\n")}`);
     } catch {
       setDeviceChecked(true);
       setDeviceMessage("not-found");
@@ -1792,7 +1793,7 @@ export default function HomeScreen() {
       if (!found.length) {
         setDeviceMessage("not-found");
         setOperationProgress(null);
-        showError(t.connectionFailed, t.discoverNone);
+        showError(t.connectionFailed, `${t.discoverNone}\n\nWi-Fi IP: ${localIp}`);
         return;
       }
       const best = found.find((device) => device.ipp && device.escl) ?? found[0];
@@ -1859,9 +1860,11 @@ export default function HomeScreen() {
       setScanReviewOpen(true);
       setErrorMessage(null);
       completeProgress();
-    } catch {
+    } catch (error) {
       setOperationProgress(null);
-      showError(t.scanFailed, t.scanFailedHint);
+      const reason = error instanceof Error ? error.message : "";
+      const lines = (await diagnoseDevice(ip)).join("\n");
+      showError(t.scanFailed, `${t.scanFailedHint}\n\n${reason}\n${lines}`);
     } finally {
       setProcessing(false);
     }
