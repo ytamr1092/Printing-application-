@@ -7,11 +7,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
+import { Text, TextInput } from "@/components/app-text";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { CropEditor } from "@/components/crop-editor";

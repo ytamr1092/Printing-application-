@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "@/components/app-text";
 import type { PdfDocumentPreviewProps } from "./pdf-document-preview";
 
 export function PdfDocumentPreview({ uri, name, style, onError }: PdfDocumentPreviewProps) {

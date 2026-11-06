@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { Animated, StyleSheet, View, useWindowDimensions } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
+import { APP_FONT_FAMILY } from "@/components/app-text";
 import { GREETING_LINES, GREETING_VIEW } from "@/shared/welcome-greeting-data";
 import { lineProgress, revealEdge } from "@/shared/welcome-writing";
 
@@ -124,5 +125,5 @@ const styles = StyleSheet.create({
     backgroundColor: "#0C1725",
   },
   writingBlock: { alignItems: "center" },
-  subtitle: { color: "#B7C8D8", fontSize: 13, marginTop: 18 },
+  subtitle: { color: "#B7C8D8", fontSize: 13, marginTop: 18, fontFamily: APP_FONT_FAMILY },
 });

@@ -1,5 +1,6 @@
 import React from "react";
-import { Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "@/components/app-text";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { useColors } from "@/hooks/use-colors";

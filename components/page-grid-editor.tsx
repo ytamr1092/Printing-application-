@@ -4,10 +4,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   useWindowDimensions,
 } from "react-native";
+import { Text } from "@/components/app-text";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { useGridDragReorder } from "@/components/use-grid-drag-reorder";
