@@ -1850,6 +1850,51 @@ export default function HomeScreen() {
     }
   };
 
+  // Brings scanned images made by another app (e.g. the printer maker's) into the scan review window.
+  const importScanImages = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["image/jpeg", "image/png"],
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets.length) return;
+      setProcessing(true);
+      updateProgress(t.progressProcessing, 2);
+      const stamp = Date.now();
+      const pages: ScanPage[] = [];
+      for (const [index, asset] of result.assets.entries()) {
+        let blank = false;
+        let skew = 0;
+        if (!(asset.mimeType ?? "").includes("png")) {
+          try {
+            const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+            const gray = decodeJpegDc(base64ToBytes(base64));
+            if (gray) {
+              blank = isBlankPage(gray);
+              skew = estimateSkew(gray);
+            }
+          } catch {
+            // Analysis is optional; the page is still imported.
+          }
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        pages.push({ id: `${stamp}-${index}`, uri: asset.uri, rotation: 0, blank, skew });
+      }
+      setScanResult(null);
+      setScanPages(pages);
+      setScanSelected([]);
+      setScanReviewOpen(true);
+      setErrorMessage(null);
+      completeProgress();
+    } catch {
+      setOperationProgress(null);
+      showError(t.scanFailed, t.scanFailedHint);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   // Scans, then opens a review window (preview, rotate, delete) before saving.
   const startScan = async () => {
     const ip = printerIp.trim();
@@ -6485,6 +6530,20 @@ export default function HomeScreen() {
                   <Icon name="search" color={colors.foreground} size={18} />
                   <Text style={[styles.printButtonText, { color: colors.foreground }]}>
                     {isArabic ? "تشخيص الطابعة والسكانر" : "Diagnose printer & scanner"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={processing}
+                  onPress={() => { void importScanImages(); }}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: processing ? 0.6 : 1 },
+                  ]}
+                >
+                  <Icon name="search" color={colors.foreground} size={18} />
+                  <Text style={[styles.printButtonText, { color: colors.foreground }]}>
+                    {isArabic ? "استيراد صور ممسوحة من الهاتف" : "Import scanned images from phone"}
                   </Text>
                 </Pressable>
                 <View
