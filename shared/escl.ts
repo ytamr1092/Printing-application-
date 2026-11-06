@@ -17,6 +17,11 @@ export function esclBaseUrl(ip: string, port = 80, root = "eSCL"): string {
   return `http://${ip}${port === 80 ? "" : `:${port}`}/${root}`;
 }
 
+/** Local printer endpoints; internet connectivity is not required. */
+export function esclBaseUrls(ip: string): string[] {
+  return [`http://${ip}/eSCL`, `https://${ip}/eSCL`];
+}
+
 export function buildEsclScanSettings(settings: EsclSettings): string {
   const dpi = [75, 100, 150, 200, 300, 400, 600].includes(settings.dpi) ? settings.dpi : 300;
   const input = settings.source === "adf" ? "Feeder" : "Platen";

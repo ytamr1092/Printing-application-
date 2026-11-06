@@ -95,7 +95,8 @@ export function buildIppRequest(
 
 /** status-code < 0x0100 means success (successful-ok, ...-ignored-or-substituted). */
 export function parseIppResponse(body: Uint8Array): { statusCode: number; ok: boolean } | null {
-  if (body.length < 8) return null;
+  // A web-console HTML error must not be interpreted as an IPP response.
+  if (body.length < 8 || (body[0] !== 0x01 && body[0] !== 0x02)) return null;
   const statusCode = (body[2] << 8) | body[3];
   return { statusCode, ok: statusCode < 0x0100 };
 }

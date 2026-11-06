@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildIppRequest, IPP_OPERATION, ippPrinterUri, parseIppResponse } from "../shared/ipp";
-import { buildEsclScanSettings, esclBaseUrl, resolveEsclJobUrl } from "../shared/escl";
+import { buildEsclScanSettings, esclBaseUrl, esclBaseUrls, resolveEsclJobUrl } from "../shared/escl";
 
 describe("IPP", () => {
   it("builds a Print-Job request with the document appended", () => {
@@ -25,6 +25,7 @@ describe("IPP", () => {
     expect(parseIppResponse(Uint8Array.from([1, 1, 0, 0, 0, 0, 0, 1, 3]))).toEqual({ statusCode: 0, ok: true });
     expect(parseIppResponse(Uint8Array.from([1, 1, 4, 0, 0, 0, 0, 1, 3]))?.ok).toBe(false);
     expect(parseIppResponse(Uint8Array.from([1, 1]))).toBeNull();
+    expect(parseIppResponse(new TextEncoder().encode("<html>HTTP 500</html>"))).toBeNull();
   });
 });
 
@@ -47,6 +48,13 @@ describe("eSCL", () => {
     expect(resolveEsclJobUrl("/eSCL/ScanJobs/7", "10.0.0.5", base)).toBe("http://10.0.0.5/eSCL/ScanJobs/7");
     expect(resolveEsclJobUrl("7", "10.0.0.5", base)).toBe("http://10.0.0.5/eSCL/ScanJobs/7");
     expect(resolveEsclJobUrl(null, "10.0.0.5", base)).toBeNull();
+  });
+
+  it("keeps both local HTTP and HTTPS eSCL candidates", () => {
+    expect(esclBaseUrls("192.168.1.102")).toEqual([
+      "http://192.168.1.102/eSCL",
+      "https://192.168.1.102/eSCL",
+    ]);
   });
 });
 

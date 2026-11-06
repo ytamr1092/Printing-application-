@@ -6,7 +6,7 @@ import {
   parseIppResponse,
   type IppJobOptions,
 } from "./ipp";
-import { buildEsclScanSettings, esclBaseUrl, resolveEsclJobUrl, type EsclSettings } from "./escl";
+import { buildEsclScanSettings, esclBaseUrl, esclBaseUrls, resolveEsclJobUrl, type EsclSettings } from "./escl";
 
 export const IPP_PATHS = ["/ipp/print", "/ipp", "/ipp/printer"];
 
@@ -33,7 +33,11 @@ async function ippCall(
       ippHttpUrl(ip, 631, path),
       {
         method: "POST",
-        headers: { "Content-Type": "application/ipp" },
+        headers: {
+          Accept: "application/ipp",
+          "Content-Type": "application/ipp",
+          "User-Agent": "PrintPilot-LAN/1.0",
+        },
         body: buildIppRequest(operation, ippPrinterUri(ip, 631, path), options, document) as any,
       },
       ms,
@@ -55,12 +59,19 @@ export async function probeIpp(ip: string, ms = 1200, paths: string[] = IPP_PATH
 }
 
 export async function probeEscl(ip: string, ms = 1200): Promise<boolean> {
-  try {
-    const response = await fetchWithTimeout(`${esclBaseUrl(ip)}/ScannerCapabilities`, {}, ms);
-    return response.ok;
-  } catch {
-    return false;
+  for (const base of esclBaseUrls(ip)) {
+    try {
+      const response = await fetchWithTimeout(
+        `${base}/ScannerCapabilities`,
+        { headers: { Accept: "application/xml, text/xml, */*", "User-Agent": "PrintPilot-LAN/1.0" } },
+        ms,
+      );
+      if (response.ok) return true;
+    } catch {
+      // Try the other local endpoint.
+    }
   }
+  return false;
 }
 
 /** Sends a document straight to the printer. Resolves true when the printer accepted the job. */
@@ -110,19 +121,45 @@ export async function discoverDevices(
 
 /** Scans through eSCL and returns each scanned page/document as bytes. */
 export async function runEsclScan(ip: string, settings: EsclSettings): Promise<Uint8Array[]> {
-  const base = esclBaseUrl(ip);
-  const create = await fetchWithTimeout(
-    `${base}/ScanJobs`,
-    { method: "POST", headers: { "Content-Type": "text/xml" }, body: buildEsclScanSettings(settings) },
-    15000,
-  );
-  if (create.status !== 201) throw new Error(`scan-job-${create.status}`);
+  let base: string | null = null;
+  let create: Response | null = null;
+  let lastStatus = "unreachable";
+  for (const candidate of esclBaseUrls(ip)) {
+    try {
+      const response = await fetchWithTimeout(
+        `${candidate}/ScanJobs`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/xml, text/xml, */*",
+            "Content-Type": "text/xml; charset=utf-8",
+            "User-Agent": "PrintPilot-LAN/1.0",
+          },
+          body: buildEsclScanSettings(settings),
+        },
+        15000,
+      );
+      lastStatus = String(response.status);
+      if (response.status === 201) {
+        base = candidate;
+        create = response;
+        break;
+      }
+    } catch {
+      // Try the other local endpoint.
+    }
+  }
+  if (!base || !create) throw new Error(`scan-job-${lastStatus}`);
   const job = resolveEsclJobUrl(create.headers.get("Location"), ip, base);
   if (!job) throw new Error("scan-job-location");
   const documents: Uint8Array[] = [];
   const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
-    const response = await fetchWithTimeout(`${job}/NextDocument`, {}, 60000);
+    const response = await fetchWithTimeout(
+      `${job}/NextDocument`,
+      { headers: { Accept: "image/jpeg, image/png, application/pdf, */*", "User-Agent": "PrintPilot-LAN/1.0" } },
+      60000,
+    );
     if (response.status === 200) {
       documents.push(new Uint8Array(await response.arrayBuffer()));
       if (settings.source !== "adf") break;
@@ -162,9 +199,14 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
       const parsed = parseIppResponse(new Uint8Array(await response.arrayBuffer()));
       return `HTTP ${response.status}${parsed ? `, IPP 0x${parsed.statusCode.toString(16)}` : ""}`;
     });
-  const esclPort = (port: number) =>
+  const esclPort = (port: number, scheme: "http" | "https" = "http") =>
     describe(`eSCL ${port}`, async () => {
-      const response = await fetchWithTimeout(`${esclBaseUrl(ip, port)}/ScannerCapabilities`, {}, 2500);
+      const host = `${scheme}://${ip}${port === 80 ? "" : `:${port}`}/eSCL`;
+      const response = await fetchWithTimeout(
+        `${host}/ScannerCapabilities`,
+        { headers: { Accept: "application/xml, text/xml, */*", "User-Agent": "PrintPilot-LAN/1.0" } },
+        2500,
+      );
       return `HTTP ${response.status}`;
     });
   return Promise.all([
@@ -173,6 +215,7 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
     ippPort(8000),
     ippPort(8080),
     esclPort(80),
+    esclPort(443, "https"),
     esclPort(8080),
     esclPort(9095),
     describe("eSCL status", async () => {
