@@ -173,6 +173,19 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
     esclPort(80),
     esclPort(8080),
     esclPort(9095),
+    describe("eSCL status", async () => {
+      const response = await fetchWithTimeout(`${esclBaseUrl(ip)}/ScannerStatus`, {}, 2500);
+      const body = (await response.text()).replace(/\s+/g, " ");
+      const state = /<pwg:State>([^<]+)</.exec(body)?.[1];
+      return `HTTP ${response.status}${state ? `, ${state}` : ""}`;
+    }),
+    describe("eSCL caps", async () => {
+      const response = await fetchWithTimeout(`${esclBaseUrl(ip)}/ScannerCapabilities`, {}, 2500);
+      const body = (await response.text()).replace(/\s+/g, " ");
+      const make = /<pwg:MakeAndModel>([^<]+)</.exec(body)?.[1];
+      const formats = Array.from(body.matchAll(/<pwg:DocumentFormat>([^<]+)</g)).map((m) => m[1]).slice(0, 4);
+      return `HTTP ${response.status}${make ? `, ${make}` : ""}${formats.length ? `, ${formats.join("/")}` : ""}`;
+    }),
     describe("Web 80", async () => `HTTP ${(await fetchWithTimeout(`http://${ip}`, {}, 2500)).status}`),
   ]);
 }

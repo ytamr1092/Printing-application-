@@ -1812,6 +1812,40 @@ export default function HomeScreen() {
     }
   };
 
+  // One-shot report for troubleshooting printer/scanner connection problems.
+  const runFullDiagnosis = async () => {
+    if (Platform.OS === "web") {
+      showError(t.connectionFailed, t.scanUnavailableHint);
+      return;
+    }
+    setDiscovering(true);
+    updateProgress(t.discovering, 1);
+    try {
+      const Network = await loadNetwork();
+      const [state, localIp] = await Promise.all([Network.getNetworkStateAsync(), Network.getIpAddressAsync()]);
+      setPhoneIp(localIp);
+      const lines = [`Wi-Fi IP: ${localIp}`, `Network: ${String(state.type)}, connected=${String(state.isConnected)}`];
+      let target = printerIp.trim();
+      if (!isValidIpv4(target)) {
+        const found = await discoverDevices(localIp);
+        lines.push(`Discovery: ${found.length ? found.map((d) => `${d.ip}${d.ipp ? " IPP" : ""}${d.escl ? " eSCL" : ""}`).join(", ") : "none"}`);
+        target = found[0]?.ip ?? "";
+      }
+      if (isValidIpv4(target)) {
+        lines.push(`Printer: ${target}`, ...(await diagnoseDevice(target)));
+      } else {
+        lines.push("Printer: not found, type its IP and try again");
+      }
+      setOperationProgress(null);
+      showError("Diagnosis", lines.join("\n"));
+    } catch (error) {
+      setOperationProgress(null);
+      showError("Diagnosis", `error: ${error instanceof Error ? error.message : "unknown"}`);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
   // Scans, then opens a review window (preview, rotate, delete) before saving.
   const startScan = async () => {
     const ip = printerIp.trim();
@@ -6424,6 +6458,20 @@ export default function HomeScreen() {
                 >
                   <Icon name="search" color={colors.primary} size={18} />
                   <Text style={[styles.printButtonText, { color: colors.primary }]}>{t.autoDiscover}</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={discovering}
+                  onPress={() => { void runFullDiagnosis(); }}
+                  style={[
+                    styles.workspacePrimary,
+                    { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: discovering ? 0.6 : 1 },
+                  ]}
+                >
+                  <Icon name="search" color={colors.foreground} size={18} />
+                  <Text style={[styles.printButtonText, { color: colors.foreground }]}>
+                    {isArabic ? "تشخيص الطابعة والسكانر" : "Diagnose printer & scanner"}
+                  </Text>
                 </Pressable>
                 <View
                   style={[
