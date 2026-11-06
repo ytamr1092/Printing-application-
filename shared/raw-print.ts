@@ -1,5 +1,36 @@
 import TcpSocket from "react-native-tcp-socket";
 
+export type RawProbeResult = "connected" | "timeout" | "refused" | "error";
+
+/** Checks JetDirect with a real TCP connection without sending document data. */
+export function probeRawPort(ip: string, port = 9100, timeoutMs = 4000): Promise<RawProbeResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let socket: ReturnType<typeof TcpSocket.createConnection> | null = null;
+    const finish = (result: RawProbeResult) => {
+      if (settled) return;
+      settled = true;
+      if (socket && !socket.destroyed) socket.destroy();
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish("timeout"), timeoutMs);
+    try {
+      socket = TcpSocket.createConnection({ host: ip, port, interface: "wifi", reuseAddress: true, connectTimeout: timeoutMs }, () => {
+        clearTimeout(timer);
+        finish("connected");
+      });
+      socket.on("error", (error: Error & { code?: string }) => {
+        clearTimeout(timer);
+        finish(error.code === "ECONNREFUSED" ? "refused" : "error");
+      });
+      socket.on("timeout", () => { clearTimeout(timer); finish("timeout"); });
+    } catch {
+      clearTimeout(timer);
+      finish("error");
+    }
+  });
+}
+
 /**
  * Sends printer-ready bytes over Kyocera/JetDirect RAW TCP (port 9100).
  * This is LAN-only by nature and does not require Android's system print UI,

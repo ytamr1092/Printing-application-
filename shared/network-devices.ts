@@ -199,6 +199,19 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
       const parsed = parseIppResponse(new Uint8Array(await response.arrayBuffer()));
       return `HTTP ${response.status}${parsed ? `, IPP 0x${parsed.statusCode.toString(16)}` : ""}`;
     });
+  const ippTls = describe("IPP TLS 443", async () => {
+    const response = await fetchWithTimeout(
+      `https://${ip}/ipp/print`,
+      {
+        method: "POST",
+        headers: { Accept: "application/ipp", "Content-Type": "application/ipp" },
+        body: buildIppRequest(IPP_OPERATION.getPrinterAttributes, ippPrinterUri(ip, 443, "/ipp/print"), {}, undefined) as any,
+      },
+      3500,
+    );
+    const parsed = parseIppResponse(new Uint8Array(await response.arrayBuffer()));
+    return `HTTP ${response.status}${parsed ? `, IPP 0x${parsed.statusCode.toString(16)}` : ""}`;
+  });
   const esclPort = (port: number, scheme: "http" | "https" = "http") =>
     describe(`eSCL ${port}`, async () => {
       const host = `${scheme}://${ip}${port === 80 ? "" : `:${port}`}/eSCL`;
@@ -210,7 +223,12 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
       return `HTTP ${response.status}`;
     });
   return Promise.all([
+    describe("RAW 9100", async () => {
+      const { probeRawPort } = await import("./raw-print");
+      return `TCP ${await probeRawPort(ip)}`;
+    }),
     ippPort(631),
+    ippTls,
     ippPort(80),
     ippPort(8000),
     ippPort(8080),
@@ -231,6 +249,6 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
       const formats = Array.from(body.matchAll(/<pwg:DocumentFormat>([^<]+)</g)).map((m) => m[1]).slice(0, 4);
       return `HTTP ${response.status}${make ? `, ${make}` : ""}${formats.length ? `, ${formats.join("/")}` : ""}`;
     }),
-    describe("Web 80", async () => `HTTP ${(await fetchWithTimeout(`http://${ip}`, {}, 2500)).status}`),
+    describe("Web 80 /wlmeng/index.htm", async () => `HTTP ${(await fetchWithTimeout(`http://${ip}/wlmeng/index.htm`, {}, 2500)).status}`),
   ]);
 }

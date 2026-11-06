@@ -991,6 +991,7 @@ export default function HomeScreen() {
   const [printNumbering, setPrintNumbering] = useState(false);
   const printerCaps = useRef<FoundDevice | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [diagnosisReportUri, setDiagnosisReportUri] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<WorkflowResult | null>(null);
   const [scanName, setScanName] = useState("");
   // Pages just scanned, waiting for the person to review them before saving.
@@ -1836,6 +1837,16 @@ export default function HomeScreen() {
       } else {
         lines.push("Printer: not found, type its IP and try again");
       }
+      const report = [
+        "PrintPilot Smart - LAN printer/scanner diagnosis",
+        `Timestamp: ${new Date().toISOString()}`,
+        ...lines,
+        "",
+        "Note: TCP connectivity, HTTP responses, IPP responses, and eSCL responses are reported separately.",
+      ].join("\n");
+      const reportUri = `${FileSystem.cacheDirectory}PrintPilot-diagnosis-${Date.now()}.txt`;
+      await FileSystem.writeAsStringAsync(reportUri, report, { encoding: FileSystem.EncodingType.UTF8 });
+      setDiagnosisReportUri(reportUri);
       setOperationProgress(null);
       showError("Diagnosis", lines.join("\n"));
     } catch (error) {
@@ -1844,6 +1855,14 @@ export default function HomeScreen() {
     } finally {
       setDiscovering(false);
     }
+  };
+
+  const shareDiagnosisReport = async () => {
+    if (!diagnosisReportUri || !(await Sharing.isAvailableAsync())) return;
+    await Sharing.shareAsync(diagnosisReportUri, {
+      mimeType: "text/plain",
+      dialogTitle: isArabic ? "إرسال تقرير التشخيص" : "Send diagnosis report",
+    });
   };
 
   // Brings scanned images made by another app (e.g. the printer maker's) into the scan review window.
@@ -6529,6 +6548,18 @@ export default function HomeScreen() {
                     {isArabic ? "تشخيص الطابعة والسكانر" : "Diagnose printer & scanner"}
                   </Text>
                 </Pressable>
+                {diagnosisReportUri && (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => { void shareDiagnosisReport(); }}
+                    style={[styles.workspacePrimary, { backgroundColor: colors.surface, borderColor: colors.success, borderWidth: 1 }]}
+                  >
+                    <Icon name="share" color={colors.success} size={18} />
+                    <Text style={[styles.printButtonText, { color: colors.success }]}>
+                      {isArabic ? "إرسال آخر تقرير تشخيص" : "Share latest diagnosis report"}
+                    </Text>
+                  </Pressable>
+                )}
                 <Pressable
                   accessibilityRole="button"
                   disabled={processing}
