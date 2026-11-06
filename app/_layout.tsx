@@ -1,5 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +23,7 @@ import {
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
 import { AnimatedSplash } from "@/components/animated-splash";
+import { APP_FONT_FAMILY } from "@/components/app-text";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -31,6 +33,9 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    [APP_FONT_FAMILY]: require("../assets/fonts/diwani-jaly.ttf"),
+  });
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
 
@@ -84,6 +89,10 @@ export default function RootLayout() {
       },
     };
   }, [initialInsets, initialFrame]);
+
+  // Wait for the app font so no screen flashes in the system font first.
+  // If it fails to load, carry on with the system font rather than blocking the app.
+  if (!fontsLoaded && !fontError) return null;
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>

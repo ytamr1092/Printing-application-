@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "@/components/app-text";
 import type { PdfDocumentPreviewProps } from "./pdf-document-preview";
 
 type NativePdfView = typeof import("@kishannareshpal/expo-pdf").PdfView;

@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Image, PanResponder, StyleSheet, Text, View } from "react-native";
+import { Image, PanResponder, StyleSheet, View } from "react-native";
+import { Text } from "@/components/app-text";
 
 import {
   moveRect,

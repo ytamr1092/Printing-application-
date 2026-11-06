@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "expo-router";
-import { useFonts } from "expo-font";
 import {
   Alert,
   ActivityIndicator,
@@ -14,11 +13,10 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   ToastAndroid,
   View,
 } from "react-native";
+import { Text, TextInput } from "@/components/app-text";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
@@ -975,9 +973,6 @@ const loadImagePicker = () => import("expo-image-picker");
 const loadNetwork = () => import("expo-network");
 
 export default function HomeScreen() {
-  const [greetingFontLoaded] = useFonts({
-    DiwaniJali: require("../../assets/fonts/diwani-jali.ttf"),
-  });
   const navigation = useNavigation();
   const [language, setLanguage] = useState<Language>("ar");
   const [selectedPaper, setSelectedPaper] = useState("certificate");
@@ -3601,10 +3596,7 @@ export default function HomeScreen() {
               <Text
                 style={[
                   styles.personalGreeting,
-                  {
-                    color: colors.primary,
-                    fontFamily: greetingFontLoaded ? "DiwaniJali" : undefined,
-                  },
+                  { color: colors.primary },
                 ]}
               >
                 أهلا د.يوسف

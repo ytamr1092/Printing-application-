@@ -1,6 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import type { StyleProp, ViewStyle } from "react-native";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "@/components/app-text";
 
 export type PdfDocumentPreviewProps = {
   uri: string;
