@@ -1,4 +1,4 @@
-import { forwardRef, type ComponentRef } from "react";
+import React, { forwardRef, type ComponentRef } from "react";
 import {
   Text as NativeText,
   TextInput as NativeTextInput,
