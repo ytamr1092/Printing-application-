@@ -57,6 +57,7 @@ import {
   type PdfPageEdit,
 } from "@/shared/pdf-pages";
 import { ESCL_MIME } from "@/shared/escl";
+import { sendRawPrintJob } from "@/shared/raw-print";
 import { decodeJpegDc } from "@/shared/jpeg-dc";
 import { withJpegRotation } from "@/shared/jpeg-orientation";
 import { estimateSkew, isBlankPage } from "@/shared/scan-analysis";
@@ -2381,8 +2382,8 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageGridOpen, previewKind, pendingAssets]);
 
-  // Sends a document straight to the printer over IPP when its address is
-  // set; otherwise (or if that fails) falls back to the system print dialog.
+  // Sends a document straight to the printer over IPP, then RAW/9100 when its
+  // address is set; only after both fail do we use the system print dialog.
   const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "unconfirmed" | "system" | "fallback"> => {
     const ip = printerIp.trim();
     const wantsDirect = isValidIpv4(ip) && Platform.OS !== "web";
@@ -2398,10 +2399,14 @@ export default function HomeScreen() {
           const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
+          const documentBytes = base64ToBytes(base64);
+          // Kyocera's RAW/JetDirect path is the closest match to the driver
+          // used by many computers and avoids Android's system print dialog.
+          if (await sendRawPrintJob(ip, documentBytes)) return "direct";
           const known = printerCaps.current?.ip === ip ? printerCaps.current.ipp : null;
           const sent = await sendIppPrintJob(
             ip,
-            base64ToBytes(base64),
+            documentBytes,
             {
               mimeType: documentFormat,
               jobName: fileBaseName(uri) || "PrintPilot",
