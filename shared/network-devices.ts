@@ -227,6 +227,23 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
       const { probeRawPort } = await import("./raw-print");
       return `TCP ${await probeRawPort(ip)}`;
     }),
+    describe("LPD 515", async () => {
+      const { probeRawPort } = await import("./raw-print");
+      return `TCP ${await probeRawPort(ip, 515)}`;
+    }),
+    describe("IPP printer info", async () => {
+      const response = await fetchWithTimeout(
+        ippHttpUrl(ip, 631, "/ipp/print"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/ipp" },
+          body: buildIppRequest(IPP_OPERATION.getPrinterAttributes, ippPrinterUri(ip, 631, "/ipp/print"), {}, undefined) as any,
+        },
+        4000,
+      );
+      const { summarizeIppResponse } = await import("./diagnostic-log");
+      return summarizeIppResponse(new Uint8Array(await response.arrayBuffer())).join("; ");
+    }),
     ippPort(631),
     ippTls,
     ippPort(80),
