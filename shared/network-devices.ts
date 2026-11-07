@@ -7,6 +7,7 @@ import {
   type IppJobOptions,
 } from "./ipp";
 import { buildEsclScanSettings, esclBaseUrl, esclBaseUrls, resolveEsclJobUrl, type EsclSettings } from "./escl";
+import { logEvent } from "./diagnostic-log";
 
 export const IPP_PATHS = ["/ipp/print", "/ipp", "/ipp/printer"];
 
@@ -121,6 +122,7 @@ export async function discoverDevices(
 
 /** Scans through eSCL and returns each scanned page/document as bytes. */
 export async function runEsclScan(ip: string, settings: EsclSettings): Promise<Uint8Array[]> {
+  logEvent("scan", `eSCL start: ${settings.source}, ${settings.dpi}dpi, ${settings.format}`);
   let base: string | null = null;
   let create: Response | null = null;
   let lastStatus = "unreachable";
@@ -140,6 +142,7 @@ export async function runEsclScan(ip: string, settings: EsclSettings): Promise<U
         15000,
       );
       lastStatus = String(response.status);
+      logEvent("scan", `Create ScanJobs ${candidate}: HTTP ${response.status}`);
       if (response.status === 201) {
         base = candidate;
         create = response;
@@ -151,6 +154,7 @@ export async function runEsclScan(ip: string, settings: EsclSettings): Promise<U
   }
   if (!base || !create) throw new Error(`scan-job-${lastStatus}`);
   const job = resolveEsclJobUrl(create.headers.get("Location"), ip, base);
+  logEvent("scan", `Location: ${create.headers.get("Location") ?? "missing"}`);
   if (!job) throw new Error("scan-job-location");
   const documents: Uint8Array[] = [];
   const deadline = Date.now() + 120000;
@@ -161,28 +165,35 @@ export async function runEsclScan(ip: string, settings: EsclSettings): Promise<U
       60000,
     );
     if (response.status === 200) {
-      documents.push(new Uint8Array(await response.arrayBuffer()));
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      documents.push(bytes);
+      logEvent("scan", `NextDocument ${documents.length}: ${bytes.length} bytes`);
       if (settings.source !== "adf") break;
       continue;
     }
     if (response.status === 503) {
+      logEvent("scan", "NextDocument: scanner busy (503), retrying");
       await new Promise((resolve) => setTimeout(resolve, 1000));
       continue;
     }
+    logEvent("scan", `NextDocument stopped: HTTP ${response.status}`);
     break;
   }
   if (!documents.length) throw new Error("scan-empty");
+  logEvent("scan", `eSCL completed: ${documents.length} page(s)`);
   return documents;
 }
 
 /** Probes the usual printer ports and reports, in plain lines, what each one answered. */
 export async function diagnoseDevice(ip: string): Promise<string[]> {
   const describe = async (label: string, run: () => Promise<string>) => {
+    const started = Date.now();
     try {
-      return `${label}: ${await run()}`;
+      return `${label}: ${await run()} (${Date.now() - started}ms)`;
     } catch (error) {
       const name = error instanceof Error ? error.name : "error";
-      return `${label}: ${name === "AbortError" ? "no answer" : "refused/blocked"}`;
+      const message = error instanceof Error && error.message ? ` — ${error.message.slice(0, 120)}` : "";
+      return `${label}: ${name === "AbortError" ? "timeout/no answer" : `failed (${name})`}${message} (${Date.now() - started}ms)`;
     }
   };
   const ippPort = (port: number) =>
@@ -228,8 +239,8 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
       return `TCP ${await probeRawPort(ip)}`;
     }),
     describe("LPD 515", async () => {
-      const { probeRawPort } = await import("./raw-print");
-      return `TCP ${await probeRawPort(ip, 515)}`;
+      const { probeLpd } = await import("./raw-print");
+      return `LPD ${await probeLpd(ip)}`;
     }),
     describe("IPP printer info", async () => {
       const response = await fetchWithTimeout(

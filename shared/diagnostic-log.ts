@@ -1,11 +1,47 @@
-/** Small in-memory log of print/scan attempts, included in the diagnostic report. */
+/** Session + persistent log of print/scan attempts, included in the diagnostic report. */
 const MAX_EVENTS = 40;
+const STORAGE_KEY = "printpilot.diagnostic-events.v1";
 const events: string[] = [];
+
+let storageReady = false;
+
+async function storage() {
+  try {
+    const module = await import("@react-native-async-storage/async-storage");
+    return module.default;
+  } catch {
+    return null;
+  }
+}
+
+/** Loads the last events from the device before a report is generated. */
+export async function hydrateEvents(): Promise<void> {
+  if (storageReady) return;
+  storageReady = true;
+  const store = await storage();
+  if (!store) return;
+  try {
+    const saved = JSON.parse((await store.getItem(STORAGE_KEY)) ?? "[]");
+    if (Array.isArray(saved)) {
+      events.push(...saved.filter((item): item is string => typeof item === "string").slice(-MAX_EVENTS));
+    }
+  } catch {
+    // A damaged local log must never block the application.
+  }
+}
+
+function persistEvents(): void {
+  void storage().then((store) => {
+    if (!store) return;
+    return store.setItem(STORAGE_KEY, JSON.stringify(events.slice(-MAX_EVENTS)));
+  }).catch(() => undefined);
+}
 
 export function logEvent(kind: string, message: string): void {
   const stamp = new Date().toISOString().slice(11, 19);
   events.push(`${stamp} [${kind}] ${message}`);
   if (events.length > MAX_EVENTS) events.shift();
+  persistEvents();
 }
 
 export function getEvents(): string[] {
@@ -14,6 +50,7 @@ export function getEvents(): string[] {
 
 export function clearEvents(): void {
   events.length = 0;
+  void storage().then((store) => store?.removeItem(STORAGE_KEY)).catch(() => undefined);
 }
 
 export type ReportSection = { title: string; lines: string[] };

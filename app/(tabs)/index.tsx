@@ -21,6 +21,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import Constants from "expo-constants";
+import * as Clipboard from "expo-clipboard";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
@@ -56,7 +58,7 @@ import {
 } from "@/shared/pdf-pages";
 import { ESCL_MIME } from "@/shared/escl";
 import { sendRawPrintJob } from "@/shared/raw-print";
-import { buildDiagnosticReport, getEvents, logEvent } from "@/shared/diagnostic-log";
+import { buildDiagnosticReport, clearEvents, getEvents, hydrateEvents, logEvent } from "@/shared/diagnostic-log";
 import { decodeJpegDc } from "@/shared/jpeg-dc";
 import { withJpegRotation } from "@/shared/jpeg-orientation";
 import { estimateSkew, isBlankPage } from "@/shared/scan-analysis";
@@ -357,6 +359,7 @@ export default function HomeScreen() {
   const printerCaps = useRef<FoundDevice | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [diagnosisReportUri, setDiagnosisReportUri] = useState<string | null>(null);
+  const [diagnosisReportText, setDiagnosisReportText] = useState("");
   const [scanResult, setScanResult] = useState<WorkflowResult | null>(null);
   const [scanName, setScanName] = useState("");
   // Pages just scanned, waiting for the person to review them before saving.
@@ -480,6 +483,9 @@ export default function HomeScreen() {
       tabBarStyle: previewKind ? { display: "none" } : undefined,
     });
   }, [navigation, previewKind]);
+  useEffect(() => {
+    void hydrateEvents();
+  }, []);
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardShown(true));
     const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardShown(false));
@@ -1208,6 +1214,9 @@ export default function HomeScreen() {
           title: "Phone and app",
           lines: [
             `Platform: ${Platform.OS} ${String(Platform.Version)}`,
+            `App version: ${Constants.expoConfig?.version ?? "unknown"}`,
+            `Version code: ${String(Constants.expoConfig?.android?.versionCode ?? "unknown")}`,
+            `Runtime: ${Constants.executionEnvironment ?? "unknown"}`,
             `Wi-Fi IP: ${localIp}`,
             `Network: ${String(state.type)}, connected=${String(state.isConnected)}`,
           ],
@@ -1224,7 +1233,8 @@ export default function HomeScreen() {
         { title: "Other findings", lines: lines.filter((line) => !probeLines.includes(line) && !line.startsWith("Wi-Fi IP") && !line.startsWith("Network")) },
         { title: "Recent print/scan attempts (this session)", lines: getEvents() },
       ]);
-      const reportUri = `${FileSystem.cacheDirectory}PrintPilot-diagnosis-${Date.now()}.txt`;
+      const reportUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory}PrintPilot-diagnosis-${Date.now()}.txt`;
+      setDiagnosisReportText(report);
       await FileSystem.writeAsStringAsync(reportUri, report, { encoding: FileSystem.EncodingType.UTF8 });
       setDiagnosisReportUri(reportUri);
       setOperationProgress(null);
@@ -1243,6 +1253,19 @@ export default function HomeScreen() {
       mimeType: "text/plain",
       dialogTitle: isArabic ? "إرسال تقرير التشخيص" : "Send diagnosis report",
     });
+  };
+
+  const copyDiagnosisReport = async () => {
+    if (!diagnosisReportText) return;
+    await Clipboard.setStringAsync(diagnosisReportText);
+    if (Platform.OS === "android") ToastAndroid.show(isArabic ? "تم نسخ التقرير" : "Report copied", ToastAndroid.SHORT);
+  };
+
+  const clearDiagnosticHistory = () => {
+    clearEvents();
+    setDiagnosisReportText("");
+    setDiagnosisReportUri(null);
+    if (Platform.OS === "android") ToastAndroid.show(isArabic ? "تم مسح سجل التشخيص" : "Diagnosis history cleared", ToastAndroid.SHORT);
   };
 
   // Brings scanned images made by another app (e.g. the printer maker's) into the scan review window.
@@ -1855,6 +1878,17 @@ export default function HomeScreen() {
         ...current,
         print: { title: t.printReady, detail: selectedFiles[0] },
       }));
+      if (mode === "direct" || mode === "unconfirmed") {
+        Alert.alert(
+          isArabic ? "هل خرجت الورقة؟" : "Did the page print?",
+          isArabic ? "نجح اتصال الطباعة، لكن التطبيق لا يستطيع معرفة خروج الورقة آليًا." : "The print connection completed, but the app cannot detect paper output automatically.",
+          [
+            { text: isArabic ? "نعم" : "Yes", onPress: () => logEvent("print", "user confirmed paper output") },
+            { text: isArabic ? "لا" : "No", style: "destructive", onPress: () => logEvent("print", "user reported no paper output") },
+            { text: isArabic ? "لم أتحقق" : "Not checked", style: "cancel", onPress: () => logEvent("print", "paper output not checked") },
+          ],
+        );
+      }
       setErrorMessage(null);
       completeProgress();
     } catch {
@@ -5935,16 +5969,38 @@ export default function HomeScreen() {
                   </Text>
                 </Pressable>
                 {diagnosisReportUri && (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => { void shareDiagnosisReport(); }}
-                    style={[styles.workspacePrimary, { backgroundColor: colors.surface, borderColor: colors.success, borderWidth: 1 }]}
-                  >
-                    <Icon name="share" color={colors.success} size={18} />
-                    <Text style={[styles.printButtonText, { color: colors.success }]}>
-                      {isArabic ? "إرسال آخر تقرير تشخيص" : "Share latest diagnosis report"}
-                    </Text>
-                  </Pressable>
+                  <>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => { void shareDiagnosisReport(); }}
+                      style={[styles.workspacePrimary, { backgroundColor: colors.surface, borderColor: colors.success, borderWidth: 1 }]}
+                    >
+                      <Icon name="share" color={colors.success} size={18} />
+                      <Text style={[styles.printButtonText, { color: colors.success }]}>
+                        {isArabic ? "إرسال آخر تقرير تشخيص" : "Share latest diagnosis report"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => { void copyDiagnosisReport(); }}
+                      style={[styles.workspacePrimary, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
+                    >
+                      <Icon name="content-copy" color={colors.foreground} size={18} />
+                      <Text style={[styles.printButtonText, { color: colors.foreground }]}>
+                        {isArabic ? "نسخ التقرير" : "Copy report"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={clearDiagnosticHistory}
+                      style={[styles.workspacePrimary, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
+                    >
+                      <Icon name="delete-outline" color={colors.muted} size={18} />
+                      <Text style={[styles.printButtonText, { color: colors.muted }]}>
+                        {isArabic ? "مسح سجل التشخيص" : "Clear diagnosis history"}
+                      </Text>
+                    </Pressable>
+                  </>
                 )}
                 <Pressable
                   accessibilityRole="button"
