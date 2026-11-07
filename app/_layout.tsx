@@ -2,6 +2,7 @@ import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -27,6 +28,11 @@ import { APP_FONT_FAMILY } from "@/components/app-text";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
+
+// Keep the native launch screen (same dark colour as the animation) up until the
+// font is ready and the animated greeting is mounted, so the writing starts the
+// instant the app opens instead of after a blank gap.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -89,6 +95,16 @@ export default function RootLayout() {
       },
     };
   }, [initialInsets, initialFrame]);
+
+  const appReady = fontsLoaded || Boolean(fontError);
+  useEffect(() => {
+    if (!appReady) return;
+    // Let the first frame with the animation draw, then reveal it.
+    const id = requestAnimationFrame(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    });
+    return () => cancelAnimationFrame(id);
+  }, [appReady]);
 
   // Wait for the app font so no screen flashes in the system font first.
   // If it fails to load, carry on with the system font rather than blocking the app.
