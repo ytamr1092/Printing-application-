@@ -46,7 +46,6 @@ const config: ExpoConfig = {
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   splash: {
-    image: "./assets/images/splash-transparent.png",
     resizeMode: "contain",
     backgroundColor: "#0C1725",
   },
@@ -94,6 +93,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "./plugins/with-empty-splash-logo.js",
     "expo-font",
     "expo-web-browser",
     [
@@ -121,8 +121,6 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        image: "./assets/images/splash-transparent.png",
-        imageWidth: 200,
         backgroundColor: "#0C1725",
         dark: {
           backgroundColor: "#0C1725",
