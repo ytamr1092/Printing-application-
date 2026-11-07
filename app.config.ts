@@ -46,7 +46,6 @@ const config: ExpoConfig = {
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   splash: {
-    image: "./assets/images/splash-transparent.png",
     resizeMode: "contain",
     backgroundColor: "#0C1725",
   },
