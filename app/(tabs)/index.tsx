@@ -95,13 +95,13 @@ import {
   type AdvancedSettings,
 } from "@/shared/advanced-settings";
 import { copy } from "@/shared/copy";
+import { base64ToBytes, bytesToBase64, getNumberFont, type NumberFont } from "@/shared/pdf-encoding";
 
 type Language = "ar" | "en";
 type NumberPosition = "left" | "center" | "right";
 type NumberVertical = "top" | "middle" | "bottom";
 type NumberWhich = "all" | "odd" | "even";
 type NumberNumerals = "latin" | "indic" | "roman-l" | "roman-u";
-type NumberFont = "helvetica" | "times" | "courier";
 type Workspace = WorkspaceKind;
 type PickedAsset = {
   uri: string;
@@ -321,37 +321,6 @@ function SettingPills({
       ))}
     </View>
   );
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = globalThis.atob
-    ? globalThis.atob(base64)
-    : Buffer.from(base64, "base64").toString("binary");
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1)
-    bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 1)
-    binary += String.fromCharCode(bytes[index]);
-  return globalThis.btoa
-    ? globalThis.btoa(binary)
-    : Buffer.from(binary, "binary").toString("base64");
-}
-
-function getNumberFont(
-  StandardFonts: Record<string, string>,
-  font: NumberFont,
-  bold: boolean,
-): string {
-  if (font === "times")
-    return StandardFonts[bold ? "TimesRomanBold" : "TimesRoman"];
-  if (font === "courier")
-    return StandardFonts[bold ? "CourierBold" : "Courier"];
-  return StandardFonts[bold ? "HelveticaBold" : "Helvetica"];
 }
 
 type CutFile = {
