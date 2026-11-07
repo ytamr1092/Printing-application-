@@ -56,6 +56,7 @@ import {
 } from "@/shared/pdf-pages";
 import { ESCL_MIME } from "@/shared/escl";
 import { sendRawPrintJob } from "@/shared/raw-print";
+import { buildDiagnosticReport, getEvents, logEvent } from "@/shared/diagnostic-log";
 import { decodeJpegDc } from "@/shared/jpeg-dc";
 import { withJpegRotation } from "@/shared/jpeg-orientation";
 import { estimateSkew, isBlankPage } from "@/shared/scan-analysis";
@@ -1201,18 +1202,33 @@ export default function HomeScreen() {
       } else {
         lines.push("Printer: not found, type its IP and try again");
       }
-      const report = [
-        "PrintPilot Smart - LAN printer/scanner diagnosis",
-        `Timestamp: ${new Date().toISOString()}`,
-        ...lines,
-        "",
-        "Note: TCP connectivity, HTTP responses, IPP responses, and eSCL responses are reported separately.",
-      ].join("\n");
+      const probeLines = lines.filter((line) => /^(RAW|LPD|IPP|eSCL|Web)/.test(line));
+      const report = buildDiagnosticReport([
+        {
+          title: "Phone and app",
+          lines: [
+            `Platform: ${Platform.OS} ${String(Platform.Version)}`,
+            `Wi-Fi IP: ${localIp}`,
+            `Network: ${String(state.type)}, connected=${String(state.isConnected)}`,
+          ],
+        },
+        {
+          title: "Current print settings",
+          lines: [
+            `Printer IP field: ${printerIp.trim() || "(empty)"}`,
+            `Copies: ${copies}, duplex: ${String(duplex)}, colour: ${colorMode}`,
+            "Note: RAW 9100 sends the file as is, so copies/duplex/colour apply only on the IPP path.",
+          ],
+        },
+        { title: `Printer probes (${target || "not found"})`, lines: probeLines },
+        { title: "Other findings", lines: lines.filter((line) => !probeLines.includes(line) && !line.startsWith("Wi-Fi IP") && !line.startsWith("Network")) },
+        { title: "Recent print/scan attempts (this session)", lines: getEvents() },
+      ]);
       const reportUri = `${FileSystem.cacheDirectory}PrintPilot-diagnosis-${Date.now()}.txt`;
       await FileSystem.writeAsStringAsync(reportUri, report, { encoding: FileSystem.EncodingType.UTF8 });
       setDiagnosisReportUri(reportUri);
       setOperationProgress(null);
-      showError("Diagnosis", lines.join("\n"));
+      showError("Diagnosis", `${lines.join("\n")}\n\n${isArabic ? "التقرير جاهز: اضغط مشاركة التقرير" : "Report ready: tap Share report"}`);
     } catch (error) {
       setOperationProgress(null);
       showError("Diagnosis", `error: ${error instanceof Error ? error.message : "unknown"}`);
@@ -1325,6 +1341,7 @@ export default function HomeScreen() {
     } catch (error) {
       setOperationProgress(null);
       const reason = error instanceof Error ? error.message : "";
+      logEvent("scan", `failed: ${reason || "unknown"}`);
       const lines = (await diagnoseDevice(ip)).join("\n");
       showError(t.scanFailed, `${t.scanFailedHint}\n\n${reason}\n${lines}`);
     } finally {
@@ -1780,7 +1797,9 @@ export default function HomeScreen() {
           const documentBytes = base64ToBytes(base64);
           // Kyocera's RAW/JetDirect path is the closest match to the driver
           // used by many computers and avoids Android's system print dialog.
-          if (await sendRawPrintJob(ip, documentBytes)) return "direct";
+          const rawSent = await sendRawPrintJob(ip, documentBytes);
+          logEvent("print", `RAW 9100 ${rawSent ? "accepted" : "failed"} (${documentFormat}, ${documentBytes.length} bytes)`);
+          if (rawSent) return "direct";
           const known = printerCaps.current?.ip === ip ? printerCaps.current.ipp : null;
           const sent = await sendIppPrintJob(
             ip,
@@ -1794,13 +1813,16 @@ export default function HomeScreen() {
             },
             known,
           );
+          logEvent("print", `IPP result: ${String(sent)}`);
           if (sent === "unconfirmed") return "unconfirmed";
           if (sent) return "direct";
-        } catch {
+        } catch (error) {
+          logEvent("print", `error: ${error instanceof Error ? error.message : "unknown"}`);
           // Falls through to the system dialog below.
         }
       }
     }
+    logEvent("print", wantsDirect ? "fell back to the system print dialog" : "system print dialog (no printer IP)");
     await Print.printAsync({ uri });
     return wantsDirect ? "fallback" : "system";
   };
