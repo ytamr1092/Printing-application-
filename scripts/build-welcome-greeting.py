@@ -19,7 +19,7 @@ from fontTools.ttLib import TTFont
 
 LINES = ["أهلا", "د.يوسف"]
 # Per line: scale (font units -> view box units) and horizontal alignment.
-SCALE = [1.5, 0.98]
+SCALE = [1.5, 0.92]
 ALIGN = ["center", "center"]
 VIEW_WIDTH = 5200
 GAP = 140
