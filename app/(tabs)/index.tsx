@@ -1799,8 +1799,9 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageGridOpen, previewKind, pendingAssets]);
 
-  // Sends a document straight to the printer over IPP, then RAW/9100 when its
-  // address is set; only after both fail do we use the system print dialog.
+  // Sends documents through IPP first. PDF is never sent as raw bytes to 9100:
+  // the Kyocera accepted the socket but printed the literal %PDF stream.
+  // Only after IPP fails do we use the system print dialog.
   const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "unconfirmed" | "system" | "fallback"> => {
     const ip = printerIp.trim();
     const wantsDirect = isValidIpv4(ip) && Platform.OS !== "web";
@@ -1820,6 +1821,7 @@ export default function HomeScreen() {
           // The file is sent over IPP only: the printer does not interpret a PDF
           // sent raw to port 9100 and prints its source code as text instead.
           const known = printerCaps.current?.ip === ip ? printerCaps.current.ipp : null;
+          logEvent("print", `target IP=${ip}, transport=IPP, known path=${known ?? "none"}, format=${documentFormat}, bytes=${documentBytes.length}`);
           const sent = await sendIppPrintJob(
             ip,
             documentBytes,
@@ -1832,11 +1834,14 @@ export default function HomeScreen() {
             },
             known,
           );
-          logEvent("print", `IPP result: ${String(sent)}`);
+          logEvent("print", `IPP target IP=${ip}, result=${String(sent)}`);
           if (sent === "unconfirmed") return "unconfirmed";
           if (sent) return "direct";
+          if (documentFormat === "application/pdf") {
+            logEvent("print", `PDF IPP failed for target IP=${ip}; RAW 9100 intentionally skipped`);
+          }
         } catch (error) {
-          logEvent("print", `error: ${error instanceof Error ? error.message : "unknown"}`);
+          logEvent("print", `IPP error target IP=${ip}: ${error instanceof Error ? error.message : "unknown"}`);
           // Falls through to the system dialog below.
         }
       }

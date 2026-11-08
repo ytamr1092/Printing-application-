@@ -84,10 +84,18 @@ export async function sendIppPrintJob(
 ): Promise<boolean | "unconfirmed"> {
   const paths = knownPath ? [knownPath, ...IPP_PATHS.filter((path) => path !== knownPath)] : IPP_PATHS;
   for (const path of paths) {
+    logEvent("print", `IPP attempt: ${ippHttpUrl(ip, 631, path)}`);
     const result = await ippCall(ip, path, IPP_OPERATION.printJob, options, document, 90000);
-    if (result?.ok) return true;
+    if (result?.ok) {
+      logEvent("print", `IPP accepted: ${ippHttpUrl(ip, 631, path)} status=0x${result.statusCode.toString(16)}`);
+      return true;
+    }
     // The printer took the data but never answered: it may well print, so do not retry or hand over to another path.
-    if (result?.timedOut) return "unconfirmed";
+    if (result?.timedOut) {
+      logEvent("print", `IPP unconfirmed/timeout: ${ippHttpUrl(ip, 631, path)}`);
+      return "unconfirmed";
+    }
+    logEvent("print", `IPP rejected/no IPP response: ${ippHttpUrl(ip, 631, path)} status=${result?.statusCode ?? "none"}`);
   }
   return false;
 }
