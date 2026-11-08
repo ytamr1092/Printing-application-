@@ -2,6 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import type { StyleProp, ViewStyle } from "react-native";
 import { View } from "react-native";
 import { Text } from "@/components/app-text";
+import { FONT_SIZE } from "@/constants/typography";
 
 export type PdfDocumentPreviewProps = {
   uri: string;
@@ -16,7 +17,7 @@ export function PdfDocumentPreview({ style, unavailableLabel }: PdfDocumentPrevi
   return (
     <View style={[{ flex: 1, alignItems: "center", justifyContent: "center", gap: 8 }, style]}>
       <MaterialIcons name="picture-as-pdf" color="#64748B" size={34} />
-      <Text style={{ color: "#475569", textAlign: "center", fontSize: 12 }}>
+      <Text style={{ color: "#475569", textAlign: "center", fontSize: FONT_SIZE.label }}>
         {unavailableLabel || "عارض PDF المضمّن غير متاح على هذا النظام."}
       </Text>
     </View>

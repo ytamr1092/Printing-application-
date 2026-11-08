@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Image, PanResponder, StyleSheet, View } from "react-native";
 import { Text } from "@/components/app-text";
+import { FONT_SIZE } from "@/constants/typography";
 
 import {
   moveRect,
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
   outer: { width: "100%", alignItems: "center" },
   page: { borderWidth: 1, overflow: "hidden", position: "relative" },
   placeholder: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", padding: 12 },
-  placeholderText: { fontSize: 11, fontWeight: "700", textAlign: "center" },
+  placeholderText: { fontSize: FONT_SIZE.secondary, fontWeight: "700", textAlign: "center" },
   dim: { position: "absolute" },
   selection: { position: "absolute", borderWidth: 2 },
   handle: { position: "absolute", alignItems: "center", justifyContent: "center" },

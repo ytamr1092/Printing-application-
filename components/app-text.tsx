@@ -12,6 +12,9 @@ import {
  */
 export const APP_FONT_FAMILY = "MonacoKufi";
 
+/** Elgharib, used only for the personal greeting on the home screen. */
+export const GREETING_FONT_FAMILY = "ElgharibGratitude";
+
 function flattenStyle(style: unknown): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
   const walk = (value: unknown) => {

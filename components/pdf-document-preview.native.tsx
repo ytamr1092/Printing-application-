@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Text } from "@/components/app-text";
+import { FONT_SIZE } from "@/constants/typography";
 import type { PdfDocumentPreviewProps } from "./pdf-document-preview";
 
 type NativePdfView = typeof import("@kishannareshpal/expo-pdf").PdfView;
@@ -24,7 +25,7 @@ export function PdfDocumentPreview({ uri, style, onError, unavailableLabel, isAr
   if (!PdfView) {
     return (
       <View style={[{ flex: 1, alignItems: "center", justifyContent: "center" }, style]}>
-        <Text style={{ color: "#64748B", textAlign: "center", fontSize: 12 }}>
+        <Text style={{ color: "#64748B", textAlign: "center", fontSize: FONT_SIZE.label }}>
           {unavailableLabel || "PDF viewer unavailable. Use the external open option."}
         </Text>
       </View>
@@ -52,7 +53,7 @@ export function PdfDocumentPreview({ uri, style, onError, unavailableLabel, isAr
       />
       {pageCount > 1 ? (
         <View style={{ alignItems: "center", paddingVertical: 4, backgroundColor: "#F1F5F9" }}>
-          <Text accessibilityRole="text" style={{ color: "#475569", fontSize: 10, fontWeight: "700" }}>
+          <Text accessibilityRole="text" style={{ color: "#475569", fontSize: FONT_SIZE.secondary, fontWeight: "700" }}>
             {isArabic ? `صفحة ${pageIndex + 1} من ${pageCount}` : `Page ${pageIndex + 1} of ${pageCount}`}
           </Text>
         </View>
