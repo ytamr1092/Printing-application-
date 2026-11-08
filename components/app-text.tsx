@@ -1,4 +1,4 @@
-import React, { forwardRef, type ComponentRef, type ReactNode } from "react";
+import React, { forwardRef, type ComponentRef } from "react";
 import {
   Text as NativeText,
   TextInput as NativeTextInput,
@@ -57,22 +57,12 @@ export function withAppFont(style: unknown) {
 
 export const Text = forwardRef<ComponentRef<typeof NativeText>, TextProps>(
   function Text({ style, ...props }, ref) {
-    const applied = { children: props.children, style: withAppFont(style) };
-    const merged = { ...props, ref, style: applied.style as TextProps["style"] };
-    // Untouched children go through props exactly as the caller wrote them. Rebuilt children are
-    // passed as separate arguments so React does not ask for keys on the caller's own elements.
-    if (applied.children === props.children) return <NativeText {...merged} />;
-    return React.createElement(NativeText, merged, ...[applied.children].flat());
+    return <NativeText {...props} ref={ref} style={withAppFont(style) as TextProps["style"]} />;
   },
 );
 
 export const TextInput = forwardRef<ComponentRef<typeof NativeTextInput>, TextInputProps>(
   function TextInput({ style, ...props }, ref) {
-    // What is shown decides the font: typed or default text first, then the placeholder.
-    const shown = props.value ?? props.defaultValue ?? props.placeholder ?? "";
-    const latin = hasLatin(shown) && !hasArabic(shown);
-    return (
-      <NativeTextInput ref={ref} {...props} style={withAppFont(style, latin) as TextInputProps["style"]} />
-    );
+    return <NativeTextInput ref={ref} {...props} style={withAppFont(style) as TextInputProps["style"]} />;
   },
 );
