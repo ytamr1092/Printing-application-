@@ -69,12 +69,13 @@ function leafTexts(children: ReactNode, out: string[] = []): string[] {
  * - Arabic mixed with English: Monaco Kufi, with the English runs wrapped in a DG Trika span.
  */
 function applyScripts(children: ReactNode, style: unknown): { children: ReactNode; style: unknown } {
+  // An explicit fontFamily (an icon font, the Elgharib greeting) is never overridden.
+  if (flattenStyle(style).fontFamily) return { children, style: withAppFont(style) };
   const texts = leafTexts(children);
   if (!texts.some(hasLatin)) return { children, style: withAppFont(style) };
   if (!texts.some(hasArabic)) return { children, style: withAppFont(style, true) };
 
-  const latinStyle = withAppFont(style, true);
-  const spanStyle = { fontFamily: latinStyle.fontFamily };
+  const spanStyle = { fontFamily: isBold(flattenStyle(style).fontWeight) ? LATIN_BOLD_FONT_FAMILY : LATIN_FONT_FAMILY };
   const span = (text: string, key: string) => (
     <NativeText key={key} style={spanStyle}>
       {text}
