@@ -261,7 +261,7 @@ function OperationProgressBanner({
               <View
                 style={[
                   styles.progressStageTrack,
-                  { backgroundColor: active ? colors.primary : colors.border },
+                  { backgroundColor: active ? colors.primaryFill : colors.border },
                 ]}
               />
               <Text
@@ -305,7 +305,7 @@ function SettingPills({
             styles.settingPill,
             {
               backgroundColor:
-                selected === item.value ? colors.primary : colors.background,
+                selected === item.value ? colors.primaryFill : colors.background,
               borderColor:
                 selected === item.value ? colors.primary : colors.border,
             },
@@ -3105,7 +3105,7 @@ export default function HomeScreen() {
               }}
             >
               <View
-                style={[styles.brandMark, { backgroundColor: colors.primary }]}
+                style={[styles.brandMark, { backgroundColor: colors.primaryFill }]}
               >
                 <Icon name="print" color="#fff" size={20} />
               </View>
@@ -3226,7 +3226,7 @@ export default function HomeScreen() {
             style={[
               styles.hero,
               {
-                backgroundColor: colors.primary,
+                backgroundColor: colors.primaryFill,
                 flexDirection: isArabic ? "row-reverse" : "row",
               },
             ]}
@@ -3456,7 +3456,7 @@ export default function HomeScreen() {
                   style={[
                     styles.segment,
                     numberPosition === value && {
-                      backgroundColor: colors.primary,
+                      backgroundColor: colors.primaryFill,
                     },
                   ]}
                 >
@@ -3497,7 +3497,7 @@ export default function HomeScreen() {
                   style={[
                     styles.segment,
                     numberVertical === value && {
-                      backgroundColor: colors.primary,
+                      backgroundColor: colors.primaryFill,
                     },
                   ]}
                 >
@@ -3650,7 +3650,7 @@ export default function HomeScreen() {
                     {
                       backgroundColor:
                         numberWhich === value
-                          ? colors.primary
+                          ? colors.primaryFill
                           : colors.background,
                       borderColor:
                         numberWhich === value ? colors.primary : colors.border,
@@ -3700,7 +3700,7 @@ export default function HomeScreen() {
                     {
                       backgroundColor:
                         numberNumerals === value
-                          ? colors.primary
+                          ? colors.primaryFill
                           : colors.background,
                       borderColor:
                         numberNumerals === value
@@ -3770,7 +3770,7 @@ export default function HomeScreen() {
                       style={[
                         styles.segment,
                         numberFont === value && {
-                          backgroundColor: colors.primary,
+                          backgroundColor: colors.primaryFill,
                         },
                       ]}
                     >
@@ -3855,7 +3855,7 @@ export default function HomeScreen() {
                 styles.printButton,
                 {
                   backgroundColor: numberingFile
-                    ? colors.primary
+                    ? colors.primaryFill
                     : colors.border,
                   marginTop: 10,
                 },
@@ -4024,7 +4024,7 @@ export default function HomeScreen() {
                 styles.printButton,
                 {
                   backgroundColor:
-                    idFrontUri && idBackUri ? colors.primary : colors.border,
+                    idFrontUri && idBackUri ? colors.primaryFill : colors.border,
                   marginTop: 12,
                 },
                 pressed && styles.pressed,
@@ -4117,7 +4117,7 @@ export default function HomeScreen() {
                     {
                       backgroundColor:
                         selectedPaper === option.id
-                          ? colors.primary
+                          ? colors.primaryFill
                           : colors.background,
                       borderColor:
                         selectedPaper === option.id
@@ -4222,7 +4222,7 @@ export default function HomeScreen() {
                 style={[
                   styles.segment,
                   orientation === "portrait" && {
-                    backgroundColor: colors.primary,
+                    backgroundColor: colors.primaryFill,
                   },
                 ]}
               >
@@ -4247,7 +4247,7 @@ export default function HomeScreen() {
                 style={[
                   styles.segment,
                   orientation === "landscape" && {
-                    backgroundColor: colors.primary,
+                    backgroundColor: colors.primaryFill,
                   },
                 ]}
               >
@@ -4281,7 +4281,7 @@ export default function HomeScreen() {
                 onPress={() => setColorMode("color")}
                 style={[
                   styles.segment,
-                  colorMode === "color" && { backgroundColor: colors.primary },
+                  colorMode === "color" && { backgroundColor: colors.primaryFill },
                 ]}
               >
                 <Icon
@@ -4302,7 +4302,7 @@ export default function HomeScreen() {
                 onPress={() => setColorMode("bw")}
                 style={[
                   styles.segment,
-                  colorMode === "bw" && { backgroundColor: colors.primary },
+                  colorMode === "bw" && { backgroundColor: colors.primaryFill },
                 ]}
               >
                 <Icon
@@ -4363,7 +4363,7 @@ export default function HomeScreen() {
                     style={[
                       styles.segment,
                       duplexEdge === "long" && {
-                        backgroundColor: colors.primary,
+                        backgroundColor: colors.primaryFill,
                       },
                     ]}
                   >
@@ -4388,7 +4388,7 @@ export default function HomeScreen() {
                     style={[
                       styles.segment,
                       duplexEdge === "short" && {
-                        backgroundColor: colors.primary,
+                        backgroundColor: colors.primaryFill,
                       },
                     ]}
                   >
@@ -4439,7 +4439,7 @@ export default function HomeScreen() {
                 onPress={() => startTool("print")}
                 style={({ pressed }) => [
                   styles.printButton,
-                  { backgroundColor: colors.primary },
+                  { backgroundColor: colors.primaryFill },
                   pressed && styles.pressed,
                 ]}
               >
@@ -4494,7 +4494,7 @@ export default function HomeScreen() {
                     {
                       backgroundColor:
                         selectedProfile === profile.id
-                          ? colors.primary
+                          ? colors.primaryFill
                           : colors.background,
                       borderColor:
                         selectedProfile === profile.id
@@ -4563,7 +4563,7 @@ export default function HomeScreen() {
                 ]}
               >
                 <View
-                  style={[styles.aiIcon, { backgroundColor: colors.primary }]}
+                  style={[styles.aiIcon, { backgroundColor: colors.primaryFill }]}
                 >
                   <Icon name="auto-awesome" color="#fff" size={19} />
                 </View>
@@ -4615,7 +4615,7 @@ export default function HomeScreen() {
                   onPress={() => Alert.alert(t.smart, command || t.noInternet)}
                   style={({ pressed }) => [
                     styles.executeButton,
-                    { backgroundColor: colors.primary },
+                    { backgroundColor: colors.primaryFill },
                     pressed && styles.pressed,
                   ]}
                 >
@@ -4928,7 +4928,7 @@ export default function HomeScreen() {
                       {
                         backgroundColor:
                           scannerDpi === value
-                            ? colors.primary
+                            ? colors.primaryFill
                             : colors.background,
                         borderColor:
                           scannerDpi === value ? colors.primary : colors.border,
@@ -4977,7 +4977,7 @@ export default function HomeScreen() {
                       {
                         backgroundColor:
                           scannerColor === value
-                            ? colors.primary
+                            ? colors.primaryFill
                             : colors.background,
                         borderColor:
                           scannerColor === value
@@ -5425,7 +5425,7 @@ export default function HomeScreen() {
                           {
                             backgroundColor:
                               numberPosition === value
-                                ? colors.primary
+                                ? colors.primaryFill
                                 : colors.background,
                             borderColor: colors.border,
                           },
@@ -5636,7 +5636,7 @@ export default function HomeScreen() {
                   onPress={numberPdf}
                   style={[
                     styles.workspacePrimary,
-                    { backgroundColor: colors.primary },
+                    { backgroundColor: colors.primaryFill },
                   ]}
                 >
                   <Icon name="format-list-numbered" color="#fff" size={18} />
@@ -5676,7 +5676,7 @@ export default function HomeScreen() {
                         {
                           backgroundColor:
                             selectedPaper === option.id
-                              ? colors.primary
+                              ? colors.primaryFill
                               : colors.surface,
                           borderColor: colors.border,
                         },
@@ -5708,7 +5708,7 @@ export default function HomeScreen() {
                           {
                             backgroundColor:
                               selectedWeight === value
-                                ? colors.primary
+                                ? colors.primaryFill
                                 : colors.surface,
                             borderColor: colors.border,
                           },
@@ -5740,7 +5740,7 @@ export default function HomeScreen() {
                         {
                           backgroundColor:
                             orientation === value
-                              ? colors.primary
+                              ? colors.primaryFill
                               : colors.surface,
                           borderColor: colors.border,
                         },
@@ -5764,7 +5764,7 @@ export default function HomeScreen() {
                   style={[
                     styles.workspaceSegment,
                     {
-                      backgroundColor: duplex ? colors.primary : colors.surface,
+                      backgroundColor: duplex ? colors.primaryFill : colors.surface,
                       borderColor: colors.border,
                     },
                   ]}
@@ -5912,7 +5912,7 @@ export default function HomeScreen() {
                     onPress={() => startTool("print")}
                     style={[
                       styles.workspacePrimary,
-                      { backgroundColor: colors.primary },
+                      { backgroundColor: colors.primaryFill },
                     ]}
                   >
                     <Text style={styles.printButtonText}>{t.previewPrint}</Text>
@@ -5940,7 +5940,7 @@ export default function HomeScreen() {
                   onPress={scanForDevices}
                   style={[
                     styles.workspacePrimary,
-                    { backgroundColor: colors.primary },
+                    { backgroundColor: colors.primaryFill },
                   ]}
                 >
                   <Icon name="wifi" color="#fff" size={18} />
@@ -6184,7 +6184,7 @@ export default function HomeScreen() {
                       <Pressable
                         accessibilityRole="button"
                         onPress={() => { void saveResultFile(scanResult, scanName); }}
-                        style={[styles.workspacePrimary, { flex: 1, backgroundColor: colors.primary }]}
+                        style={[styles.workspacePrimary, { flex: 1, backgroundColor: colors.primaryFill }]}
                       >
                         <Icon name="save-alt" color="#fff" size={18} />
                         <Text style={styles.printButtonText}>{t.saveToDevice}</Text>
@@ -6353,7 +6353,7 @@ export default function HomeScreen() {
                   onPress={() => startTool("id")}
                   style={[
                     styles.workspacePrimary,
-                    { backgroundColor: colors.primary },
+                    { backgroundColor: colors.primaryFill },
                   ]}
                 >
                   <Icon name="visibility" color="#fff" size={18} />
@@ -6367,7 +6367,7 @@ export default function HomeScreen() {
                     {
                       backgroundColor:
                         idFrontUri && idBackUri
-                          ? colors.primary
+                          ? colors.primaryFill
                           : colors.border,
                     },
                   ]}
@@ -6442,7 +6442,7 @@ export default function HomeScreen() {
                   onPress={actionComing}
                   style={[
                     styles.workspacePrimary,
-                    { backgroundColor: colors.primary },
+                    { backgroundColor: colors.primaryFill },
                   ]}
                 >
                   <Text style={styles.printButtonText}>{t.execute}</Text>
@@ -6471,7 +6471,7 @@ function SectionTitle({
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
         {title}
       </Text>
-      <View style={[styles.titleRule, { backgroundColor: colors.primary }]} />
+      <View style={[styles.titleRule, { backgroundColor: colors.primaryFill }]} />
     </View>
   );
 }

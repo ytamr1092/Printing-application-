@@ -73,10 +73,30 @@ describe("PrintPilot theme", () => {
   it("provides readable light and dark palettes", () => {
     expect(themeColors.primary.light).toBe("#2563EB");
     expect(themeColors.primary.dark).toBe("#3B82F6");
-    expect(themeColors.background.dark).toBe("#000000");
-    expect(themeColors.foreground.dark).toBe("#FFFFFF");
     expect(themeColors.foreground.light).toBe("#111111");
     expect(themeColors.muted.light).toBe("#5F5F5F");
+  });
+
+  it("keeps text colours at WCAG AA contrast (4.5:1) on their backgrounds", () => {
+    const luminance = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) =>
+        c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+      );
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const contrast = (a: string, b: string) => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    for (const mode of ["light", "dark"] as const) {
+      for (const background of ["background", "surface"] as const) {
+        for (const text of ["foreground", "muted", "primary", "success", "warning", "error"] as const) {
+          const ratio = contrast(themeColors[text][mode], themeColors[background][mode]);
+          expect(ratio, `${text} on ${background} (${mode})`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      expect(contrast("#FFFFFF", themeColors.primaryFill[mode]), `white on primaryFill (${mode})`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
 

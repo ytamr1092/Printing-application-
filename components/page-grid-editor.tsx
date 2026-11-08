@@ -184,7 +184,7 @@ const GridCell = memo(function GridCell({
           ) : (
             <Text style={[styles.placeholderNumber, { color: colors.muted }]}>{item.label}</Text>
           )}
-          <View style={[styles.check, { left: 8, backgroundColor: checked ? colors.primary : "rgba(255,255,255,0.9)", borderColor: checked ? colors.primary : colors.muted }]}>
+          <View style={[styles.check, { left: 8, backgroundColor: checked ? colors.primaryFill : "rgba(255,255,255,0.9)", borderColor: checked ? colors.primary : colors.muted }]}>
             {checked ? <MaterialIcons name="check" color="#fff" size={16} /> : null}
           </View>
         </View>
@@ -363,7 +363,7 @@ export function PageGridEditor({
           accessibilityRole="button"
           accessibilityLabel={confirmLabel}
           onPress={onConfirm}
-          style={[styles.confirm, { backgroundColor: colors.primary }]}
+          style={[styles.confirm, { backgroundColor: colors.primaryFill }]}
         >
           <MaterialIcons name="check" color="#fff" size={20} />
           <Text style={styles.confirmText}>{confirmLabel}</Text>

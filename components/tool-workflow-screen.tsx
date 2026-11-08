@@ -462,7 +462,7 @@ export function ToolWorkflowScreen({
             style={[
               styles.pill,
               {
-                backgroundColor: selected ? colors.primary : colors.background,
+                backgroundColor: selected ? colors.primaryFill : colors.background,
                 borderColor: selected ? colors.primary : colors.border,
               },
             ]}
@@ -846,17 +846,17 @@ export function ToolWorkflowScreen({
             <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>{tr(isArabic, "ابدأ باختيار الملف أو الملفات. عند الخروج من هذه الأداة تُمسح ملفاتها ومعاينتها وتبدأ كل أداة من جديد.", "Choose one or more files to get started. Leaving this tool clears its files and preview, so each tool starts fresh.")}</Text>
             {kind === "images" ? (
               <View style={[styles.pickerOptionsRow, { flexDirection: direction }]}>
-                <Pressable accessibilityRole="button" onPress={() => onPickFiles("gallery")} style={[styles.pickButton, styles.pickerOption, { backgroundColor: colors.primary, flexDirection: direction }]}>
+                <Pressable accessibilityRole="button" onPress={() => onPickFiles("gallery")} style={[styles.pickButton, styles.pickerOption, { backgroundColor: colors.primaryFill, flexDirection: direction }]}>
                   <MaterialIcons name="photo-library" color="#fff" size={18} />
                   <Text style={styles.pickButtonText}>{tr(isArabic, "اختيار من المعرض", "Choose from photos")}</Text>
                 </Pressable>
-                <Pressable accessibilityRole="button" onPress={() => onPickFiles("files")} style={[styles.pickButton, styles.pickerOption, { backgroundColor: colors.primary, flexDirection: direction }]}>
+                <Pressable accessibilityRole="button" onPress={() => onPickFiles("files")} style={[styles.pickButton, styles.pickerOption, { backgroundColor: colors.primaryFill, flexDirection: direction }]}>
                   <MaterialIcons name="folder-open" color="#fff" size={18} />
                   <Text style={styles.pickButtonText}>{tr(isArabic, "تصفح الملفات", "Browse files")}</Text>
                 </Pressable>
               </View>
             ) : (
-              <Pressable onPress={() => onPickFiles("files")} style={[styles.pickButton, { backgroundColor: colors.primary, flexDirection: direction }]}>
+              <Pressable onPress={() => onPickFiles("files")} style={[styles.pickButton, { backgroundColor: colors.primaryFill, flexDirection: direction }]}>
                 <MaterialIcons name="add" color="#fff" size={20} />
                 <Text style={styles.pickButtonText}>{files.length ? tr(isArabic, "تغيير الملفات", "Change files") : tr(isArabic, "اختيار الملفات", "Choose files")}</Text>
               </Pressable>
@@ -1029,7 +1029,7 @@ export function ToolWorkflowScreen({
                 accessibilityLabel={tr(isArabic, `معاينة ${file.name}`, `Preview ${file.name}`)}
                 accessibilityState={{ selected: previewFile?.uri === file.uri }}
                 onPress={() => onSelectPreviewFile(file)}
-                style={[styles.previewFileChip, { backgroundColor: previewFile?.uri === file.uri ? colors.primary : colors.background, borderColor: previewFile?.uri === file.uri ? colors.primary : colors.border }]}
+                style={[styles.previewFileChip, { backgroundColor: previewFile?.uri === file.uri ? colors.primaryFill : colors.background, borderColor: previewFile?.uri === file.uri ? colors.primary : colors.border }]}
               >
                 <Text numberOfLines={1} style={[styles.previewFileChipText, { color: previewFile?.uri === file.uri ? "#fff" : colors.foreground }]}>{file.name}</Text>
               </Pressable>
@@ -1054,7 +1054,7 @@ export function ToolWorkflowScreen({
                   style={[styles.stripThumb, { borderColor: active ? colors.primary : colors.border }]}
                 >
                   <Image resizeMethod="resize" source={{ uri: file.uri }} resizeMode="cover" style={[styles.stripThumbImage, thumbRotation ? { transform: [{ rotate: `${thumbRotation}deg` }] } : null]} />
-                  <Text style={[styles.stripThumbIndex, { backgroundColor: active ? colors.primary : "#0008" }]}>{index + 1}</Text>
+                  <Text style={[styles.stripThumbIndex, { backgroundColor: active ? colors.primaryFill : "#0008" }]}>{index + 1}</Text>
                 </Pressable>
               );
             })}
@@ -1222,7 +1222,7 @@ export function ToolWorkflowScreen({
       <View style={[styles.steps, { borderBottomColor: colors.border }]}>
         {[tr(isArabic, "الملفات", "Files"), tr(isArabic, "المعاينة", "Preview"), tr(isArabic, "الخيارات", "Options"), tr(isArabic, "النتيجة", "Result")].map((label, index) => (
           <View key={label} style={[styles.step, { flexDirection: direction }]}>
-            <View style={[styles.stepNumber, { backgroundColor: index < completedSteps ? colors.primary : colors.border }]}>
+            <View style={[styles.stepNumber, { backgroundColor: index < completedSteps ? colors.primaryFill : colors.border }]}>
               <Text style={styles.stepNumberText}>{index + 1}</Text>
             </View>
             <Text numberOfLines={1} style={[styles.stepLabel, { color: colors.muted }]}>{label}</Text>
@@ -1297,7 +1297,7 @@ export function ToolWorkflowScreen({
       </ScrollView>
 
       <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <Pressable disabled={!canRun || processing || idBusy} onPress={onRun} style={[styles.runButton, { backgroundColor: canRun && !processing && !idBusy ? colors.primary : colors.border, flexDirection: direction }]}>
+        <Pressable disabled={!canRun || processing || idBusy} onPress={onRun} style={[styles.runButton, { backgroundColor: canRun && !processing && !idBusy ? colors.primaryFill : colors.border, flexDirection: direction }]}>
           {processing || idBusy ? <ActivityIndicator color="#fff" size="small" /> : <MaterialIcons name={kind === "print" ? "print" : kind === "id" ? "picture-as-pdf" : "play-arrow"} color="#fff" size={20} />}
           <Text style={styles.pickButtonText}>{processing || idBusy ? tr(isArabic, "جارٍ التنفيذ…", "Working…") : runLabel}</Text>
         </Pressable>
