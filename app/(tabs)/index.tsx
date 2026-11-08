@@ -57,7 +57,6 @@ import {
   type PdfPageEdit,
 } from "@/shared/pdf-pages";
 import { ESCL_MIME } from "@/shared/escl";
-import { sendRawPrintJob } from "@/shared/raw-print";
 import { buildDiagnosticReport, clearEvents, getEvents, hydrateEvents, logEvent } from "@/shared/diagnostic-log";
 import { decodeJpegDc } from "@/shared/jpeg-dc";
 import { withJpegRotation } from "@/shared/jpeg-orientation";
@@ -1226,7 +1225,7 @@ export default function HomeScreen() {
           lines: [
             `Printer IP field: ${printerIp.trim() || "(empty)"}`,
             `Copies: ${copies}, duplex: ${String(duplex)}, colour: ${colorMode}`,
-            "Note: RAW 9100 sends the file as is, so copies/duplex/colour apply only on the IPP path.",
+            "Note: printing goes through IPP only. RAW 9100 printed PDF source code as text on this printer, so it is no longer used for jobs.",
           ],
         },
         { title: `Printer probes (${target || "not found"})`, lines: probeLines },
@@ -1818,11 +1817,8 @@ export default function HomeScreen() {
             encoding: FileSystem.EncodingType.Base64,
           });
           const documentBytes = base64ToBytes(base64);
-          // Kyocera's RAW/JetDirect path is the closest match to the driver
-          // used by many computers and avoids Android's system print dialog.
-          const rawSent = await sendRawPrintJob(ip, documentBytes);
-          logEvent("print", `RAW 9100 ${rawSent ? "accepted" : "failed"} (${documentFormat}, ${documentBytes.length} bytes)`);
-          if (rawSent) return "direct";
+          // The file is sent over IPP only: the printer does not interpret a PDF
+          // sent raw to port 9100 and prints its source code as text instead.
           const known = printerCaps.current?.ip === ip ? printerCaps.current.ipp : null;
           const sent = await sendIppPrintJob(
             ip,
