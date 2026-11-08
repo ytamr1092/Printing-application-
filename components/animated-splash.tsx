@@ -10,7 +10,7 @@ import { lineProgress, revealEdge } from "@/shared/welcome-writing";
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const INK = "#FFFFFF";
-const GLOW = "#3C94B0";
+const GLOW = "#3B82F6";
 const WRITING_MS = 4200;
 
 /** One line of the greeting: static outlines, revealed through a moving clip. */
