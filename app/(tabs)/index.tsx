@@ -578,8 +578,8 @@ export default function HomeScreen() {
     setOperationProgress({ label, stage });
   const completeProgress = () =>
     setOperationProgress({ label: t.progressDone, stage: 3, complete: true });
-  const readableText = colorScheme === "dark" ? "#F3F8FC" : "#071A2B";
-  const readableMuted = colorScheme === "dark" ? "#B7C8D8" : "#4B6377";
+  const readableText = colorScheme === "dark" ? "#FFFFFF" : "#111111";
+  const readableMuted = colorScheme === "dark" ? "#A0A0A0" : "#5F5F5F";
   const paper = useMemo(() => paperPresetById(selectedPaper), [selectedPaper]);
   const advancedSettings = useMemo<AdvancedSettings>(
     () => ({
@@ -3260,7 +3260,7 @@ export default function HomeScreen() {
               icon="picture-as-pdf"
               title={t.workspacePdf}
               hint={t.workspacePdfHint}
-              color="#0A7EA4"
+              color="#2F7C96"
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => setWorkspace("pdf")}
@@ -4539,7 +4539,7 @@ export default function HomeScreen() {
             style={[
               styles.smartCard,
               {
-                backgroundColor: colorScheme === "dark" ? "#1D2C3B" : "#EEF6FA",
+                backgroundColor: colorScheme === "dark" ? "#1C1C1C" : "#EEEEEE",
                 borderColor: colors.primary + "38",
               },
             ]}
@@ -5296,7 +5296,7 @@ export default function HomeScreen() {
                   icon="merge-type"
                   title={t.merge}
                   hint={t.mergeHint}
-                  color="#0A7EA4"
+                  color="#2F7C96"
                   onPress={() => startTool("merge")}
                   colors={colors}
                 />
@@ -6883,7 +6883,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  actionTitle: { color: "#10233F", fontSize: 14, fontWeight: "800" },
+  actionTitle: { color: "#111111", fontSize: 14, fontWeight: "800" },
   actionHint: { color: "#6A7E91", fontSize: 10.5, marginTop: 4 },
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
   rowPressed: { opacity: 0.65 },
