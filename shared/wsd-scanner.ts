@@ -1,7 +1,7 @@
 import type { EsclSettings } from "./escl";
 
-export const WSD_SCAN_ELEMENT_NAMESPACE = "https://schemas.microsoft.com/windows/2006/01/wdp/scan";
-export const WSD_SCAN_ACTION_BASE = "https://schemas.microsoft.com/windows/2006/01/wdp/scan";
+export const WSD_SCAN_ELEMENT_NAMESPACE = "http://schemas.microsoft.com/windows/2006/08/wdp/scan";
+export const WSD_SCAN_ACTION_BASE = "http://schemas.microsoft.com/windows/2006/08/wdp/scan";
 export type WsdScanOperation = "CreateScanJob" | "GetJobElements" | "RetrieveImage" | "CancelJob";
 export type WsdServiceType = { namespace: string; localName: string };
 
