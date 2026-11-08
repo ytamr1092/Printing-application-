@@ -186,7 +186,15 @@ export async function runEsclScan(ip: string, settings: EsclSettings): Promise<U
 
 /** Probes the usual printer ports and reports, in plain lines, what each one answered. */
 export async function diagnoseDevice(ip: string): Promise<string[]> {
-  const describe = async (label: string, run: () => Promise<string>) => {
+  // Printers have tiny web servers: probing everything at once makes them drop
+  // requests and report false timeouts, so the probes run one after another.
+  let queue: Promise<unknown> = Promise.resolve();
+  const describe = (label: string, run: () => Promise<string>): Promise<string> => {
+    const result = queue.then(() => describeNow(label, run));
+    queue = result.then(() => new Promise((resolve) => setTimeout(resolve, 150)));
+    return result;
+  };
+  const describeNow = async (label: string, run: () => Promise<string>) => {
     const started = Date.now();
     try {
       return `${label}: ${await run()} (${Date.now() - started}ms)`;
@@ -205,7 +213,7 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
           headers: { "Content-Type": "application/ipp" },
           body: buildIppRequest(IPP_OPERATION.getPrinterAttributes, ippPrinterUri(ip, port, "/ipp/print"), {}, undefined) as any,
         },
-        2500,
+        6000,
       );
       const parsed = parseIppResponse(new Uint8Array(await response.arrayBuffer()));
       return `HTTP ${response.status}${parsed ? `, IPP 0x${parsed.statusCode.toString(16)}` : ""}`;
@@ -218,7 +226,7 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
         headers: { Accept: "application/ipp", "Content-Type": "application/ipp" },
         body: buildIppRequest(IPP_OPERATION.getPrinterAttributes, ippPrinterUri(ip, 443, "/ipp/print"), {}, undefined) as any,
       },
-      3500,
+      6000,
     );
     const parsed = parseIppResponse(new Uint8Array(await response.arrayBuffer()));
     return `HTTP ${response.status}${parsed ? `, IPP 0x${parsed.statusCode.toString(16)}` : ""}`;
@@ -250,7 +258,7 @@ export async function diagnoseDevice(ip: string): Promise<string[]> {
           headers: { "Content-Type": "application/ipp" },
           body: buildIppRequest(IPP_OPERATION.getPrinterAttributes, ippPrinterUri(ip, 631, "/ipp/print"), {}, undefined) as any,
         },
-        4000,
+        6000,
       );
       const { summarizeIppResponse } = await import("./diagnostic-log");
       return summarizeIppResponse(new Uint8Array(await response.arrayBuffer())).join("; ");
