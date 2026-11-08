@@ -1,3 +1,4 @@
+import { InlineGreeting } from "@/components/inline-greeting";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "expo-router";
 import {
@@ -16,7 +17,7 @@ import {
   ToastAndroid,
   View,
 } from "react-native";
-import { APP_FONT_FAMILY, GREETING_FONT_FAMILY, Text, TextInput } from "@/components/app-text";
+import { Text, TextInput } from "@/components/app-text";
 import { LINE_HEIGHT, FONT_SIZE } from "@/constants/typography";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -3084,16 +3085,7 @@ export default function HomeScreen() {
                 { alignItems: isArabic ? "flex-end" : "flex-start" },
               ]}
             >
-              <Text
-                style={[
-                  styles.personalGreeting,
-                  { color: colors.primary, fontFamily: GREETING_FONT_FAMILY },
-                ]}
-              >
-                أهلا د
-                <Text style={{ fontFamily: APP_FONT_FAMILY }}>.</Text>
-                يوسف
-              </Text>
+              <InlineGreeting height={54} color={colors.primary} />
               <Text style={[styles.eyebrow, { color: colors.muted }]}> 
                 {t.greeting}
               </Text>

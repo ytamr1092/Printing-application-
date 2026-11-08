@@ -14,9 +14,6 @@ import { hasArabic, hasLatin, splitScriptRuns } from "@/shared/script-runs";
  */
 export const APP_FONT_FAMILY = "MonacoKufi";
 
-/** Elgharib, used only for the personal greeting on the home screen. */
-export const GREETING_FONT_FAMILY = "ElgharibGratitude";
-
 /** DG Trika, used for English letters and Western digits (regular and bold files). */
 export const LATIN_FONT_FAMILY = "DGTrika";
 export const LATIN_BOLD_FONT_FAMILY = "DGTrikaBold";
@@ -44,12 +41,22 @@ function isBold(weight: unknown) {
  * - letterSpacing is reset because spacing breaks Arabic letters apart.
  * Pass `latin` to use DG Trika instead of Monaco Kufi.
  */
+/** Monaco Kufi has small letters for its point size, so Arabic text is drawn a bit larger. */
+export const ARABIC_SIZE_SCALE = 1.2;
+
 export function withAppFont(style: unknown, latin = false) {
   const flat = flattenStyle(style);
   const latinFamily = isBold(flat.fontWeight) ? LATIN_BOLD_FONT_FAMILY : LATIN_FONT_FAMILY;
+  const family = flat.fontFamily ?? (latin ? latinFamily : APP_FONT_FAMILY);
+  const scaled: Record<string, unknown> = {};
+  if (family === APP_FONT_FAMILY) {
+    if (typeof flat.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * ARABIC_SIZE_SCALE * 10) / 10;
+    if (typeof flat.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * ARABIC_SIZE_SCALE * 10) / 10;
+  }
   return {
     ...flat,
-    fontFamily: flat.fontFamily ?? (latin ? latinFamily : APP_FONT_FAMILY),
+    ...scaled,
+    fontFamily: family,
     fontWeight: "normal",
     letterSpacing: 0,
   };

@@ -4,10 +4,10 @@
   licence field states: "Completely free, for both personal and commercial use."
   This is the app-wide font (see `components/app-text.tsx`).
 
-- `elgharib-gratitude.otf` — **Elgharib Yarab RK Gratitude** by Ahmed Alaa Elgharib
-  (copyright notice: "All Rights Reserved"; the font file carries no free-use licence
-  text, so keep the permission from the author). Used only for the home screen greeting
-  "أهلا د.يوسف". It has no "." glyph, so the full stop is drawn in Monaco Kufi.
+- The home screen greeting "أهلا د.يوسف" is drawn from pre-generated outlines
+  (`shared/greeting-inline-data.ts`), like the splash greeting, so no font file is bundled
+  for it. The Elgharib Yarab RK Gratitude file was tested and is a trial build: every Arabic
+  letter renders as the author's credit line, so it cannot be used.
 
 - `dg-trika-regular.ttf`, `dg-trika-bold.ttf` — **DG Trika** by Hossam El Deen Ahmed
   (Design Group; copyright notice: "All rights reserved", no free-use licence text in the

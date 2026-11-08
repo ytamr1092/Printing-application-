@@ -18,7 +18,9 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        // One screen only, so the bottom bar is hidden.
         tabBarStyle: {
+          display: "none",
           paddingTop: 8,
           paddingBottom: bottomPadding,
           height: tabBarHeight,
