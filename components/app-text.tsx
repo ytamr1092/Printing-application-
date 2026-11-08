@@ -6,17 +6,17 @@ import {
   type TextProps,
 } from "react-native";
 
-import { hasArabic, hasLatin, splitScriptRuns } from "@/shared/script-runs";
 
 /**
- * The app-wide font (Monaco Kufi). The font file is registered once in
- * app/_layout.tsx under this family name.
+ * App-wide font: DG Tebian for both Arabic and English (regular, bold and black files,
+ * registered once in app/_layout.tsx).
  */
-export const APP_FONT_FAMILY = "MonacoKufi";
+export const APP_FONT_FAMILY = "DGTebian";
+export const APP_FONT_BOLD_FAMILY = "DGTebianBold";
+export const APP_FONT_BLACK_FAMILY = "DGTebianBlack";
 
-/** DG Trika, used for English letters and Western digits (regular and bold files). */
-export const LATIN_FONT_FAMILY = "DGTrika";
-export const LATIN_BOLD_FONT_FAMILY = "DGTrikaBold";
+/** Monaco Kufi, used for large headings only. */
+export const DISPLAY_FONT_FAMILY = "MonacoKufi";
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
@@ -29,81 +29,35 @@ function flattenStyle(style: unknown): Record<string, unknown> {
   return merged;
 }
 
-function isBold(weight: unknown) {
-  return weight === "bold" || (typeof weight === "string" && Number(weight) >= 700) || (typeof weight === "number" && weight >= 700);
+function weightValue(weight: unknown) {
+  if (weight === "bold") return 700;
+  if (typeof weight === "number") return weight;
+  const parsed = typeof weight === "string" ? Number(weight) : NaN;
+  return Number.isFinite(parsed) ? parsed : 400;
 }
 
 /**
  * Applies the app font on top of whatever style a screen passes in.
- * - An explicit fontFamily (for example an icon font) still wins.
- * - fontWeight is reset because Monaco Kufi has a single weight and a faux bold
- *   distorts the letter shapes. English text keeps bold by using the DG Trika bold file.
+ * - An explicit fontFamily (an icon font, the display font) still wins.
+ * - The weight picks the font file (400 regular, 500-700 bold, 800+ black); fontWeight itself
+ *   is reset so Android does not add a second, synthetic bold.
  * - letterSpacing is reset because spacing breaks Arabic letters apart.
- * Pass `latin` to use DG Trika instead of Monaco Kufi.
  */
-/** Monaco Kufi has small letters for its point size, so Arabic text is drawn a bit larger. */
-export const ARABIC_SIZE_SCALE = 1.2;
-
-export function withAppFont(style: unknown, latin = false) {
+export function withAppFont(style: unknown) {
   const flat = flattenStyle(style);
-  const latinFamily = isBold(flat.fontWeight) ? LATIN_BOLD_FONT_FAMILY : LATIN_FONT_FAMILY;
-  const family = flat.fontFamily ?? (latin ? latinFamily : APP_FONT_FAMILY);
-  const scaled: Record<string, unknown> = {};
-  if (family === APP_FONT_FAMILY) {
-    if (typeof flat.fontSize === "number") scaled.fontSize = Math.round(flat.fontSize * ARABIC_SIZE_SCALE * 10) / 10;
-    if (typeof flat.lineHeight === "number") scaled.lineHeight = Math.round(flat.lineHeight * ARABIC_SIZE_SCALE * 10) / 10;
-  }
+  const weight = weightValue(flat.fontWeight);
+  const family = weight >= 800 ? APP_FONT_BLACK_FAMILY : weight >= 600 ? APP_FONT_BOLD_FAMILY : APP_FONT_FAMILY;
   return {
     ...flat,
-    ...scaled,
-    fontFamily: family,
+    fontFamily: flat.fontFamily ?? family,
     fontWeight: "normal",
     letterSpacing: 0,
   };
 }
 
-/** Every string or number directly inside the children (not inside nested elements). */
-function leafTexts(children: ReactNode, out: string[] = []): string[] {
-  if (typeof children === "string" || typeof children === "number") out.push(String(children));
-  else if (Array.isArray(children)) children.forEach((child) => leafTexts(child, out));
-  return out;
-}
-
-/**
- * Decides which font a Text uses.
- * - No English letters or digits: Monaco Kufi, children untouched.
- * - English only: the whole Text uses DG Trika, children untouched.
- * - Arabic mixed with English: Monaco Kufi, with the English runs wrapped in a DG Trika span.
- */
-function applyScripts(children: ReactNode, style: unknown): { children: ReactNode; style: unknown } {
-  // An explicit fontFamily (an icon font, the Elgharib greeting) is never overridden.
-  if (flattenStyle(style).fontFamily) return { children, style: withAppFont(style) };
-  const texts = leafTexts(children);
-  if (!texts.some(hasLatin)) return { children, style: withAppFont(style) };
-  if (!texts.some(hasArabic)) return { children, style: withAppFont(style, true) };
-
-  const spanStyle = { fontFamily: isBold(flattenStyle(style).fontWeight) ? LATIN_BOLD_FONT_FAMILY : LATIN_FONT_FAMILY };
-  const span = (text: string, key: string) => (
-    <NativeText key={key} style={spanStyle}>
-      {text}
-    </NativeText>
-  );
-  const convert = (node: ReactNode, path: string): ReactNode => {
-    if (typeof node === "number") return span(String(node), path);
-    if (typeof node === "string") {
-      if (!hasLatin(node)) return node;
-      if (!hasArabic(node)) return span(node, path);
-      return splitScriptRuns(node).map((run, index) => (run.latin ? span(run.text, `${path}.${index}`) : run.text));
-    }
-    if (Array.isArray(node)) return node.map((child, index) => convert(child, `${path}.${index}`));
-    return node;
-  };
-  return { children: convert(children, "t"), style: withAppFont(style) };
-}
-
 export const Text = forwardRef<ComponentRef<typeof NativeText>, TextProps>(
   function Text({ style, ...props }, ref) {
-    const applied = applyScripts(props.children, style);
+    const applied = { children: props.children, style: withAppFont(style) };
     const merged = { ...props, ref, style: applied.style as TextProps["style"] };
     // Untouched children go through props exactly as the caller wrote them. Rebuilt children are
     // passed as separate arguments so React does not ask for keys on the caller's own elements.

@@ -26,8 +26,9 @@ import {
 import { AnimatedSplash } from "@/components/animated-splash";
 import {
   APP_FONT_FAMILY,
-  LATIN_BOLD_FONT_FAMILY,
-  LATIN_FONT_FAMILY,
+  APP_FONT_BLACK_FAMILY,
+  APP_FONT_BOLD_FAMILY,
+  DISPLAY_FONT_FAMILY,
 } from "@/components/app-text";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -44,9 +45,10 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    [APP_FONT_FAMILY]: require("../assets/fonts/monaco-kufi.otf"),
-    [LATIN_FONT_FAMILY]: require("../assets/fonts/dg-trika-regular.ttf"),
-    [LATIN_BOLD_FONT_FAMILY]: require("../assets/fonts/dg-trika-bold.ttf"),
+    [APP_FONT_FAMILY]: require("../assets/fonts/dg-tebian-regular.ttf"),
+    [APP_FONT_BOLD_FAMILY]: require("../assets/fonts/dg-tebian-bold.ttf"),
+    [APP_FONT_BLACK_FAMILY]: require("../assets/fonts/dg-tebian-black.ttf"),
+    [DISPLAY_FONT_FAMILY]: require("../assets/fonts/monaco-kufi.otf"),
   });
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
