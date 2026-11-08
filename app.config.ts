@@ -121,7 +121,7 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        backgroundColor: "#000000",
+        backgroundColor: "#F2F2F2",
         dark: {
           backgroundColor: "#000000",
         },

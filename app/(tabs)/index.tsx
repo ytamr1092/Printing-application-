@@ -6582,7 +6582,7 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   eyebrow: { fontSize: FONT_SIZE.label, fontWeight: "600", letterSpacing: 0.2 },
-  brandName: { fontFamily: DISPLAY_FONT_FAMILY, fontSize: 34, lineHeight: 46 },
+  brandName: { fontFamily: DISPLAY_FONT_FAMILY, fontSize: 42, lineHeight: 58 },
   brandMark: {
     width: 34,
     height: 34,
@@ -6636,7 +6636,7 @@ const styles = StyleSheet.create({
   },
   backButtonText: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
   workspaceHeading: { flex: 1, alignItems: "flex-end", gap: 3 },
-  workspaceTitle: { fontFamily: DISPLAY_FONT_FAMILY, fontSize: 30, lineHeight: 42 },
+  workspaceTitle: { fontFamily: DISPLAY_FONT_FAMILY, fontSize: 38, lineHeight: 52 },
   workspaceHint: { fontSize: FONT_SIZE.secondary, lineHeight: LINE_HEIGHT.secondary },
   workspaceSectionLabel: {
     fontSize: FONT_SIZE.body,
@@ -6801,7 +6801,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 2,
   },
-  sectionTitle: { fontFamily: DISPLAY_FONT_FAMILY, fontSize: 24, lineHeight: 34 },
+  sectionTitle: { fontFamily: DISPLAY_FONT_FAMILY, fontSize: 32, lineHeight: 44 },
   titleRule: {
     height: 3,
     width: 31,
