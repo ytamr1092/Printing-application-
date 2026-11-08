@@ -32,10 +32,10 @@ import javax.xml.parsers.DocumentBuilderFactory
 /** Android WSD/WS-Scan client. Discovery, scan data, and file processing stay on the device/LAN. */
 class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val worker = Executors.newSingleThreadExecutor()
-  private val scanElementNamespace = "https://schemas.microsoft.com/windows/2006/01/wdp/scan"
-  private val scanActionBase = "https://schemas.microsoft.com/windows/2006/01/wdp/scan"
-  private val soapNamespace = "https://www.w3.org/2003/05/soap-envelope"
-  private val addressNamespace = "https://schemas.xmlsoap.org/ws/2003/03/addressing"
+  private val scanElementNamespace = "http://schemas.microsoft.com/windows/2006/08/wdp/scan"
+  private val scanActionBase = "http://schemas.microsoft.com/windows/2006/08/wdp/scan"
+  private val soapNamespace = "http://www.w3.org/2003/05/soap-envelope"
+  private val addressNamespace = "http://schemas.xmlsoap.org/ws/2004/08/addressing"
 
   override fun getName(): String = "PrintPilotWsdScanner"
 

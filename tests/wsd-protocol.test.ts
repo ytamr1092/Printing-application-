@@ -17,8 +17,8 @@ const operations: WsdScanOperation[] = ["CreateScanJob", "GetJobElements", "Retr
 
 describe("WSD Scan SOAP contract", () => {
   it("keeps the XML element namespace separate from the SOAP Action base", () => {
-    expect(WSD_SCAN_ELEMENT_NAMESPACE).toBe("https://schemas.microsoft.com/windows/2006/01/wdp/scan");
-    expect(WSD_SCAN_ACTION_BASE).toBe("https://schemas.microsoft.com/windows/2006/01/wdp/scan");
+    expect(WSD_SCAN_ELEMENT_NAMESPACE).toBe("http://schemas.microsoft.com/windows/2006/08/wdp/scan");
+    expect(WSD_SCAN_ACTION_BASE).toBe("http://schemas.microsoft.com/windows/2006/08/wdp/scan");
     expect(androidModule).toContain(`private val scanElementNamespace = "${WSD_SCAN_ELEMENT_NAMESPACE}"`);
     expect(androidModule).toContain(`private val scanActionBase = "${WSD_SCAN_ACTION_BASE}"`);
     expect(androidModule).toContain('xmlns:wscn="$scanElementNamespace"');
