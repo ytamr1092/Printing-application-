@@ -71,12 +71,12 @@ describe("PrintPilot paper presets", () => {
 
 describe("PrintPilot theme", () => {
   it("provides readable light and dark palettes", () => {
-    expect(themeColors.primary.light).toBe("#0A7EA4");
-    expect(themeColors.primary.dark).toBe("#42C4D9");
-    expect(themeColors.background.dark).toBe("#0C1725");
-    expect(themeColors.foreground.dark).toBe("#F3F8FC");
-    expect(themeColors.foreground.light).toBe("#071A2B");
-    expect(themeColors.muted.light).toBe("#4B6377");
+    expect(themeColors.primary.light).toBe("#2F7C96");
+    expect(themeColors.primary.dark).toBe("#3C94B0");
+    expect(themeColors.background.dark).toBe("#000000");
+    expect(themeColors.foreground.dark).toBe("#FFFFFF");
+    expect(themeColors.foreground.light).toBe("#111111");
+    expect(themeColors.muted.light).toBe("#5F5F5F");
   });
 });
 

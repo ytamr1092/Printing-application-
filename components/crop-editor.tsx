@@ -119,7 +119,7 @@ export function CropEditor({
   const top = rect.y * height;
   const boxWidth = rect.w * width;
   const boxHeight = rect.h * height;
-  const dim = "rgba(7,26,43,0.5)";
+  const dim = "rgba(0,0,0,0.5)";
 
   const handleStyle = (handle: CropHandle) => {
     const half = HIT / 2;

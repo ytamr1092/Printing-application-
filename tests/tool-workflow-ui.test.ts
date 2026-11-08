@@ -41,11 +41,11 @@ vi.mock("@expo/vector-icons/MaterialIcons", async () => {
 
 vi.mock("@/hooks/use-colors", () => ({
   useColors: () => ({
-    primary: "#0A7EA4",
+    primary: "#2F7C96",
     background: "#FFFFFF",
     surface: "#F8FAFC",
-    foreground: "#071A2B",
-    muted: "#4B6377",
+    foreground: "#111111",
+    muted: "#5F5F5F",
     border: "#D8E0E8",
     error: "#B42332",
     success: "#16804A",

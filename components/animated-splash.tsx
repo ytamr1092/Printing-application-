@@ -9,8 +9,8 @@ import { lineProgress, revealEdge } from "@/shared/welcome-writing";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
-const INK = "#E8F6FA";
-const GLOW = "#42C4D9";
+const INK = "#FFFFFF";
+const GLOW = "#3C94B0";
 const WRITING_MS = 4200;
 
 /** One line of the greeting: static outlines, revealed through a moving clip. */
@@ -35,7 +35,9 @@ function Greeting({ progress }: { progress: number }) {
   // Each line is revealed by a plain clipping view growing from the right edge
   // (no SVG clip paths, which are unreliable on some Android devices).
   return (
-    <View style={{ width, height }}>
+    // Forced left-to-right: in an RTL app React Native swaps left/right, which
+    // would grow the reveal from the wrong side.
+    <View style={{ width, height, direction: "ltr" }}>
       {GREETING_LINES.map((line, index) => {
         const u = steps[index];
         if (u <= 0) return null;
@@ -122,8 +124,8 @@ const styles = StyleSheet.create({
     zIndex: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0C1725",
+    backgroundColor: "#000000",
   },
   writingBlock: { alignItems: "center" },
-  subtitle: { color: "#B7C8D8", fontSize: 13, marginTop: 18, fontFamily: APP_FONT_FAMILY },
+  subtitle: { color: "#A0A0A0", fontSize: 13, marginTop: 18, fontFamily: APP_FONT_FAMILY },
 });

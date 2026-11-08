@@ -47,7 +47,7 @@ const config: ExpoConfig = {
   scheme: env.scheme,
   splash: {
     resizeMode: "contain",
-    backgroundColor: "#0C1725",
+    backgroundColor: "#000000",
   },
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
@@ -63,7 +63,7 @@ const config: ExpoConfig = {
   android: {
     versionCode: 7,
     adaptiveIcon: {
-      backgroundColor: "#0C1725",
+      backgroundColor: "#000000",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -121,9 +121,9 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        backgroundColor: "#0C1725",
+        backgroundColor: "#000000",
         dark: {
-          backgroundColor: "#0C1725",
+          backgroundColor: "#000000",
         },
       },
     ],
