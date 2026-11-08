@@ -26,7 +26,6 @@ import {
 import { AnimatedSplash } from "@/components/animated-splash";
 import {
   APP_FONT_FAMILY,
-  GREETING_FONT_FAMILY,
   LATIN_BOLD_FONT_FAMILY,
   LATIN_FONT_FAMILY,
 } from "@/components/app-text";
@@ -46,7 +45,6 @@ export const unstable_settings = {
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     [APP_FONT_FAMILY]: require("../assets/fonts/monaco-kufi.otf"),
-    [GREETING_FONT_FAMILY]: require("../assets/fonts/elgharib-gratitude.otf"),
     [LATIN_FONT_FAMILY]: require("../assets/fonts/dg-trika-regular.ttf"),
     [LATIN_BOLD_FONT_FAMILY]: require("../assets/fonts/dg-trika-bold.ttf"),
   });
