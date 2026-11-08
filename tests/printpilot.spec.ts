@@ -95,6 +95,7 @@ describe("PrintPilot theme", () => {
           expect(ratio, `${text} on ${background} (${mode})`).toBeGreaterThanOrEqual(4.5);
         }
       }
+      expect(contrast("#FFFFFF", themeColors.primaryFill[mode]), `white on primaryFill (${mode})`).toBeGreaterThanOrEqual(4.5);
     }
   });
 });

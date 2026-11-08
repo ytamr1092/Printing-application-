@@ -1,6 +1,9 @@
 /** @type {const} */
 const themeColors = {
   primary: { light: '#2563EB', dark: '#3B82F6' },
+  // Solid blue behind white text (buttons, selected chips). Primary itself is lighter in dark
+  // mode so it reads as text and icons on near-black, which is too light for white text.
+  primaryFill: { light: '#2563EB', dark: '#2563EB' },
   background: { light: '#F2F2F2', dark: '#0D0D0D' },
   surface: { light: '#FFFFFF', dark: '#1A1A1A' },
   foreground: { light: '#111111', dark: '#F2F2F2' },
