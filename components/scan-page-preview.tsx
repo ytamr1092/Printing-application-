@@ -1,6 +1,7 @@
 import React from "react";
 import { Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "@/components/app-text";
+import { FONT_SIZE } from "@/constants/typography";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { useColors } from "@/hooks/use-colors";
@@ -56,7 +57,7 @@ export function ScanPagePreview({ visible, pages, isArabic, onClose }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   bar: { height: 56, alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  title: { fontSize: 16, fontWeight: "900" },
+  title: { fontSize: FONT_SIZE.subtitle, fontWeight: "900" },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   content: { padding: 12, gap: 12, alignItems: "center" },
   page: { borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },

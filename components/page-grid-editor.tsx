@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Text } from "@/components/app-text";
+import { FONT_SIZE } from "@/constants/typography";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { useGridDragReorder } from "@/components/use-grid-drag-reorder";
@@ -383,14 +384,14 @@ export function PageGridEditor({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   confirm: { height: 48, marginHorizontal: 12, marginVertical: 8, borderRadius: 12, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
-  confirmText: { color: "#fff", fontSize: 15, fontWeight: "900" },
+  confirmText: { color: "#fff", fontSize: FONT_SIZE.body, fontWeight: "900" },
   topBar: { minHeight: 58, alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 6 },
   topButton: { minWidth: 64, height: 48, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
-  topButtonText: { fontSize: 13, fontWeight: "900" },
+  topButtonText: { fontSize: FONT_SIZE.body, fontWeight: "900" },
   topTitle: { flex: 1, alignItems: "center", paddingHorizontal: 4 },
-  titleText: { fontSize: 14, fontWeight: "900" },
-  hintText: { fontSize: 10, marginTop: 1 },
-  hint: { fontSize: 11, textAlign: "center", paddingVertical: 8, fontWeight: "700" },
+  titleText: { fontSize: FONT_SIZE.body, fontWeight: "900" },
+  hintText: { fontSize: FONT_SIZE.secondary, marginTop: 1 },
+  hint: { fontSize: FONT_SIZE.secondary, textAlign: "center", paddingVertical: 8, fontWeight: "700" },
   scroll: { flex: 1, minHeight: 0 },
   gridContent: { paddingBottom: 24 },
   grid: { flexWrap: "wrap" },
@@ -399,8 +400,8 @@ const styles = StyleSheet.create({
   sheet: { borderRadius: 6, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   placeholderNumber: { fontSize: 38, fontWeight: "900" },
   check: { position: "absolute", top: 8, width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
-  pageLabel: { height: LABEL_HEIGHT, fontSize: 15, fontWeight: "700", textAlignVertical: "center", paddingTop: 4 },
+  pageLabel: { height: LABEL_HEIGHT, fontSize: FONT_SIZE.body, fontWeight: "700", textAlignVertical: "center", paddingTop: 4 },
   bottomBar: { minHeight: 66, borderTopWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "space-around", paddingHorizontal: 10 },
   action: { minWidth: 70, alignItems: "center", gap: 2, paddingVertical: 6 },
-  actionLabel: { fontSize: 11, fontWeight: "800" },
+  actionLabel: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
 });

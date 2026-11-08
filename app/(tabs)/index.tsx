@@ -16,7 +16,8 @@ import {
   ToastAndroid,
   View,
 } from "react-native";
-import { Text, TextInput } from "@/components/app-text";
+import { APP_FONT_FAMILY, GREETING_FONT_FAMILY, Text, TextInput } from "@/components/app-text";
+import { LINE_HEIGHT, FONT_SIZE } from "@/constants/typography";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
@@ -313,7 +314,7 @@ function SettingPills({
           <Text
             style={{
               color: selected === item.value ? "#fff" : colors.foreground,
-              fontSize: 10,
+              fontSize: FONT_SIZE.secondary,
               fontWeight: "800",
             }}
           >
@@ -2947,7 +2948,7 @@ export default function HomeScreen() {
                       style={{ flexDirection: isArabic ? "row-reverse" : "row", alignItems: "center", gap: 8 }}
                     >
                       <Icon name={scannerBlankPages ? "check-circle" : "radio-button-unchecked"} color={scannerBlankPages ? colors.primary : colors.muted} size={20} />
-                      <Text style={{ flex: 1, color: colors.foreground, fontWeight: "800", fontSize: 13, textAlign: isArabic ? "right" : "left" }}>
+                      <Text style={{ flex: 1, color: colors.foreground, fontWeight: "800", fontSize: FONT_SIZE.body, textAlign: isArabic ? "right" : "left" }}>
                         {t.scanDropBlank} ({blankCount})
                       </Text>
                     </Pressable>
@@ -2958,16 +2959,16 @@ export default function HomeScreen() {
                       style={{ flexDirection: isArabic ? "row-reverse" : "row", alignItems: "center", gap: 8 }}
                     >
                       <Icon name={scannerDeskew ? "check-circle" : "radio-button-unchecked"} color={scannerDeskew ? colors.primary : colors.muted} size={20} />
-                      <Text style={{ flex: 1, color: colors.foreground, fontWeight: "800", fontSize: 13, textAlign: isArabic ? "right" : "left" }}>
+                      <Text style={{ flex: 1, color: colors.foreground, fontWeight: "800", fontSize: FONT_SIZE.body, textAlign: isArabic ? "right" : "left" }}>
                         {t.scanFixSkew} ({skewCount})
                       </Text>
                     </Pressable>
                     {scannerDeskew && scannerFormat !== "pdf" ? (
-                      <Text style={{ color: colors.warning, fontSize: 12, textAlign: isArabic ? "right" : "left" }}>{t.scanSkewPdfOnly}</Text>
+                      <Text style={{ color: colors.warning, fontSize: FONT_SIZE.label, textAlign: isArabic ? "right" : "left" }}>{t.scanSkewPdfOnly}</Text>
                     ) : null}
                   </>
                 ) : (
-                  <Text style={{ color: colors.muted, fontSize: 12, textAlign: isArabic ? "right" : "left" }}>{t.scanRotateJpgNote}</Text>
+                  <Text style={{ color: colors.muted, fontSize: FONT_SIZE.label, textAlign: isArabic ? "right" : "left" }}>{t.scanRotateJpgNote}</Text>
                 )}
               </View>
             }
@@ -3086,10 +3087,12 @@ export default function HomeScreen() {
               <Text
                 style={[
                   styles.personalGreeting,
-                  { color: colors.primary },
+                  { color: colors.primary, fontFamily: GREETING_FONT_FAMILY },
                 ]}
               >
-                أهلا د.يوسف
+                أهلا د
+                <Text style={{ fontFamily: APP_FONT_FAMILY }}>.</Text>
+                يوسف
               </Text>
               <Text style={[styles.eyebrow, { color: colors.muted }]}> 
                 {t.greeting}
@@ -5434,7 +5437,7 @@ export default function HomeScreen() {
                               numberPosition === value
                                 ? "#fff"
                                 : colors.foreground,
-                            fontSize: 11,
+                            fontSize: FONT_SIZE.secondary,
                             fontWeight: "800",
                           }}
                         >
@@ -5605,7 +5608,7 @@ export default function HomeScreen() {
                       style={{
                         color: numberBold ? colors.primary : colors.muted,
                         fontWeight: "800",
-                        fontSize: 11,
+                        fontSize: FONT_SIZE.secondary,
                       }}
                     >
                       {t.numberBold}: {numberBold ? "ON" : "OFF"}
@@ -5622,7 +5625,7 @@ export default function HomeScreen() {
                       style={{
                         color: numberMirror ? colors.primary : colors.muted,
                         fontWeight: "800",
-                        fontSize: 11,
+                        fontSize: FONT_SIZE.secondary,
                       }}
                     >
                       {t.numberMirror}: {numberMirror ? "ON" : "OFF"}
@@ -5685,7 +5688,7 @@ export default function HomeScreen() {
                             selectedPaper === option.id
                               ? "#fff"
                               : colors.foreground,
-                          fontSize: 10,
+                          fontSize: FONT_SIZE.secondary,
                           fontWeight: "800",
                         }}
                       >
@@ -5717,7 +5720,7 @@ export default function HomeScreen() {
                               selectedWeight === value
                                 ? "#fff"
                                 : colors.foreground,
-                            fontSize: 10,
+                            fontSize: FONT_SIZE.secondary,
                             fontWeight: "800",
                           }}
                         >
@@ -5747,7 +5750,7 @@ export default function HomeScreen() {
                         style={{
                           color:
                             orientation === value ? "#fff" : colors.foreground,
-                          fontSize: 10,
+                          fontSize: FONT_SIZE.secondary,
                           fontWeight: "800",
                         }}
                       >
@@ -5769,7 +5772,7 @@ export default function HomeScreen() {
                   <Text
                     style={{
                       color: duplex ? "#fff" : colors.foreground,
-                      fontSize: 11,
+                      fontSize: FONT_SIZE.secondary,
                       fontWeight: "800",
                       textAlign: "center",
                     }}
@@ -5875,7 +5878,7 @@ export default function HomeScreen() {
                       style={{
                         color: printCollate ? colors.primary : colors.muted,
                         fontWeight: "800",
-                        fontSize: 11,
+                        fontSize: FONT_SIZE.secondary,
                       }}
                     >
                       {t.collate}: {printCollate ? "ON" : "OFF"}
@@ -6073,7 +6076,7 @@ export default function HomeScreen() {
                       style={{
                         color: scannerDuplex ? colors.primary : colors.muted,
                         fontWeight: "800",
-                        fontSize: 11,
+                        fontSize: FONT_SIZE.secondary,
                       }}
                     >
                       {t.scanDuplex}: {scannerDuplex ? "ON" : "OFF"}
@@ -6090,7 +6093,7 @@ export default function HomeScreen() {
                       style={{
                         color: scannerDeskew ? colors.primary : colors.muted,
                         fontWeight: "800",
-                        fontSize: 11,
+                        fontSize: FONT_SIZE.secondary,
                       }}
                     >
                       {t.deskew}: {scannerDeskew ? "ON" : "OFF"}
@@ -6109,7 +6112,7 @@ export default function HomeScreen() {
                           ? colors.primary
                           : colors.muted,
                         fontWeight: "800",
-                        fontSize: 11,
+                        fontSize: FONT_SIZE.secondary,
                       }}
                     >
                       {t.removeBlanks}: {scannerBlankPages ? "ON" : "OFF"}
@@ -6585,8 +6588,8 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     marginBottom: 1,
   },
-  eyebrow: { fontSize: 12, fontWeight: "600", letterSpacing: 0.2 },
-  brandName: { fontSize: 25, fontWeight: "800", letterSpacing: -0.8 },
+  eyebrow: { fontSize: FONT_SIZE.label, fontWeight: "600", letterSpacing: 0.2 },
+  brandName: { fontSize: FONT_SIZE.heading, fontWeight: "800", letterSpacing: -0.8 },
   brandMark: {
     width: 34,
     height: 34,
@@ -6594,7 +6597,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  subtitle: { fontSize: 12, marginTop: 2 },
+  subtitle: { fontSize: FONT_SIZE.label, marginTop: 2 },
   headerTools: { gap: 8 },
   toolButton: {
     width: 39,
@@ -6604,7 +6607,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  langText: { fontWeight: "800", fontSize: 13 },
+  langText: { fontWeight: "800", fontSize: FONT_SIZE.body },
   offlineBanner: {
     alignItems: "center",
     gap: 8,
@@ -6614,7 +6617,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 14,
   },
-  offlineText: { fontSize: 12, fontWeight: "700", flex: 1 },
+  offlineText: { fontSize: FONT_SIZE.label, fontWeight: "700", flex: 1 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   errorBanner: {
     alignItems: "center",
@@ -6625,8 +6628,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   errorCopy: { flex: 1 },
-  errorTitle: { fontSize: 12, fontWeight: "800" },
-  errorHint: { fontSize: 10.5, marginTop: 3, lineHeight: 15 },
+  errorTitle: { fontSize: FONT_SIZE.label, fontWeight: "800" },
+  errorHint: { fontSize: FONT_SIZE.secondary, marginTop: 3, lineHeight: LINE_HEIGHT.secondary },
   workspaceShell: { paddingTop: 6, paddingBottom: 24, gap: 14 },
   workspaceHeader: { alignItems: "center", gap: 10, marginBottom: 4 },
   backButton: {
@@ -6638,12 +6641,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
   },
-  backButtonText: { fontSize: 11, fontWeight: "800" },
+  backButtonText: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
   workspaceHeading: { flex: 1, alignItems: "flex-end", gap: 3 },
-  workspaceTitle: { fontSize: 22, fontWeight: "900" },
-  workspaceHint: { fontSize: 11, lineHeight: 17 },
+  workspaceTitle: { fontSize: FONT_SIZE.title, fontWeight: "900" },
+  workspaceHint: { fontSize: FONT_SIZE.secondary, lineHeight: LINE_HEIGHT.secondary },
   workspaceSectionLabel: {
-    fontSize: 15,
+    fontSize: FONT_SIZE.body,
     fontWeight: "900",
     textAlign: "right",
   },
@@ -6663,17 +6666,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  workspaceTileTitle: { fontSize: 13, fontWeight: "900", textAlign: "right" },
+  workspaceTileTitle: { fontSize: FONT_SIZE.body, fontWeight: "900", textAlign: "right" },
   workspaceTileHint: {
     flex: 1,
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: FONT_SIZE.secondary,
+    lineHeight: LINE_HEIGHT.secondary,
     textAlign: "right",
   },
   workspacePanel: { gap: 12 },
   advancedCard: { borderRadius: 14, borderWidth: 1, padding: 12, gap: 9 },
-  advancedTitle: { fontSize: 14, fontWeight: "900", textAlign: "right" },
-  settingLabel: { fontSize: 10, fontWeight: "800", textAlign: "right", gap: 3 },
+  advancedTitle: { fontSize: FONT_SIZE.body, fontWeight: "900", textAlign: "right" },
+  settingLabel: { fontSize: FONT_SIZE.secondary, fontWeight: "800", textAlign: "right", gap: 3 },
   settingPills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   settingPill: {
     minHeight: 32,
@@ -6708,10 +6711,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
-  pdfPageNumber: { fontSize: 14, fontWeight: "900" },
-  pdfPageMeta: { fontSize: 9, fontWeight: "700" },
+  pdfPageNumber: { fontSize: FONT_SIZE.body, fontWeight: "900" },
+  pdfPageMeta: { fontSize: FONT_SIZE.caption, fontWeight: "700" },
   pdfPageControls: { alignItems: "center", gap: 4 },
-  pdfPageOrientation: { fontSize: 9, fontWeight: "800", marginBottom: 2 },
+  pdfPageOrientation: { fontSize: FONT_SIZE.caption, fontWeight: "800", marginBottom: 2 },
   pdfPageButton: {
     width: 30,
     height: 27,
@@ -6736,7 +6739,7 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   workspacePreviewTitle: {
-    fontSize: 16,
+    fontSize: FONT_SIZE.subtitle,
     fontWeight: "900",
     textAlign: "right",
   },
@@ -6745,7 +6748,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     borderWidth: 1,
     paddingHorizontal: 12,
-    fontSize: 12,
+    fontSize: FONT_SIZE.label,
     textAlign: "right",
   },
   workspacePrimary: {
@@ -6768,17 +6771,17 @@ const styles = StyleSheet.create({
   heroKicker: {
     color: "#BFE8F2",
     fontWeight: "700",
-    fontSize: 11,
+    fontSize: FONT_SIZE.secondary,
     letterSpacing: 0.7,
   },
   heroTitle: {
     color: "#fff",
     fontWeight: "800",
-    fontSize: 26,
-    lineHeight: 31,
+    fontSize: FONT_SIZE.heading,
+    lineHeight: LINE_HEIGHT.heading,
     textAlign: "right",
   },
-  heroDescription: { color: "#DDF6FA", fontSize: 12, marginTop: 3 },
+  heroDescription: { color: "#DDF6FA", fontSize: FONT_SIZE.label, marginTop: 3 },
   heroArt: {
     width: 102,
     height: 112,
@@ -6805,7 +6808,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 2,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "800" },
+  sectionTitle: { fontSize: FONT_SIZE.subtitle, fontWeight: "800" },
   titleRule: {
     height: 3,
     width: 31,
@@ -6814,7 +6817,7 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: 31,
   },
-  viewAll: { fontSize: 12, fontWeight: "700" },
+  viewAll: { fontSize: FONT_SIZE.label, fontWeight: "700" },
   actionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -6848,7 +6851,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     marginTop: 9,
-    fontSize: 12,
+    fontSize: FONT_SIZE.label,
   },
   idFacesRow: { gap: 9, marginTop: 12 },
   idFaceBlock: { flex: 1, gap: 6 },
@@ -6861,7 +6864,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   idPreviewImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  idFaceLabel: { fontSize: 11, fontWeight: "800", textAlign: "center" },
+  idFaceLabel: { fontSize: FONT_SIZE.secondary, fontWeight: "800", textAlign: "center" },
   idFaceActions: { gap: 5 },
   miniButton: {
     minHeight: 31,
@@ -6873,7 +6876,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 4,
   },
-  miniButtonText: { fontSize: 9.5, fontWeight: "700" },
+  miniButtonText: { fontSize: FONT_SIZE.caption, fontWeight: "700" },
   actionCard: { width: "48.5%", borderRadius: 17, padding: 13, minHeight: 113 },
   actionIcon: {
     width: 39,
@@ -6883,8 +6886,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  actionTitle: { color: "#111111", fontSize: 14, fontWeight: "800" },
-  actionHint: { color: "#6A7E91", fontSize: 10.5, marginTop: 4 },
+  actionTitle: { color: "#111111", fontSize: FONT_SIZE.body, fontWeight: "800" },
+  actionHint: { color: "#6A7E91", fontSize: FONT_SIZE.secondary, marginTop: 4 },
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
   rowPressed: { opacity: 0.65 },
   filesCard: {
@@ -6908,23 +6911,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fileInfo: { flex: 1 },
-  fileName: { fontSize: 12.5, fontWeight: "700" },
-  fileTime: { fontSize: 10.5, marginTop: 3 },
+  fileName: { fontSize: FONT_SIZE.label, fontWeight: "700" },
+  fileTime: { fontSize: FONT_SIZE.secondary, marginTop: 3 },
   settingsCard: {
     borderRadius: 17,
     borderWidth: 1,
     padding: 14,
     marginBottom: 16,
   },
-  smallLabel: { fontSize: 11, fontWeight: "600" },
-  settingValue: { fontSize: 13, fontWeight: "800" },
+  smallLabel: { fontSize: FONT_SIZE.secondary, fontWeight: "600" },
+  settingValue: { fontSize: FONT_SIZE.body, fontWeight: "800" },
   pill: {
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: 20,
     borderWidth: 1,
   },
-  pillText: { fontSize: 11, fontWeight: "700" },
+  pillText: { fontSize: FONT_SIZE.secondary, fontWeight: "700" },
   divider: { height: 1, marginVertical: 12 },
   weightRow: { gap: 8, marginTop: 10 },
   weightItem: {
@@ -6934,8 +6937,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 10,
   },
-  weightValue: { fontSize: 11, fontWeight: "800" },
-  weightLabel: { fontSize: 9.5, marginTop: 3 },
+  weightValue: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
+  weightLabel: { fontSize: FONT_SIZE.caption, marginTop: 3 },
   segmented: {
     flexDirection: "row",
     padding: 3,
@@ -6952,7 +6955,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 5,
   },
-  segmentText: { fontSize: 11, fontWeight: "700" },
+  segmentText: { fontSize: FONT_SIZE.secondary, fontWeight: "700" },
   duplexToggle: {
     borderWidth: 1,
     borderRadius: 11,
@@ -6983,7 +6986,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 7,
   },
-  printButtonText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  printButtonText: { color: "#fff", fontSize: FONT_SIZE.label, fontWeight: "800" },
   smartCard: {
     borderRadius: 17,
     borderWidth: 1,
@@ -6998,7 +7001,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  aiHint: { fontSize: 10, marginTop: 3 },
+  aiHint: { fontSize: FONT_SIZE.secondary, marginTop: 3 },
   aiBody: { gap: 9, alignItems: "stretch", marginTop: 12 },
   commandInput: {
     flex: 1,
@@ -7007,7 +7010,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     paddingHorizontal: 11,
     paddingTop: 10,
-    fontSize: 11,
+    fontSize: FONT_SIZE.secondary,
   },
   executeButton: {
     height: 40,
@@ -7017,8 +7020,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 4,
   },
-  executeText: { color: "#fff", fontSize: 12, fontWeight: "800" },
-  aiOffText: { fontSize: 11, marginTop: 6, lineHeight: 18 },
+  executeText: { color: "#fff", fontSize: FONT_SIZE.label, fontWeight: "800" },
+  aiOffText: { fontSize: FONT_SIZE.secondary, marginTop: 6, lineHeight: LINE_HEIGHT.secondary },
   previewHub: {
     borderRadius: 17,
     borderWidth: 1,
@@ -7039,7 +7042,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  previewRowText: { flex: 1, fontSize: 12, fontWeight: "800" },
+  previewRowText: { flex: 1, fontSize: FONT_SIZE.label, fontWeight: "800" },
   previewImageFrame: {
     height: 170,
     borderRadius: 12,
@@ -7082,7 +7085,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 4,
   },
-  pdfThumbnailFallbackText: { fontSize: 9, fontWeight: "600" },
+  pdfThumbnailFallbackText: { fontSize: FONT_SIZE.caption, fontWeight: "600" },
   thumbnailExternalButton: {
     minHeight: 26,
     borderWidth: 1,
@@ -7094,7 +7097,7 @@ const styles = StyleSheet.create({
     gap: 3,
     marginTop: 3,
   },
-  thumbnailExternalText: { fontSize: 9, fontWeight: "700" },
+  thumbnailExternalText: { fontSize: FONT_SIZE.caption, fontWeight: "700" },
   progressCard: {
     borderRadius: 12,
     borderWidth: 1,
@@ -7105,12 +7108,12 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   progressHeader: { alignItems: "center", gap: 8 },
-  progressLabel: { flex: 1, fontSize: 11, fontWeight: "700" },
+  progressLabel: { flex: 1, fontSize: FONT_SIZE.secondary, fontWeight: "700" },
   progressStages: { gap: 6, justifyContent: "space-between" },
   progressStage: { flex: 1, minWidth: 0, gap: 4 },
   progressStageTrack: { height: 4, borderRadius: 2 },
-  progressStageText: { fontSize: 8.5, fontWeight: "600" },
-  progressHint: { fontSize: 9, lineHeight: 13 },
+  progressStageText: { fontSize: FONT_SIZE.caption, fontWeight: "600" },
+  progressHint: { fontSize: FONT_SIZE.caption, lineHeight: LINE_HEIGHT.caption },
   previewFileButton: {
     minHeight: 40,
     borderWidth: 1,
@@ -7129,7 +7132,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  previewListText: { flex: 1, fontSize: 11, fontWeight: "700" },
+  previewListText: { flex: 1, fontSize: FONT_SIZE.secondary, fontWeight: "700" },
   pageEditorCard: {
     borderRadius: 17,
     borderWidth: 1,
@@ -7142,7 +7145,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 11,
     marginTop: 7,
-    fontSize: 12,
+    fontSize: FONT_SIZE.label,
     fontWeight: "700",
   },
   resultsCard: {
@@ -7159,7 +7162,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 7,
   },
-  resultText: { flex: 1, fontSize: 11, fontWeight: "700" },
+  resultText: { flex: 1, fontSize: FONT_SIZE.secondary, fontWeight: "700" },
   selectedNotice: {
     borderWidth: 1,
     borderRadius: 12,
@@ -7168,7 +7171,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 7,
   },
-  selectedNoticeText: { flex: 1, fontSize: 10.5, fontWeight: "700" },
+  selectedNoticeText: { flex: 1, fontSize: FONT_SIZE.secondary, fontWeight: "700" },
   roadmapCard: {
     borderRadius: 17,
     borderWidth: 1,
@@ -7184,7 +7187,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   roadmapTitleBlock: { flex: 1 },
-  roadmapHint: { fontSize: 10, marginTop: 3 },
+  roadmapHint: { fontSize: FONT_SIZE.secondary, marginTop: 3 },
   roadmapRow: {
     alignItems: "center",
     gap: 9,
@@ -7200,9 +7203,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   roadmapCopy: { flex: 1 },
-  roadmapStage: { fontSize: 12, fontWeight: "800" },
-  roadmapStageHint: { fontSize: 10, marginTop: 3, lineHeight: 15 },
-  roadmapStatus: { fontSize: 10, fontWeight: "800" },
+  roadmapStage: { fontSize: FONT_SIZE.label, fontWeight: "800" },
+  roadmapStageHint: { fontSize: FONT_SIZE.secondary, marginTop: 3, lineHeight: LINE_HEIGHT.secondary },
+  roadmapStatus: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
   profileCard: {
     borderRadius: 17,
     borderWidth: 1,
@@ -7217,8 +7220,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minWidth: 130,
   },
-  profilePillText: { fontSize: 11, fontWeight: "800" },
-  profilePillHint: { fontSize: 9.5, marginTop: 4 },
+  profilePillText: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
+  profilePillHint: { fontSize: FONT_SIZE.caption, marginTop: 4 },
   phaseCard: {
     borderRadius: 17,
     borderWidth: 1,
@@ -7234,7 +7237,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   phaseTitleBlock: { flex: 1 },
-  phaseHint: { fontSize: 10, marginTop: 3 },
+  phaseHint: { fontSize: FONT_SIZE.secondary, marginTop: 3 },
   deviceRow: {
     alignItems: "center",
     gap: 9,
@@ -7242,11 +7245,11 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   deviceCopy: { flex: 1 },
-  deviceName: { fontSize: 12, fontWeight: "800" },
-  deviceState: { fontSize: 10, marginTop: 3, lineHeight: 15 },
+  deviceName: { fontSize: FONT_SIZE.label, fontWeight: "800" },
+  deviceState: { fontSize: FONT_SIZE.secondary, marginTop: 3, lineHeight: LINE_HEIGHT.secondary },
   stateDot: { width: 9, height: 9, borderRadius: 5 },
   scannerSectionTitle: {
-    fontSize: 12,
+    fontSize: FONT_SIZE.label,
     fontWeight: "800",
     marginTop: 10,
     marginBottom: 8,
@@ -7256,16 +7259,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 11,
-    fontSize: 11,
+    fontSize: FONT_SIZE.secondary,
   },
-  scannerNetworkText: { fontSize: 10, marginTop: 5 },
+  scannerNetworkText: { fontSize: FONT_SIZE.secondary, marginTop: 5 },
   scannerOptionRow: {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
     marginTop: 10,
   },
-  scannerLabel: { fontSize: 10.5, fontWeight: "700", flex: 1 },
+  scannerLabel: { fontSize: FONT_SIZE.secondary, fontWeight: "700", flex: 1 },
   scannerPills: { gap: 5 },
   scannerPill: {
     minWidth: 42,
@@ -7275,7 +7278,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     alignItems: "center",
   },
-  scannerPillText: { fontSize: 10, fontWeight: "800" },
+  scannerPillText: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
   scannerAdf: {
     borderRadius: 10,
     borderWidth: 1,
@@ -7294,7 +7297,7 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 4,
   },
-  outlineActionText: { fontSize: 11, fontWeight: "800" },
+  outlineActionText: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
   taskHeader: {
     alignItems: "center",
     justifyContent: "space-between",
@@ -7302,10 +7305,10 @@ const styles = StyleSheet.create({
     paddingTop: 11,
     marginTop: 12,
   },
-  taskTitle: { fontSize: 12, fontWeight: "800" },
-  taskCount: { fontSize: 11, fontWeight: "700" },
-  taskEmpty: { fontSize: 10.5, paddingTop: 8 },
-  taskItem: { fontSize: 10.5, paddingTop: 8 },
+  taskTitle: { fontSize: FONT_SIZE.label, fontWeight: "800" },
+  taskCount: { fontSize: FONT_SIZE.secondary, fontWeight: "700" },
+  taskEmpty: { fontSize: FONT_SIZE.secondary, paddingTop: 8 },
+  taskItem: { fontSize: FONT_SIZE.secondary, paddingTop: 8 },
   cancelTasksButton: {
     height: 36,
     borderRadius: 10,

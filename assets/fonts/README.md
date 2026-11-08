@@ -4,6 +4,11 @@
   licence field states: "Completely free, for both personal and commercial use."
   This is the app-wide font (see `components/app-text.tsx`).
 
+- `elgharib-gratitude.otf` — **Elgharib Yarab RK Gratitude** by Ahmed Alaa Elgharib
+  (copyright notice: "All Rights Reserved"; the font file carries no free-use licence
+  text, so keep the permission from the author). Used only for the home screen greeting
+  "أهلا د.يوسف". It has no "." glyph, so the full stop is drawn in Monaco Kufi.
+
 The splash greeting "أهلا د.يوسف" is drawn from pre-generated outlines
 (`shared/welcome-greeting-data.ts`, built by `scripts/build-welcome-greeting.py`);
 the Diwani font file itself is not bundled with the app.
