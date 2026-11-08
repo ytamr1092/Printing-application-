@@ -7,10 +7,10 @@ import {
 } from "react-native";
 
 /**
- * The app-wide font (Diwani Jali). The font file is registered once in
+ * The app-wide font (Monaco Kufi). The font file is registered once in
  * app/_layout.tsx under this family name.
  */
-export const APP_FONT_FAMILY = "DiwaniJaly";
+export const APP_FONT_FAMILY = "MonacoKufi";
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
@@ -27,7 +27,7 @@ function flattenStyle(style: unknown): Record<string, unknown> {
  * Applies the app font on top of whatever style a screen passes in.
  * - An explicit fontFamily (for example an icon font) still wins.
  * - fontWeight is reset because the font has a single weight and a faux bold
- *   smears the calligraphy.
+ *   distorts the letter shapes.
  * - letterSpacing is reset because spacing breaks Arabic letters apart.
  */
 export function withAppFont(style: unknown) {

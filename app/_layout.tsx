@@ -40,7 +40,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    [APP_FONT_FAMILY]: require("../assets/fonts/diwani-jaly.ttf"),
+    [APP_FONT_FAMILY]: require("../assets/fonts/monaco-kufi.otf"),
   });
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
