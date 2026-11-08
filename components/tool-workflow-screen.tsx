@@ -61,6 +61,7 @@ type Props = {
   pageEdits?: PdfPageEdit[];
   selectedPageIndex?: number | null;
   settings: Record<string, string | boolean>;
+  networkDevicePicker?: React.ReactNode;
   result: WorkflowResult | null;
   error: { title: string; hint: string } | null;
   processing: boolean;
@@ -366,6 +367,7 @@ export function ToolWorkflowScreen({
   pageEdits = [],
   selectedPageIndex = null,
   settings,
+  networkDevicePicker,
   result,
   error,
   processing,
@@ -725,8 +727,9 @@ export function ToolWorkflowScreen({
           {sectionTitle(tr(isArabic, "الطابعة", "Printer"), "print")}
           {field("printerIp", tr(isArabic, "عنوان الطابعة (IP) للطباعة المباشرة", "Printer address (IP) for direct printing"), "192.168.1.50", "numbers-and-punctuation")}
           <Text style={[styles.helper, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
-            {tr(isArabic, "اتركه فارغًا لاستخدام طباعة النظام. يمكنك البحث التلقائي من خانة المسح.", "Leave empty to use system printing. You can auto-find it from the Scan section.")}
+            {tr(isArabic, "أدخل عنوان IP محليًا للطباعة المباشرة؛ سيتحقق PrintPilot من دعم IPP Print-Job والصيغة. أو اختر طابعة مكتشفة. إذا تركت الحقل فارغًا، سيطلب التطبيق تأكيدًا قبل فتح نافذة Android لاختيار الوجهة.", "Enter a local IP address for direct printing; PrintPilot verifies IPP Print-Job and the document format. Or choose a discovered printer. If left empty, PrintPilot asks before opening Android's print dialog, where you choose the destination.")}
           </Text>
+          {networkDevicePicker ? <View style={{ marginTop: 12 }}>{networkDevicePicker}</View> : null}
           {sectionTitle(tr(isArabic, "الورق والطباعة", "Paper & print"), "tune")}
           {pills("selectedPaper", paperOptions.map((option) => ({ value: option.id, label: isArabic ? option.ar : option.en })))}
           {pills("selectedWeight", ["70 g/m²", "80 g/m²", "120 g/m²", "200 g/m²"].map((label) => ({ value: label, label })))}

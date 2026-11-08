@@ -68,13 +68,17 @@ import { pagesForOutput, scanPageGeometry, type ScanPage } from "@/shared/scan-p
 import {
   diagnoseDevice,
   discoverDevices,
-  fetchWithTimeout,
-  probeEscl,
-  probeIpp,
-  runEsclScan,
-  sendIppPrintJob,
-  type FoundDevice,
+  runWsdNetworkScan,
+  discoverNetworkDevices,
+  devicesForTask,
+  readIppPrinterDevice,
+  sendIppPrintJobToDevice,
+  requiresDestinationChangeConfirmation,
+  runSingleFlight,
+  retainExplicitSelection,
+  type NetworkPrinterDevice,
 } from "@/shared/network-devices";
+import type { WsdScannerDevice } from "@/shared/wsd-scanner";
 import { fileBaseName, fileExtension, numberedFileName, sanitizeFileName } from "@/shared/file-name";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 import {
@@ -328,6 +332,143 @@ function SettingPills({
   );
 }
 
+function NetworkDeviceSelector({
+  devices,
+  mode,
+  selectedPrintAddress,
+  selectedScanServiceUrl,
+  discovering,
+  searched,
+  error,
+  colors,
+  isArabic,
+  onDiscover,
+  onSelectPrint,
+  onSelectScan,
+}: {
+  devices: NetworkPrinterDevice[];
+  mode: "print" | "scan";
+  selectedPrintAddress: string | null;
+  selectedScanServiceUrl: string | null;
+  discovering: boolean;
+  searched: boolean;
+  error: string | null;
+  colors: ReturnType<typeof useColors>;
+  isArabic: boolean;
+  onDiscover: () => void;
+  onSelectPrint: (device: NetworkPrinterDevice) => void;
+  onSelectScan: (device: NetworkPrinterDevice) => void;
+}) {
+  const text = copy[isArabic ? "ar" : "en"];
+  const taskDevices = devicesForTask(devices, mode);
+  const selected = mode === "print" ? Boolean(selectedPrintAddress) : Boolean(selectedScanServiceUrl);
+  const searchLabel = mode === "print" ? text.printDeviceSearch : text.scanDeviceSearch;
+  const searchingLabel = mode === "print" ? text.printDeviceSearching : text.scanDeviceSearching;
+  const searchPrompt = mode === "print" ? text.printDeviceSearchPrompt : text.scanDeviceSearchPrompt;
+  const searchEmpty = mode === "print" ? text.printDeviceSearchNone : text.scanDeviceSearchNone;
+  return (
+    <View style={{ gap: 9, marginVertical: 8 }}>
+      <Pressable
+        accessibilityRole="button"
+        disabled={discovering}
+        onPress={onDiscover}
+        style={({ pressed }) => [
+          styles.outlineAction,
+          { borderColor: colors.primary, opacity: discovering ? 0.6 : 1 },
+          pressed && styles.pressed,
+        ]}
+      >
+        {discovering ? <ActivityIndicator color={colors.primary} size="small" /> : <Icon name="search" color={colors.primary} size={18} />}
+        <Text style={[styles.outlineActionText, { color: colors.primary }]}>
+          {discovering ? searchingLabel : searchLabel}
+        </Text>
+      </Pressable>
+      {discovering ? (
+        <Text style={{ color: colors.muted, textAlign: isArabic ? "right" : "left" }}>{searchingLabel}</Text>
+      ) : error ? (
+        <Text style={{ color: colors.error, textAlign: isArabic ? "right" : "left" }}>{error}</Text>
+      ) : searched && taskDevices.length === 0 ? (
+        <Text style={{ color: colors.muted, textAlign: isArabic ? "right" : "left" }}>{searchEmpty}</Text>
+      ) : !searched ? (
+        <Text style={{ color: colors.muted, textAlign: isArabic ? "right" : "left" }}>{searchPrompt}</Text>
+      ) : null}
+      {taskDevices.map((device) => {
+        const selectedPrint = device.address === selectedPrintAddress;
+        const selectedScan = device.serviceUrl === selectedScanServiceUrl;
+        const selectedForTask = mode === "print" ? selectedPrint : selectedScan;
+        const printFormats = (device.supportedFormats ?? [])
+          .filter((format) => format === "application/pdf" || format === "image/jpeg")
+          .map((format) => format === "application/pdf" ? "PDF" : "JPEG");
+        return (
+          <View
+            key={device.serviceUrl ?? `ipp:${device.address}`}
+            style={[
+              styles.advancedCard,
+              {
+                backgroundColor: colors.surface,
+                borderColor: selectedForTask ? colors.primary : colors.border,
+                borderWidth: 1,
+                padding: 12,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: isArabic ? "row-reverse" : "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ color: colors.foreground, fontWeight: "800", textAlign: isArabic ? "right" : "left" }}>
+                  {device.name || device.model || text.deviceNameUnknown}
+                </Text>
+                {device.model && device.model !== device.name ? (
+                  <Text style={{ color: colors.muted, textAlign: isArabic ? "right" : "left" }}>{device.model}</Text>
+                ) : null}
+                <Text style={{ color: colors.muted, textAlign: isArabic ? "right" : "left" }}>{text.scannerAddress}: {device.address}</Text>
+                {mode === "print" ? (
+                  <Text style={{ color: colors.success, textAlign: isArabic ? "right" : "left" }}>
+                    {`${text.printConfirmed}: ${printFormats.join(", ")}`}
+                  </Text>
+                ) : (
+                  <Text style={{ color: colors.success, textAlign: isArabic ? "right" : "left" }}>{text.scanConfirmed}</Text>
+                )}
+              </View>
+            </View>
+            <View style={{ flexDirection: isArabic ? "row-reverse" : "row", gap: 8, marginTop: 10 }}>
+              {mode === "print" ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedPrint }}
+                  onPress={() => onSelectPrint(device)}
+                  style={[styles.settingPill, { flex: 1, borderColor: selectedPrint ? colors.primary : colors.border, backgroundColor: selectedPrint ? colors.primaryFill : colors.background }]}
+                >
+                  <Text style={{ color: selectedPrint ? "#fff" : colors.foreground, fontWeight: "800", textAlign: "center" }}>
+                    {selectedPrint ? text.printSelected : text.printAction}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {mode === "scan" ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedScan }}
+                  onPress={() => onSelectScan(device)}
+                  style={[styles.settingPill, { flex: 1, borderColor: selectedScan ? colors.primary : colors.border, backgroundColor: selectedScan ? colors.primaryFill : colors.background }]}
+                >
+                  <Text style={{ color: selectedScan ? "#fff" : colors.foreground, fontWeight: "800", textAlign: "center" }}>
+                    {selectedScan ? text.scanSelected : text.scanAction}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+      <Text style={{ color: selected ? colors.success : colors.muted, textAlign: isArabic ? "right" : "left" }}>
+        {selected ? text.deviceSelected : mode === "print" ? text.printChooseDevice : text.scanChooseDevice}
+      </Text>
+      <Text style={{ color: colors.muted, textAlign: isArabic ? "right" : "left" }}>
+        {mode === "print" ? text.printUnconfirmedHidden : text.scanUnconfirmedHidden}
+      </Text>
+    </View>
+  );
+}
+
 type CutFile = {
   uri: string;
   name: string;
@@ -358,8 +499,14 @@ export default function HomeScreen() {
   const [printMargins, setPrintMargins] = useState("5");
   const [printCollate, setPrintCollate] = useState(true);
   const [printNumbering, setPrintNumbering] = useState(false);
-  const printerCaps = useRef<FoundDevice | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [wsdDiscovering, setWsdDiscovering] = useState(false);
+  const [wsdHasSearched, setWsdHasSearched] = useState(false);
+  const [wsdDiscoveryError, setWsdDiscoveryError] = useState<string | null>(null);
+  const [networkDevices, setNetworkDevices] = useState<NetworkPrinterDevice[]>([]);
+  const networkDiscoveryPromise = useRef<Promise<void> | null>(null);
+  const [selectedWsdScanner, setSelectedWsdScanner] = useState<WsdScannerDevice | null>(null);
+  const [selectedPrintDevice, setSelectedPrintDevice] = useState<NetworkPrinterDevice | null>(null);
   const [diagnosisReportUri, setDiagnosisReportUri] = useState<string | null>(null);
   const [diagnosisReportText, setDiagnosisReportText] = useState("");
   const [scanResult, setScanResult] = useState<WorkflowResult | null>(null);
@@ -389,7 +536,6 @@ export default function HomeScreen() {
     "unknown" | "not-found" | "connected"
   >("unknown");
   const [printerIp, setPrinterIp] = useState("");
-  const [phoneIp, setPhoneIp] = useState("");
   const [scannerDpi, setScannerDpi] = useState("300");
   const [scannerColor, setScannerColor] = useState<"color" | "bw">("color");
   const [scannerAdf, setScannerAdf] = useState(true);
@@ -1009,14 +1155,14 @@ export default function HomeScreen() {
   };
 
   const scanIdFaceFromKyocera = async (side: "front" | "back") => {
-    const ip = printerIp.trim();
-    if (!isValidIpv4(ip)) {
-      showError(t.scanNeedsConnection, t.scannerIpHint);
+    const scanner = selectedWsdScanner;
+    if (!scanner) {
+      showError(t.scanNeedsConnection, t.scanChooseDevice);
       return;
     }
     setIdBusy(true);
     try {
-      const [page] = await runEsclScan(ip, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" });
+      const [page] = await runWsdNetworkScan(scanner, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" });
       const uri = `${FileSystem.cacheDirectory}PrintPilot-IDScan-${side}-${Date.now()}.jpg`;
       await FileSystem.writeAsStringAsync(uri, bytesToBase64(page), {
         encoding: FileSystem.EncodingType.Base64,
@@ -1035,8 +1181,9 @@ export default function HomeScreen() {
         [`${t.scanIdFace}: ${side === "front" ? t.idFront : t.idBack}`, ...current].slice(0, 4),
       );
       setErrorMessage(null);
-    } catch {
-      showError(t.scanFailed, t.scanFailedHint);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "WSD scan failed.";
+      showError(t.scanFailed, `${reason}\n\n${t.scanFailedHint}`);
     } finally {
       setIdBusy(false);
     }
@@ -1103,87 +1250,70 @@ export default function HomeScreen() {
     }
   };
 
-  const checkPrinterConnection = async () => {
-    const ip = printerIp.trim();
-    if (!isValidIpv4(ip)) {
-      showError(t.connectionFailed, t.scannerIpHint);
-      return;
-    }
-    try {
-      if (Platform.OS === "web") {
-        showError(t.connectionFailed, t.scanUnavailableHint);
-        return;
-      }
-      const Network = await loadNetwork();
-      const [networkState, localIp] = await Promise.all([
-        Network.getNetworkStateAsync(),
-        Network.getIpAddressAsync(),
-      ]);
-      setPhoneIp(localIp);
-      if (!networkState.isConnected) {
-        setDeviceChecked(true);
-        setDeviceMessage("not-found");
-        showError(t.connectionFailed, t.scanUnavailableHint);
-        return;
-      }
-      // A printer answers IPP (printing) and/or eSCL (scanning); a plain web page counts too.
-      const [ipp, escl] = await Promise.all([probeIpp(ip, 2500), probeEscl(ip, 2500)]);
-      let reachable = Boolean(ipp || escl);
-      if (!reachable) {
-        try {
-          reachable = (await fetchWithTimeout(`http://${ip}`, { method: "GET" }, 3500)).ok;
-        } catch {
-          reachable = false;
-        }
-      }
-      printerCaps.current = { ip, ipp, escl };
-      setDeviceChecked(true);
-      setDeviceMessage(reachable ? "connected" : "not-found");
-      if (reachable) setTasks((current) => [`${t.connected}: ${ip}`, ...current].slice(0, 4));
-      else showError(t.connectionFailed, `${t.scanUnavailableHint}\n\n${(await diagnoseDevice(ip)).join("\n")}`);
-    } catch {
-      setDeviceChecked(true);
-      setDeviceMessage("not-found");
-      showError(t.connectionFailed, t.scanUnavailableHint);
-    }
-  };
-
-  // Looks for printers/scanners on the phone's own Wi-Fi network.
-  const discoverPrinters = async () => {
+  const searchNetworkDevices = () => runSingleFlight(networkDiscoveryPromise, async () => {
     if (Platform.OS === "web") {
-      showError(t.connectionFailed, t.scanUnavailableHint);
+      setWsdHasSearched(true);
+      setNetworkDevices([]);
+      setSelectedWsdScanner(null);
+      setSelectedPrintDevice(null);
+      setWsdDiscoveryError(t.wsdSearchError);
       return;
     }
-    setDiscovering(true);
-    updateProgress(t.discovering, 1);
+    setWsdDiscovering(true);
+    setWsdHasSearched(true);
+    setWsdDiscoveryError(null);
+    setNetworkDevices([]);
     try {
       const Network = await loadNetwork();
       const localIp = await Network.getIpAddressAsync();
-      setPhoneIp(localIp);
-      const found = await discoverDevices(localIp, (done, total) =>
-        updateProgress(t.discovering, done > (total * 2) / 3 ? 3 : done > total / 3 ? 2 : 1),
-      );
+      const result = await discoverNetworkDevices(localIp);
+      setNetworkDevices(result.devices);
+      const printCandidates = result.devices.filter((device) => device.supportsPrint === true);
+      setSelectedPrintDevice((selected) => retainExplicitSelection(
+        selected,
+        printCandidates,
+        (candidate, previous) => candidate.address === previous.address,
+      ));
+      const scanCandidates: WsdScannerDevice[] = result.devices
+        .filter((device): device is NetworkPrinterDevice & { serviceUrl: string } => device.supportsScan === true && typeof device.serviceUrl === "string")
+        .map((device) => ({
+          serviceUrl: device.serviceUrl,
+          name: device.name ?? "",
+          ...(device.model ? { model: device.model } : {}),
+          address: device.address,
+        }));
+      setSelectedWsdScanner((selected) => retainExplicitSelection(
+        selected,
+        scanCandidates,
+        (candidate, previous) => candidate.serviceUrl === previous.serviceUrl,
+      ));
       setDeviceChecked(true);
-      if (!found.length) {
-        setDeviceMessage("not-found");
-        setOperationProgress(null);
-        showError(t.connectionFailed, `${t.discoverNone}\n\nWi-Fi IP: ${localIp}`);
-        return;
-      }
-      const best = found.find((device) => device.ipp && device.escl) ?? found[0];
-      printerCaps.current = best;
-      setPrinterIp(best.ip);
-      setDeviceMessage("connected");
-      setTasks((current) => [`${t.connected}: ${best.ip}`, ...current].slice(0, 4));
+      setDeviceMessage(result.devices.some((device) => device.supportsScan === true) ? "connected" : "not-found");
+      setWsdDiscoveryError(result.wsdError ? `${t.wsdSearchError}\n${result.wsdError}` : null);
       setErrorMessage(null);
-      completeProgress();
-    } catch {
+    } catch (error) {
+      setDeviceChecked(true);
       setDeviceMessage("not-found");
-      setOperationProgress(null);
-      showError(t.connectionFailed, t.discoverNone);
+      const detail = error instanceof Error ? error.message : "";
+      setWsdDiscoveryError(detail ? `${t.wsdSearchError}\n${detail}` : t.wsdSearchError);
     } finally {
-      setDiscovering(false);
+      setWsdDiscovering(false);
     }
+  });
+
+  const selectPrintDevice = (device: NetworkPrinterDevice) => {
+    if (device.supportsPrint !== true) return;
+    setSelectedPrintDevice(device);
+  };
+
+  const selectScanDevice = (device: NetworkPrinterDevice) => {
+    if (device.supportsScan !== true || !device.serviceUrl) return;
+    setSelectedWsdScanner({
+      serviceUrl: device.serviceUrl,
+      name: device.name ?? "",
+      ...(device.model ? { model: device.model } : {}),
+      address: device.address,
+    });
   };
 
   // One-shot report for troubleshooting printer/scanner connection problems.
@@ -1197,13 +1327,13 @@ export default function HomeScreen() {
     try {
       const Network = await loadNetwork();
       const [state, localIp] = await Promise.all([Network.getNetworkStateAsync(), Network.getIpAddressAsync()]);
-      setPhoneIp(localIp);
       const lines = [`Wi-Fi IP: ${localIp}`, `Network: ${String(state.type)}, connected=${String(state.isConnected)}`];
       let target = printerIp.trim();
       if (!isValidIpv4(target)) {
         const found = await discoverDevices(localIp);
         lines.push(`Discovery: ${found.length ? found.map((d) => `${d.ip}${d.ipp ? " IPP" : ""}${d.escl ? " eSCL" : ""}`).join(", ") : "none"}`);
-        target = found[0]?.ip ?? "";
+        if (found.length === 1) target = found[0].ip;
+        else if (found.length > 1) lines.push("Multiple devices found; no printer was chosen automatically.");
       }
       if (isValidIpv4(target)) {
         lines.push(`Printer: ${target}`, ...(await diagnoseDevice(target)));
@@ -1317,9 +1447,9 @@ export default function HomeScreen() {
 
   // Scans, then opens a review window (preview, rotate, delete) before saving.
   const startScan = async () => {
-    const ip = printerIp.trim();
-    if (!isValidIpv4(ip)) {
-      showError(t.scanNeedsConnection, t.scannerIpHint);
+    const scanner = selectedWsdScanner;
+    if (!scanner) {
+      showError(t.scanNeedsConnection, t.scanChooseDevice);
       return;
     }
     setProcessing(true);
@@ -1328,7 +1458,7 @@ export default function HomeScreen() {
       // JPEG comes back from every scanner and can be analysed; PNG only when asked for.
       const wantPng = scannerFormat === "png";
       updateProgress(t.progressProcessing, 2);
-      const documents = await runEsclScan(ip, {
+      const documents = await runWsdNetworkScan(scanner, {
         dpi: Number(scannerDpi) || 300,
         color: scannerColor,
         source: scannerSource,
@@ -1367,8 +1497,7 @@ export default function HomeScreen() {
       setOperationProgress(null);
       const reason = error instanceof Error ? error.message : "";
       logEvent("scan", `failed: ${reason || "unknown"}`);
-      const lines = (await diagnoseDevice(ip)).join("\n");
-      showError(t.scanFailed, `${t.scanFailedHint}\n\n${reason}\n${lines}`);
+      showError(t.scanFailed, `${t.scanFailedHint}\n\n${reason || "WSD scan failed."}`);
     } finally {
       setProcessing(false);
     }
@@ -1802,56 +1931,91 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageGridOpen, previewKind, pendingAssets]);
 
-  // Sends documents through IPP first. PDF is never sent as raw bytes to 9100:
-  // the Kyocera accepted the socket but printed the literal %PDF stream.
-  // Only after IPP fails do we use the system print dialog.
-  const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "unconfirmed" | "system" | "fallback"> => {
-    const ip = printerIp.trim();
-    const wantsDirect = isValidIpv4(ip) && Platform.OS !== "web";
-    if (wantsDirect) {
-      const lower = mimeType.toLowerCase();
-      const documentFormat = lower.includes("pdf")
-        ? "application/pdf"
-        : lower.includes("jpeg") || lower.includes("jpg")
-          ? "image/jpeg"
-          : null;
-      if (documentFormat) {
-        try {
-          const base64 = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const documentBytes = base64ToBytes(base64);
-          // The file is sent over IPP only: the printer does not interpret a PDF
-          // sent raw to port 9100 and prints its source code as text instead.
-          const known = printerCaps.current?.ip === ip ? printerCaps.current.ipp : null;
-          logEvent("print", `target IP=${ip}, transport=IPP, known path=${known ?? "none"}, format=${documentFormat}, bytes=${documentBytes.length}`);
-          const sent = await sendIppPrintJob(
-            ip,
-            documentBytes,
-            {
-              mimeType: documentFormat,
-              jobName: fileBaseName(uri) || "PrintPilot",
-              copies: Math.max(1, Number(copies) || 1),
-              sides: duplex ? (duplexEdge === "short" ? "two-sided-short-edge" : "two-sided-long-edge") : "one-sided",
-              colorMode: colorMode === "bw" ? "monochrome" : "color",
-            },
-            known,
-          );
-          logEvent("print", `IPP target IP=${ip}, result=${String(sent)}`);
-          if (sent === "unconfirmed") return "unconfirmed";
-          if (sent) return "direct";
-          if (documentFormat === "application/pdf") {
-            logEvent("print", `PDF IPP failed for target IP=${ip}; RAW 9100 intentionally skipped`);
-          }
-        } catch (error) {
-          logEvent("print", `IPP error target IP=${ip}: ${error instanceof Error ? error.message : "unknown"}`);
-          // Falls through to the system dialog below.
-        }
+  const confirmSystemPrintFallback = (target: NetworkPrinterDevice | { address: string; name?: string }, reason: string) =>
+    new Promise<boolean>((resolve) => {
+      const targetName = target.name || t.deviceNameUnknown;
+      const prompt = t.printTargetFallbackPrompt
+        .replace("{name}", targetName)
+        .replace("{address}", target.address)
+        .replace("{reason}", reason);
+      Alert.alert(t.printTargetFailedTitle, prompt, [
+        { text: t.cancel, style: "cancel", onPress: () => resolve(false) },
+        { text: t.openSystemPrintDialog, onPress: () => resolve(true) },
+      ], { cancelable: true, onDismiss: () => resolve(false) });
+    });
+
+  const confirmSystemPrintWithoutTarget = () =>
+    new Promise<boolean>((resolve) => {
+      Alert.alert(t.printNoTargetTitle, t.printNoTargetPrompt, [
+        { text: t.cancel, style: "cancel", onPress: () => resolve(false) },
+        { text: t.openSystemPrintDialog, onPress: () => resolve(true) },
+      ], { cancelable: true, onDismiss: () => resolve(false) });
+    });
+
+  // The system dialog is never an automatic retry of a selected IPP target.
+  const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "unconfirmed" | "system" | "fallback" | "cancelled"> => {
+    const target = selectedPrintDevice ?? (isValidIpv4(printerIp.trim())
+      ? { address: printerIp.trim(), name: undefined, ippPath: undefined, supportedFormats: null, supportsPrint: null }
+      : null);
+    if (!target) {
+      const confirmed = await confirmSystemPrintWithoutTarget();
+      if (!confirmed) return "cancelled";
+      logEvent("print", "user confirmed Android print dialog without a PrintPilot target; destination must be chosen in system UI");
+      await Print.printAsync({ uri });
+      return "system";
+    }
+
+    const lower = mimeType.toLowerCase();
+    const documentFormat = lower.includes("pdf")
+      ? "application/pdf"
+      : lower.includes("jpeg") || lower.includes("jpg")
+        ? "image/jpeg"
+        : null;
+    let attempt: Awaited<ReturnType<typeof sendIppPrintJobToDevice>>;
+    if (!documentFormat || Platform.OS === "web") {
+      attempt = { status: "unsupported-format" };
+    } else {
+      try {
+        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        const documentBytes = base64ToBytes(base64);
+        logEvent("print", `selected IPP target=${target.address}, format=${documentFormat}, bytes=${documentBytes.length}`);
+        const options = {
+          mimeType: documentFormat,
+          jobName: fileBaseName(uri) || "PrintPilot",
+          copies: Math.max(1, Number(copies) || 1),
+          sides: duplex ? (duplexEdge === "short" ? "two-sided-short-edge" : "two-sided-long-edge") : "one-sided",
+          colorMode: colorMode === "bw" ? "monochrome" : "color",
+        };
+        const ippTarget = selectedPrintDevice ?? await readIppPrinterDevice(target.address);
+        attempt = ippTarget
+          ? await sendIppPrintJobToDevice(ippTarget, documentBytes, options)
+          : { status: "unconfirmed-capability" };
+      } catch (error) {
+        logEvent("print", `IPP error target=${target.address}: ${error instanceof Error ? error.message : "unknown"}`);
+        attempt = { status: "failed" };
       }
     }
-    logEvent("print", wantsDirect ? "fell back to the system print dialog" : "system print dialog (no printer IP)");
-    await Print.printAsync({ uri });
-    return wantsDirect ? "fallback" : "system";
+
+    logEvent("print", `IPP target=${target.address}, result=${attempt.status}`);
+    if (attempt.status === "accepted") return "direct";
+    if (attempt.status === "unconfirmed") return "unconfirmed";
+    if (requiresDestinationChangeConfirmation(attempt)) {
+      const format = documentFormat ?? (mimeType || "unknown format");
+      const displayFormat = format === "application/pdf" ? "PDF" : format === "image/jpeg" ? "JPEG" : format;
+      const reason = attempt.status === "unconfirmed-capability"
+        ? t.printCapabilityNotConfirmed.replace("{format}", displayFormat)
+        : attempt.status === "unsupported-format"
+          ? t.printFormatUnsupported.replace("{format}", displayFormat)
+          : attempt.status === "unsupported-operation"
+            ? t.printOperationUnsupported
+          : t.printIppFailed;
+      const confirmed = await confirmSystemPrintFallback(target, reason);
+      if (!confirmed) return "cancelled";
+      logEvent("print", `user confirmed system-dialog fallback; destination may differ from ${target.address}`);
+      await Print.printAsync({ uri });
+      return "fallback";
+    }
+    return "cancelled";
   };
   const printingRef = useRef(false);
   const continuePrint = async () => {
@@ -1875,12 +2039,26 @@ export default function HomeScreen() {
         });
       }
       const mode = await printDocument(uri, printAsset?.mimeType ?? (isPdf ? "application/pdf" : "image/jpeg"));
+      if (mode === "cancelled") {
+        setOperationProgress(null);
+        setErrorMessage({ title: t.printCancelledTitle, hint: t.printCancelledHint });
+        return;
+      }
+      const printStatus = mode === "direct"
+        ? t.directPrintSent
+        : mode === "unconfirmed"
+          ? t.printUnconfirmed
+          : mode === "fallback"
+            ? t.directPrintFallback
+            : mode === "system"
+              ? t.systemPrintDialogOpened
+              : t.printReady;
       setTasks((current) =>
-        [`${mode === "direct" ? t.directPrintSent : mode === "unconfirmed" ? t.printUnconfirmed : mode === "fallback" ? t.directPrintFallback : t.printReady}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
+        [`${printStatus}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
       );
       setToolResults((current) => ({
         ...current,
-        print: { title: t.printReady, detail: selectedFiles[0] },
+        print: { title: mode === "fallback" ? t.directPrintFallback : mode === "system" ? t.systemPrintDialogOpened : t.printReady, detail: selectedFiles[0] },
       }));
       if (mode === "direct" || mode === "unconfirmed") {
         Alert.alert(
@@ -2679,15 +2857,13 @@ export default function HomeScreen() {
   const startTool = (kind: PreviewKind) => {
     setErrorMessage(null);
     setPreviewKind(kind);
+    if (kind === "print") void searchNetworkDevices();
+  };
+  const enterWorkspace = (next: Workspace) => {
+    setWorkspace(next);
+    if (next === "print" || next === "scan") void searchNetworkDevices();
   };
   const openPreviewFor = (kind: PreviewKind) => startTool(kind);
-  const scanForDevices = () => {
-    if (printerIp.trim()) {
-      void checkPrinterConnection();
-      return;
-    }
-    void discoverPrinters();
-  };
 
   const workflowFiles: PickedAsset[] =
     previewKind === "merge" || previewKind === "images"
@@ -3033,6 +3209,22 @@ export default function HomeScreen() {
           cropPreview={cropPreview}
           selectedPageIndex={selectedPageIndex}
           settings={workflowSettings}
+          networkDevicePicker={previewKind === "print" ? (
+            <NetworkDeviceSelector
+              devices={networkDevices}
+              mode="print"
+              selectedPrintAddress={selectedPrintDevice?.address ?? null}
+              selectedScanServiceUrl={selectedWsdScanner?.serviceUrl ?? null}
+              discovering={wsdDiscovering}
+              searched={wsdHasSearched}
+              error={null}
+              colors={colors}
+              isArabic={isArabic}
+              onDiscover={() => { void searchNetworkDevices(); }}
+              onSelectPrint={selectPrintDevice}
+              onSelectScan={selectScanDevice}
+            />
+          ) : undefined}
           result={toolResults[previewKind] ?? null}
           error={errorMessage}
           processing={processing}
@@ -3277,7 +3469,7 @@ export default function HomeScreen() {
               color="#F59E0B"
               textColor={readableText}
               mutedColor={readableMuted}
-              onPress={() => setWorkspace("scan")}
+              onPress={() => enterWorkspace("scan")}
             />
             <ActionCard
               icon="badge"
@@ -4877,26 +5069,20 @@ export default function HomeScreen() {
             >
               {t.scannerSettings}
             </Text>
-            <TextInput
-              value={printerIp}
-              onChangeText={setPrinterIp}
-              placeholder={t.scannerIpHint}
-              placeholderTextColor={colors.muted}
-              keyboardType="numbers-and-punctuation"
-              autoCapitalize="none"
-              style={[
-                styles.scannerInput,
-                {
-                  color: colors.foreground,
-                  backgroundColor: colors.background,
-                  borderColor: colors.border,
-                  textAlign: isArabic ? "right" : "left",
-                },
-              ]}
+            <NetworkDeviceSelector
+              devices={networkDevices}
+              mode="scan"
+              selectedPrintAddress={selectedPrintDevice?.address ?? null}
+              selectedScanServiceUrl={selectedWsdScanner?.serviceUrl ?? null}
+              discovering={wsdDiscovering}
+              searched={wsdHasSearched}
+              error={wsdDiscoveryError}
+              colors={colors}
+              isArabic={isArabic}
+              onDiscover={() => { void searchNetworkDevices(); }}
+              onSelectPrint={selectPrintDevice}
+              onSelectScan={selectScanDevice}
             />
-            <Text style={[styles.scannerNetworkText, { color: colors.muted }]}>
-              {t.networkAddress}: {phoneIp || "—"}
-            </Text>
             <View
               style={[
                 styles.scannerOptionRow,
@@ -5019,21 +5205,6 @@ export default function HomeScreen() {
                 ]}
               >
                 {t.adf}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={scanForDevices}
-              style={({ pressed }) => [
-                styles.outlineAction,
-                { borderColor: colors.primary },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Icon name="refresh" color={colors.primary} size={17} />
-              <Text
-                style={[styles.outlineActionText, { color: colors.primary }]}
-              >
-                {t.checkDevices}
               </Text>
             </Pressable>
             <View
@@ -5647,6 +5818,20 @@ export default function HomeScreen() {
                   onPress={() => startTool("print")}
                   colors={colors}
                 />
+                <NetworkDeviceSelector
+                  devices={networkDevices}
+                  mode="print"
+                  selectedPrintAddress={selectedPrintDevice?.address ?? null}
+                  selectedScanServiceUrl={selectedWsdScanner?.serviceUrl ?? null}
+                  discovering={wsdDiscovering}
+                  searched={wsdHasSearched}
+                  error={null}
+                  colors={colors}
+                  isArabic={isArabic}
+                  onDiscover={() => { void searchNetworkDevices(); }}
+                  onSelectPrint={selectPrintDevice}
+                  onSelectScan={selectScanDevice}
+                />
                 <Text
                   style={[
                     styles.workspacePreviewTitle,
@@ -5915,42 +6100,20 @@ export default function HomeScreen() {
             )}
             {workspace === "scan" && (
               <View style={styles.workspacePanel}>
-                <TextInput
-                  value={printerIp}
-                  onChangeText={setPrinterIp}
-                  placeholder={t.scannerIpHint}
-                  placeholderTextColor={colors.muted}
-                  style={[
-                    styles.workspaceInput,
-                    {
-                      color: colors.foreground,
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                    },
-                  ]}
+                <NetworkDeviceSelector
+                  devices={networkDevices}
+                  mode="scan"
+                  selectedPrintAddress={selectedPrintDevice?.address ?? null}
+                  selectedScanServiceUrl={selectedWsdScanner?.serviceUrl ?? null}
+                  discovering={wsdDiscovering}
+                  searched={wsdHasSearched}
+                  error={wsdDiscoveryError}
+                  colors={colors}
+                  isArabic={isArabic}
+                  onDiscover={() => { void searchNetworkDevices(); }}
+                  onSelectPrint={selectPrintDevice}
+                  onSelectScan={selectScanDevice}
                 />
-                <Pressable
-                  onPress={scanForDevices}
-                  style={[
-                    styles.workspacePrimary,
-                    { backgroundColor: colors.primaryFill },
-                  ]}
-                >
-                  <Icon name="wifi" color="#fff" size={18} />
-                  <Text style={styles.printButtonText}>{t.checkDevices}</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={discovering}
-                  onPress={() => { void discoverPrinters(); }}
-                  style={[
-                    styles.workspacePrimary,
-                    { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1, opacity: discovering ? 0.6 : 1 },
-                  ]}
-                >
-                  <Icon name="search" color={colors.primary} size={18} />
-                  <Text style={[styles.printButtonText, { color: colors.primary }]}>{t.autoDiscover}</Text>
-                </Pressable>
                 <Pressable
                   accessibilityRole="button"
                   disabled={discovering}
@@ -6152,9 +6315,9 @@ export default function HomeScreen() {
                 ) : null}
                 <Pressable
                   accessibilityRole="button"
-                  disabled={processing}
+                  disabled={processing || !selectedWsdScanner}
                   onPress={() => { void startScan(); }}
-                  style={[styles.workspacePrimary, { backgroundColor: colors.success, opacity: processing ? 0.6 : 1 }]}
+                  style={[styles.workspacePrimary, { backgroundColor: colors.success, opacity: processing || !selectedWsdScanner ? 0.6 : 1 }]}
                 >
                   <Icon name="document-scanner" color="#fff" size={18} />
                   <Text style={styles.printButtonText}>{t.startScan}</Text>

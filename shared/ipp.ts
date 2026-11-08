@@ -22,6 +22,7 @@ const TAG = {
   job: 0x02,
   end: 0x03,
   integer: 0x21,
+  enum: 0x23,
   nameWithoutLanguage: 0x42,
   keyword: 0x44,
   uri: 0x45,
@@ -47,6 +48,22 @@ function attribute(tag: number, name: string, value: string | number): number[] 
     valueBytes.length & 255,
     ...valueBytes,
   ];
+}
+
+function multiValueAttribute(tag: number, name: string, values: string[]): number[] {
+  const nameBytes = Array.from(encoder.encode(name));
+  const result: number[] = [];
+  values.forEach((value, index) => {
+    const valueBytes = Array.from(encoder.encode(value));
+    result.push(
+      tag,
+      ...(index === 0 ? [(nameBytes.length >> 8) & 255, nameBytes.length & 255, ...nameBytes] : [0, 0]),
+      (valueBytes.length >> 8) & 255,
+      valueBytes.length & 255,
+      ...valueBytes,
+    );
+  });
+  return result;
 }
 
 export function ippPrinterUri(ip: string, port = 631, path = "/ipp/print"): string {
@@ -83,6 +100,13 @@ export function buildIppRequest(
     if (options.sides) job.push(...attribute(TAG.keyword, "sides", options.sides));
     if (options.colorMode) job.push(...attribute(TAG.keyword, "print-color-mode", options.colorMode));
     if (job.length) bytes.push(TAG.job, ...job);
+  } else if (operation === IPP_OPERATION.getPrinterAttributes) {
+    bytes.push(...multiValueAttribute(TAG.keyword, "requested-attributes", [
+      "printer-name",
+      "printer-make-and-model",
+      "document-format-supported",
+      "operations-supported",
+    ]));
   }
   bytes.push(TAG.end);
   const head = Uint8Array.from(bytes);
@@ -99,4 +123,47 @@ export function parseIppResponse(body: Uint8Array): { statusCode: number; ok: bo
   if (body.length < 8 || (body[0] !== 0x01 && body[0] !== 0x02)) return null;
   const statusCode = (body[2] << 8) | body[3];
   return { statusCode, ok: statusCode < 0x0100 };
+}
+
+export type ParsedIppPrinterAttributes = {
+  statusCode: number;
+  ok: boolean;
+  attributes: Record<string, string[]>;
+};
+
+/** Parses IPP attribute groups while preserving multiple values for each attribute. */
+export function parseIppPrinterAttributes(body: Uint8Array): ParsedIppPrinterAttributes | null {
+  const response = parseIppResponse(body);
+  if (!response) return null;
+  const decoder = new TextDecoder();
+  const attributes: Record<string, string[]> = {};
+  let offset = 8;
+  let previousName = "";
+
+  while (offset < body.length) {
+    const tag = body[offset++];
+    if (tag === TAG.end) break;
+    if (tag > 0 && tag <= 0x0f) {
+      previousName = "";
+      continue;
+    }
+    if (offset + 2 > body.length) return null;
+    const nameLength = (body[offset] << 8) | body[offset + 1];
+    offset += 2;
+    if (offset + nameLength + 2 > body.length) return null;
+    const name = nameLength ? decoder.decode(body.subarray(offset, offset + nameLength)) : previousName;
+    offset += nameLength;
+    const valueLength = (body[offset] << 8) | body[offset + 1];
+    offset += 2;
+    if (offset + valueLength > body.length) return null;
+    const valueBytes = body.subarray(offset, offset + valueLength);
+    const value = (tag === TAG.integer || tag === TAG.enum) && valueLength === 4
+      ? String(((valueBytes[0] << 24) | (valueBytes[1] << 16) | (valueBytes[2] << 8) | valueBytes[3]) >>> 0)
+      : decoder.decode(valueBytes);
+    offset += valueLength;
+    if (nameLength) previousName = name;
+    if (name) (attributes[name.toLowerCase()] ??= []).push(value);
+  }
+
+  return { ...response, attributes };
 }

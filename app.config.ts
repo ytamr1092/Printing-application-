@@ -71,7 +71,11 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: [
+      "POST_NOTIFICATIONS",
+      "ACCESS_WIFI_STATE",
+      "CHANGE_WIFI_MULTICAST_STATE",
+    ],
     intentFilters: [
       {
         action: "VIEW",
@@ -94,6 +98,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "./plugins/with-empty-splash-logo.js",
+    "./plugins/with-printpilot-wsd-scanner.js",
     "expo-font",
     "expo-web-browser",
     [
