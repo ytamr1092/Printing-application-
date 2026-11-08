@@ -107,11 +107,23 @@ const workflowProps = (isArabic: boolean) => ({
   onDismissError: vi.fn(),
 });
 
+// A Text can hold nested spans (English runs inside Arabic text use their own font), so read
+// each outermost span as one string instead of one string per span.
+function spanText(node: ReactTestInstance | string): string {
+  return typeof node === "string" ? node : node.children.map(spanText).join("");
+}
+
 function readText(renderer: ReactTestRenderer) {
   return renderer.root
     .findAllByType("span")
-    .flatMap((instance: ReactTestInstance) => instance.children)
-    .filter((child): child is string => typeof child === "string")
+    .filter((instance: ReactTestInstance) => {
+      for (let ancestor = instance.parent; ancestor; ancestor = ancestor.parent) {
+        if (ancestor.type === "span") return false;
+      }
+      return true;
+    })
+    .map(spanText)
+    .filter((text) => text.length > 0)
     .join(" ");
 }
 
