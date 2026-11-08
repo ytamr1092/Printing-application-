@@ -9,11 +9,11 @@
   for it. The Elgharib Yarab RK Gratitude file was tested and is a trial build: every Arabic
   letter renders as the author's credit line, so it cannot be used.
 
-- `dg-trika-regular.ttf`, `dg-trika-bold.ttf` — **DG Trika** by Hossam El Deen Ahmed
-  (Design Group; copyright notice: "All rights reserved", no free-use licence text in the
-  file, so keep the permission from the author). Used for English letters and Western
-  digits: a whole `Text` that has no Arabic uses it, and in mixed text the English runs are
-  wrapped in a span (`shared/script-runs.ts`). Arabic stays in Monaco Kufi.
+- `dg-tebian-regular.ttf`, `dg-tebian-bold.ttf`, `dg-tebian-black.ttf` — **DG Tebian** by
+  Hossam El Deen Ahmed (Design Group), copyright 2021, "All rights reserved". The files carry no
+  free-use licence text, so keep the author's permission. Used for all Arabic and English text.
+
+- `monaco-kufi.otf` is now used only for large headings (the brand name and section titles).
 
 The splash greeting "أهلا د.يوسف" is drawn from pre-generated outlines
 (`shared/welcome-greeting-data.ts`, built by `scripts/build-welcome-greeting.py`);
