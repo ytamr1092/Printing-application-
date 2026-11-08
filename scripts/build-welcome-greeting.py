@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Turns the welcome greeting into SVG outlines from a Diwani TTF so the app does
+Turns the welcome greeting into SVG outlines from a calligraphy TTF so the app does
 not need to ship or load the font:
 
-    python3 scripts/build-welcome-greeting.py /path/to/Diwani.ttf
+    python3 scripts/build-welcome-greeting.py /path/to/Calligraphy.ttf
 
 Writes shared/welcome-greeting-data.ts. Needs only fontTools. Letter shapes are
 picked with the font's own GSUB isol/init/medi/fina + liga tables.
@@ -19,14 +19,34 @@ from fontTools.ttLib import TTFont
 
 LINES = ["أهلا", "د.يوسف"]
 # Per line: scale (font units -> view box units) and horizontal alignment.
-SCALE = [1.12, 0.98]
-ALIGN = ["right", "center"]
+SCALE = [1.5, 0.98]
+ALIGN = ["center", "center"]
 VIEW_WIDTH = 5200
 GAP = 140
 SPACE = 400
 
 RIGHT_ONLY = set("اأإآدذرزوةى")
 NON_JOIN = set(" .")
+
+
+DOT = "__dot__"
+
+
+class SyntheticDot:
+    """A round full stop for fonts that have no '.' glyph (radius in font units)."""
+
+    RADIUS = 95
+    ADVANCE = 330
+
+    def draw(self, pen):
+        r, k = self.RADIUS, 0.5523
+        cx, cy = self.ADVANCE / 2, r
+        pen.moveTo((cx + r, cy))
+        pen.curveTo((cx + r, cy + k * r), (cx + k * r, cy + r), (cx, cy + r))
+        pen.curveTo((cx - k * r, cy + r), (cx - r, cy + k * r), (cx - r, cy))
+        pen.curveTo((cx - r, cy - k * r), (cx - k * r, cy - r), (cx, cy - r))
+        pen.curveTo((cx + k * r, cy - r), (cx + r, cy - k * r), (cx + r, cy))
+        pen.closePath()
 
 
 def joins_next(ch):
@@ -51,7 +71,13 @@ def forms(word):
 def main(font_path):
     font = TTFont(font_path)
     cmap = font.getBestCmap()
-    glyph_set = font.getGlyphSet()
+    real_glyph_set = font.getGlyphSet()
+
+    class GlyphSet:
+        def __getitem__(self, name):
+            return SyntheticDot() if name == DOT else real_glyph_set[name]
+
+    glyph_set = GlyphSet()
     hmtx = font["hmtx"]
     gsub = font["GSUB"].table
     feature_lookups = {}
@@ -72,6 +98,9 @@ def main(font_path):
     def shape(word):
         names = []
         for ch, form in zip(word, forms(word)):
+            if ord(ch) not in cmap and ch == ".":
+                names.append(DOT)
+                continue
             glyph = cmap[ord(ch)]
             names.append(singles[form].get(glyph, glyph))
         for index in sorted(feature_lookups.get("liga", [])):
@@ -111,7 +140,7 @@ def main(font_path):
             bounds_pen = BoundsPen(glyph_set)
             glyph_set[name].draw(bounds_pen)
             placed.append((name, x, bounds_pen.bounds))
-            x += hmtx[name][0]
+            x += SyntheticDot.ADVANCE if name == DOT else hmtx[name][0]
         xmin = min(b[0] + gx for _, gx, b in placed if b)
         xmax = max(b[2] + gx for _, gx, b in placed if b)
         ymin = min(-b[3] for _, _, b in placed if b)
