@@ -9,6 +9,12 @@
   text, so keep the permission from the author). Used only for the home screen greeting
   "أهلا د.يوسف". It has no "." glyph, so the full stop is drawn in Monaco Kufi.
 
+- `dg-trika-regular.ttf`, `dg-trika-bold.ttf` — **DG Trika** by Hossam El Deen Ahmed
+  (Design Group; copyright notice: "All rights reserved", no free-use licence text in the
+  file, so keep the permission from the author). Used for English letters and Western
+  digits: a whole `Text` that has no Arabic uses it, and in mixed text the English runs are
+  wrapped in a span (`shared/script-runs.ts`). Arabic stays in Monaco Kufi.
+
 The splash greeting "أهلا د.يوسف" is drawn from pre-generated outlines
 (`shared/welcome-greeting-data.ts`, built by `scripts/build-welcome-greeting.py`);
 the Diwani font file itself is not bundled with the app.
