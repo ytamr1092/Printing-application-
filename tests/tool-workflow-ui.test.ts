@@ -41,7 +41,7 @@ vi.mock("@expo/vector-icons/MaterialIcons", async () => {
 
 vi.mock("@/hooks/use-colors", () => ({
   useColors: () => ({
-    primary: "#2F7C96",
+    primary: "#2563EB",
     background: "#FFFFFF",
     surface: "#F8FAFC",
     foreground: "#111111",

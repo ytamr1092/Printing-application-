@@ -3260,7 +3260,7 @@ export default function HomeScreen() {
               icon="picture-as-pdf"
               title={t.workspacePdf}
               hint={t.workspacePdfHint}
-              color="#2F7C96"
+              color="#2563EB"
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => setWorkspace("pdf")}
@@ -3296,7 +3296,7 @@ export default function HomeScreen() {
               icon="folder-special"
               title={t.workspaceResults}
               hint={t.workspaceResultsHint}
-              color="#E45757"
+              color="#EF4444"
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => setWorkspace("results")}
@@ -3305,7 +3305,7 @@ export default function HomeScreen() {
               icon="auto-awesome"
               title={t.workspaceAi}
               hint={t.workspaceAiHint}
-              color="#7C3AED"
+              color="#EC4899"
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => setWorkspace("ai")}
@@ -5296,7 +5296,7 @@ export default function HomeScreen() {
                   icon="merge-type"
                   title={t.merge}
                   hint={t.mergeHint}
-                  color="#2F7C96"
+                  color="#2563EB"
                   onPress={() => startTool("merge")}
                   colors={colors}
                 />
@@ -5320,7 +5320,7 @@ export default function HomeScreen() {
                   icon="format-list-numbered"
                   title={t.numbering}
                   hint={t.numberingHint}
-                  color="#E45757"
+                  color="#EF4444"
                   onPress={() => startTool("numbering")}
                   colors={colors}
                 />
