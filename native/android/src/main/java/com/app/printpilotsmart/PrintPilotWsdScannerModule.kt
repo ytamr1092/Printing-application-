@@ -11,6 +11,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableArray
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import org.w3c.dom.Document
 import org.w3c.dom.Node
 import java.io.ByteArrayOutputStream
@@ -28,6 +29,8 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 import javax.xml.parsers.DocumentBuilderFactory
+
+private class WsdTerminalScanFailure(message: String) : IllegalStateException(message)
 
 /** Android WSD/WS-Scan client. Discovery, scan data, and file processing stay on the device/LAN. */
 class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
@@ -58,6 +61,7 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
     color: String,
     duplex: Boolean,
     outputFormat: String,
+    requestId: String,
     promise: Promise,
   ) {
     worker.execute {
@@ -70,29 +74,52 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
         val source = if (!isFeeder) "Platen" else if (duplex) "ADFDuplex" else "ADF"
         val processing = if (color.equals("bw", true) || color.equals("black-and-white", true)) "Grayscale8" else "RGB24"
         val created = soap(endpoint, "CreateScanJob", createJobRequest(source, resolution, processing, duplex))
-        jobId = findText(created, "JobId")
-          ?: throw IllegalStateException(scannerFault(created) ?: "The scanner did not return a WSD JobId")
-        val token = findText(created, "JobToken")
-          ?: throw IllegalStateException(scannerFault(created) ?: "The scanner did not return a WSD JobToken")
+        jobId = findText(created, "JobId") ?: run {
+          val fault = scannerFault(created)
+          if (fault != null) throw WsdTerminalScanFailure(fault)
+          throw IllegalStateException("The scanner did not return a WSD JobId")
+        }
+        val token = findText(created, "JobToken") ?: run {
+          val fault = scannerFault(created)
+          if (fault != null) throw WsdTerminalScanFailure(fault)
+          throw IllegalStateException("The scanner did not return a WSD JobToken")
+        }
+        emitScanStatus(requestId, "in-progress")
 
         val pngOutput = outputFormat.equals("png", true)
         val outDir = File(context.filesDir, "PrintPilotScans").apply { mkdirs() }
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
         val pages = retrieveAllDocuments(endpoint, jobId, token, pngOutput, outDir, stamp, createdFiles)
+        emitScanStatus(requestId, "completed")
         promise.resolve(Arguments.createMap().apply {
           putArray("pages", pages)
           putString("inputSource", source)
           putString("dpi", resolution.toString())
           putString("jobId", jobId)
           putString("protocol", "WSD Scan")
-        })
+      })
       } catch (error: Throwable) {
+        emitScanStatus(requestId, if (error is WsdTerminalScanFailure) "failed" else "awaiting-confirmation", error.message)
         createdFiles.forEach { try { it.delete() } catch (_: Throwable) { } }
         jobId?.let { activeJobId ->
           try { soap(validateScannerUrl(serviceUrl), "CancelJob", cancelJobRequest(activeJobId)) } catch (_: Throwable) { }
         }
         promise.reject("WSD_SCAN_FAILED", error.message ?: "The local WSD scan did not complete", error)
       }
+    }
+  }
+
+  private fun emitScanStatus(requestId: String, state: String, message: String? = null) {
+    try {
+      val payload = Arguments.createMap().apply {
+        putString("requestId", requestId)
+        putString("state", state)
+        if (!message.isNullOrBlank()) putString("message", message)
+      }
+      context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("PrintPilotWsdScanStatus", payload)
+    } catch (_: Throwable) {
+      // Status events are best-effort; the promise still carries the terminal result.
     }
   }
 
@@ -321,22 +348,22 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
 
       val state = findText(result, "JobState")?.lowercase(Locale.US)?.filter { it.isLetterOrDigit() }.orEmpty()
       when {
-        state.contains("completedwitherrors") -> throw IllegalStateException(
-          "The WSD scanner reported CompletedWithErrors. One or more pages may be missing; the partial scan was discarded.",
+        state.contains("completedwitherrors") -> throw WsdTerminalScanFailure(
+          "The WSD scanner reported CompletedWithErrors. Scan data may be missing; the partial result was discarded.",
         )
-        state.contains("aborted") || state.contains("canceled") || state.contains("cancelled") -> throw IllegalStateException(
+        state.contains("aborted") || state.contains("canceled") || state.contains("cancelled") -> throw WsdTerminalScanFailure(
           "The WSD scan job ended in state ${findText(result, "JobState")}; no partial scan was returned.",
         )
         state.contains("completed") -> {
-          if (discoveredNames.isEmpty()) throw IllegalStateException("The WSD job completed without an image document")
+          if (discoveredNames.isEmpty()) throw WsdTerminalScanFailure("The WSD job completed without an image document")
           val missing = discoveredNames - retrievedNames
-          if (missing.isNotEmpty()) throw IllegalStateException(
-            "The WSD job completed before ${missing.size} listed image document(s) became available; the partial scan was discarded.",
+          if (missing.isNotEmpty()) throw WsdTerminalScanFailure(
+            "The WSD job completed before all listed image data could be retrieved; the partial scan was discarded.",
           )
-          if (retrievedNames.isEmpty()) throw IllegalStateException("The WSD job completed without a retrievable image document")
+          if (retrievedNames.isEmpty()) throw WsdTerminalScanFailure("The WSD job completed without a retrievable image document")
           val expectedImages = findText(result, "ScansCompleted")?.toLongOrNull()
-          if (expectedImages != null && expectedImages != retrievedNames.size.toLong()) throw IllegalStateException(
-            "The WSD job reports $expectedImages scanned image(s), but only ${retrievedNames.size} were retrieved; the partial scan was discarded.",
+          if (expectedImages != null && expectedImages != retrievedNames.size.toLong()) throw WsdTerminalScanFailure(
+            "The WSD job's reported output could not be fully retrieved; the partial scan was discarded.",
           )
           return pages
         }

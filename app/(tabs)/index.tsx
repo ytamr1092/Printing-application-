@@ -73,12 +73,15 @@ import {
   devicesForTask,
   readIppPrinterDevice,
   sendIppPrintJobToDevice,
+  monitorIppPrintJob,
   requiresDestinationChangeConfirmation,
+  printFailureStatus,
   runSingleFlight,
   retainExplicitSelection,
+  type IppPrintMonitorUpdate,
   type NetworkPrinterDevice,
 } from "@/shared/network-devices";
-import type { WsdScannerDevice } from "@/shared/wsd-scanner";
+import { scanFailureStatus, type WsdScanTaskUpdate, type WsdScannerDevice } from "@/shared/wsd-scanner";
 import { fileBaseName, fileExtension, numberedFileName, sanitizeFileName } from "@/shared/file-name";
 import { previewKinds, type PreviewKind } from "@/shared/preview";
 import {
@@ -119,7 +122,8 @@ type PickedAsset = {
   mimeType?: string;
   rotation?: number;
 };
-type OperationProgress = { label: string; stage: 1 | 2 | 3; complete?: boolean };
+type DeviceTaskStatus = "connecting" | "in-progress" | "completed" | "failed" | "canceled" | "awaiting-confirmation";
+type OperationProgress = { label: string; stage: 1 | 2 | 3; complete?: boolean; deviceState?: DeviceTaskStatus; deviceTask?: boolean; hint?: string };
 function Icon({
   name,
   color,
@@ -217,8 +221,8 @@ function OperationProgressBanner({
   progress,
   colors,
   isArabic,
-  hint,
   dismissLabel,
+  hint,
   onDismiss,
 }: {
   progress: OperationProgress;
@@ -233,6 +237,8 @@ function OperationProgressBanner({
     "progressStage2",
     "progressStage3",
   ] as const;
+  const settled = progress.complete || progress.deviceState === "completed" || progress.deviceState === "failed" || progress.deviceState === "canceled" || progress.deviceState === "awaiting-confirmation";
+  const statusColor = progress.deviceState === "failed" || progress.deviceState === "canceled" ? colors.error : progress.deviceState === "awaiting-confirmation" ? colors.muted : colors.primary;
   return (
     <View
       accessibilityLiveRegion="polite"
@@ -242,47 +248,53 @@ function OperationProgressBanner({
       ]}
     >
       <View style={[styles.progressHeader, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
-        {progress.complete ? (
+        {progress.deviceState === "failed" || progress.deviceState === "canceled" ? (
+          <Icon name="error-outline" color={colors.error} size={19} />
+        ) : progress.deviceState === "awaiting-confirmation" ? (
+          <Icon name="schedule" color={colors.muted} size={19} />
+        ) : progress.complete || progress.deviceState === "completed" ? (
           <Icon name="check-circle" color={colors.primary} size={19} />
         ) : (
           <ActivityIndicator color={colors.primary} size="small" />
         )}
         <Text
-          style={[styles.progressLabel, { color: colors.foreground, textAlign: isArabic ? "right" : "left" }]}
+          style={[styles.progressLabel, { color: statusColor, textAlign: isArabic ? "right" : "left" }]}
           numberOfLines={2}
         >
           {progress.label}
         </Text>
-        {progress.complete ? (
+        {settled ? (
           <Pressable onPress={onDismiss} accessibilityLabel={dismissLabel}>
             <Icon name="close" color={colors.muted} size={19} />
           </Pressable>
         ) : null}
       </View>
-      <View style={[styles.progressStages, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
-        {stages.map((stage, index) => {
-          const active = index < progress.stage;
-          return (
-            <View key={stage} style={styles.progressStage}>
-              <View
-                style={[
-                  styles.progressStageTrack,
-                  { backgroundColor: active ? colors.primaryFill : colors.border },
-                ]}
-              />
-              <Text
-                style={[
-                  styles.progressStageText,
-                  { color: active ? colors.primary : colors.muted, textAlign: isArabic ? "right" : "left" },
-                ]}
-                numberOfLines={1}
-              >
-                {copy[isArabic ? "ar" : "en"][stage]}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
+      {!progress.deviceTask ? (
+        <View style={[styles.progressStages, { flexDirection: isArabic ? "row-reverse" : "row" }]}>
+          {stages.map((stage, index) => {
+            const active = index < progress.stage;
+            return (
+              <View key={stage} style={styles.progressStage}>
+                <View
+                  style={[
+                    styles.progressStageTrack,
+                    { backgroundColor: active ? colors.primaryFill : colors.border },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.progressStageText,
+                    { color: active ? colors.primary : colors.muted, textAlign: isArabic ? "right" : "left" },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {copy[isArabic ? "ar" : "en"][stage]}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
       <Text style={[styles.progressHint, { color: colors.muted, textAlign: isArabic ? "right" : "left" }]}>
         {hint}
       </Text>
@@ -725,6 +737,19 @@ export default function HomeScreen() {
   }, [keyboardShown, previewKind, workspace, pageGridOpen, previewWindowOpen, scanReviewOpen, scanPreviewOpen, t]);
   const updateProgress = (label: string, stage: 1 | 2 | 3) =>
     setOperationProgress({ label, stage });
+  const updateDeviceTask = (label: string, deviceState: DeviceTaskStatus, hint: string) =>
+    setOperationProgress({ label, stage: deviceState === "connecting" ? 1 : deviceState === "in-progress" ? 2 : 3, deviceState, deviceTask: true, hint });
+  const updateScanTask = (update: WsdScanTaskUpdate) => {
+    const labels = {
+      connecting: t.scanConnecting,
+      "in-progress": t.scanJobRunning,
+      completed: t.scanDeviceFinished,
+      failed: t.deviceTaskFailed,
+      "awaiting-confirmation": t.awaitingReliableConfirmation,
+    } satisfies Record<WsdScanTaskUpdate["state"], string>;
+    const label = update.failureKind === "result-delivery" ? t.scanResultReadFailed : labels[update.state];
+    updateDeviceTask(label, update.state, t.scanStatusHint);
+  };
   const completeProgress = () =>
     setOperationProgress({ label: t.progressDone, stage: 3, complete: true });
   const readableText = colorScheme === "dark" ? "#FFFFFF" : "#111111";
@@ -1160,9 +1185,16 @@ export default function HomeScreen() {
       showError(t.scanNeedsConnection, t.scanChooseDevice);
       return;
     }
+    let latestScanState: WsdScanTaskUpdate["state"] = "connecting";
+    const getLatestScanState = (): WsdScanTaskUpdate["state"] => latestScanState;
+    const reportScanStatus = (update: WsdScanTaskUpdate) => {
+      latestScanState = update.state;
+      updateScanTask(update);
+    };
     setIdBusy(true);
+    updateScanTask({ state: "connecting" });
     try {
-      const [page] = await runWsdNetworkScan(scanner, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" });
+      const [page] = await runWsdNetworkScan(scanner, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, reportScanStatus);
       const uri = `${FileSystem.cacheDirectory}PrintPilot-IDScan-${side}-${Date.now()}.jpg`;
       await FileSystem.writeAsStringAsync(uri, bytesToBase64(page), {
         encoding: FileSystem.EncodingType.Base64,
@@ -1177,11 +1209,17 @@ export default function HomeScreen() {
         setIdBackRotation(0);
       }
       setToolResults((current) => ({ ...current, id: undefined }));
+      updateScanTask({ state: "completed" });
       setTasks((current) =>
         [`${t.scanIdFace}: ${side === "front" ? t.idFront : t.idBack}`, ...current].slice(0, 4),
       );
       setErrorMessage(null);
     } catch (error) {
+      const failureState = scanFailureStatus(latestScanState);
+      if (failureState) updateScanTask({
+        state: failureState,
+        ...(getLatestScanState() === "completed" ? { failureKind: "result-delivery" } : {}),
+      });
       const reason = error instanceof Error ? error.message : "WSD scan failed.";
       showError(t.scanFailed, `${reason}\n\n${t.scanFailedHint}`);
     } finally {
@@ -1452,20 +1490,25 @@ export default function HomeScreen() {
       showError(t.scanNeedsConnection, t.scanChooseDevice);
       return;
     }
+    let latestScanState: WsdScanTaskUpdate["state"] = "connecting";
+    const getLatestScanState = (): WsdScanTaskUpdate["state"] => latestScanState;
+    const reportScanStatus = (update: WsdScanTaskUpdate) => {
+      latestScanState = update.state;
+      updateScanTask(update);
+    };
     setProcessing(true);
-    updateProgress(t.progressPreparing, 1);
+    updateScanTask({ state: "connecting" });
     try {
       // JPEG comes back from every scanner and can be analysed; PNG only when asked for.
       const wantPng = scannerFormat === "png";
-      updateProgress(t.progressProcessing, 2);
       const documents = await runWsdNetworkScan(scanner, {
         dpi: Number(scannerDpi) || 300,
         color: scannerColor,
         source: scannerSource,
         duplex: scannerDuplex,
         format: wantPng ? "png" : "jpg",
-      });
-      updateProgress(t.progressSaving, 3);
+      }, reportScanStatus);
+      updateScanTask({ state: "completed" });
       const directory = FileSystem.cacheDirectory;
       const stamp = Date.now();
       const pages: ScanPage[] = [];
@@ -1492,9 +1535,13 @@ export default function HomeScreen() {
       setScanSelected([]);
       setScanReviewOpen(true);
       setErrorMessage(null);
-      completeProgress();
+      updateScanTask({ state: "completed" });
     } catch (error) {
-      setOperationProgress(null);
+      const failureState = scanFailureStatus(latestScanState);
+      if (failureState) updateScanTask({
+        state: failureState,
+        ...(getLatestScanState() === "completed" ? { failureKind: "result-delivery" } : {}),
+      });
       const reason = error instanceof Error ? error.message : "";
       logEvent("scan", `failed: ${reason || "unknown"}`);
       showError(t.scanFailed, `${t.scanFailedHint}\n\n${reason || "WSD scan failed."}`);
@@ -1952,17 +1999,20 @@ export default function HomeScreen() {
       ], { cancelable: true, onDismiss: () => resolve(false) });
     });
 
-  // The system dialog is never an automatic retry of a selected IPP target.
-  const printDocument = async (uri: string, mimeType: string): Promise<"direct" | "unconfirmed" | "system" | "fallback" | "cancelled"> => {
+  // The Android system dialog does not expose a trustworthy printer-job state.
+  const printDocument = async (uri: string, mimeType: string, onSubmissionAttempt?: () => void): Promise<"completed" | "awaiting" | "failed" | "canceled" | "cancelled"> => {
     const target = selectedPrintDevice ?? (isValidIpv4(printerIp.trim())
       ? { address: printerIp.trim(), name: undefined, ippPath: undefined, supportedFormats: null, supportsPrint: null }
       : null);
+    updateDeviceTask(t.printConnecting, "connecting", t.printStatusHint);
     if (!target) {
       const confirmed = await confirmSystemPrintWithoutTarget();
       if (!confirmed) return "cancelled";
       logEvent("print", "user confirmed Android print dialog without a PrintPilot target; destination must be chosen in system UI");
+      updateDeviceTask(t.awaitingReliableConfirmation, "awaiting-confirmation", t.printStatusHint);
+      onSubmissionAttempt?.();
       await Print.printAsync({ uri });
-      return "system";
+      return "awaiting";
     }
 
     const lower = mimeType.toLowerCase();
@@ -1972,6 +2022,7 @@ export default function HomeScreen() {
         ? "image/jpeg"
         : null;
     let attempt: Awaited<ReturnType<typeof sendIppPrintJobToDevice>>;
+    let printOperations = selectedPrintDevice?.supportedOperations ?? null;
     if (!documentFormat || Platform.OS === "web") {
       attempt = { status: "unsupported-format" };
     } else {
@@ -1987,6 +2038,8 @@ export default function HomeScreen() {
           colorMode: colorMode === "bw" ? "monochrome" : "color",
         };
         const ippTarget = selectedPrintDevice ?? await readIppPrinterDevice(target.address);
+        printOperations = ippTarget?.supportedOperations ?? null;
+        if (ippTarget) onSubmissionAttempt?.();
         attempt = ippTarget
           ? await sendIppPrintJobToDevice(ippTarget, documentBytes, options)
           : { status: "unconfirmed-capability" };
@@ -1997,8 +2050,47 @@ export default function HomeScreen() {
     }
 
     logEvent("print", `IPP target=${target.address}, result=${attempt.status}`);
-    if (attempt.status === "accepted") return "direct";
-    if (attempt.status === "unconfirmed") return "unconfirmed";
+    if (attempt.status === "accepted") {
+      if (!attempt.jobId) {
+        logEvent("print", "IPP accepted the document but did not return a job-id; terminal state cannot be queried");
+        updateDeviceTask(t.awaitingReliableConfirmation, "awaiting-confirmation", t.printStatusHint);
+        return "awaiting";
+      }
+      updateDeviceTask(t.printMonitoring, "in-progress", t.printStatusHint);
+      const monitor = await monitorIppPrintJob(
+        { address: target.address, ippPath: attempt.ippPath, supportedOperations: printOperations },
+        attempt.jobId,
+        (update: IppPrintMonitorUpdate) => {
+          const label = update.jobState === "pending"
+            ? t.printJobPending
+            : update.jobState === "processing"
+              ? t.printJobProcessing
+              : update.jobState === "paused"
+                ? t.printJobPaused
+                : t.printMonitoring;
+          updateDeviceTask(label, "in-progress", t.printStatusHint);
+        },
+      );
+      logEvent("print", `IPP job ${attempt.jobId} status monitor=${monitor.state}`);
+      if (monitor.state === "completed") {
+        updateDeviceTask(t.printJobCompleted, "completed", t.printStatusHint);
+        return "completed";
+      }
+      if (monitor.state === "failed") {
+        updateDeviceTask(t.printJobFailed, "failed", t.printStatusHint);
+        return "failed";
+      }
+      if (monitor.state === "canceled") {
+        updateDeviceTask(t.printJobCanceled, "canceled", t.printStatusHint);
+        return "canceled";
+      }
+      updateDeviceTask(t.awaitingReliableConfirmation, "awaiting-confirmation", t.printStatusHint);
+      return "awaiting";
+    }
+    if (attempt.status === "unconfirmed") {
+      updateDeviceTask(t.awaitingReliableConfirmation, "awaiting-confirmation", t.printStatusHint);
+      return "awaiting";
+    }
     if (requiresDestinationChangeConfirmation(attempt)) {
       const format = documentFormat ?? (mimeType || "unknown format");
       const displayFormat = format === "application/pdf" ? "PDF" : format === "image/jpeg" ? "JPEG" : format;
@@ -2012,8 +2104,10 @@ export default function HomeScreen() {
       const confirmed = await confirmSystemPrintFallback(target, reason);
       if (!confirmed) return "cancelled";
       logEvent("print", `user confirmed system-dialog fallback; destination may differ from ${target.address}`);
+      updateDeviceTask(t.awaitingReliableConfirmation, "awaiting-confirmation", t.printStatusHint);
+      onSubmissionAttempt?.();
       await Print.printAsync({ uri });
-      return "fallback";
+      return "awaiting";
     }
     return "cancelled";
   };
@@ -2022,7 +2116,8 @@ export default function HomeScreen() {
     if (!printUri || printingRef.current) return;
     printingRef.current = true;
     setProcessing(true);
-    updateProgress(t.printingNow, 2);
+    updateProgress(t.progressPreparing, 1);
+    let submissionAttempted = false;
     try {
       let uri = printUri;
       const isPdf = Boolean(printAsset?.mimeType?.includes("pdf")) || Boolean(printAsset?.name.toLowerCase().endsWith(".pdf"));
@@ -2038,44 +2133,44 @@ export default function HomeScreen() {
           encoding: FileSystem.EncodingType.Base64,
         });
       }
-      const mode = await printDocument(uri, printAsset?.mimeType ?? (isPdf ? "application/pdf" : "image/jpeg"));
+      const mode = await printDocument(
+        uri,
+        printAsset?.mimeType ?? (isPdf ? "application/pdf" : "image/jpeg"),
+        () => { submissionAttempted = true; },
+      );
       if (mode === "cancelled") {
         setOperationProgress(null);
         setErrorMessage({ title: t.printCancelledTitle, hint: t.printCancelledHint });
         return;
       }
-      const printStatus = mode === "direct"
-        ? t.directPrintSent
-        : mode === "unconfirmed"
-          ? t.printUnconfirmed
-          : mode === "fallback"
-            ? t.directPrintFallback
-            : mode === "system"
-              ? t.systemPrintDialogOpened
-              : t.printReady;
+      const printStatus = mode === "completed"
+        ? t.printJobCompleted
+        : mode === "failed"
+          ? t.printJobFailed
+          : mode === "canceled"
+            ? t.printJobCanceled
+            : t.awaitingReliableConfirmation;
       setTasks((current) =>
         [`${printStatus}: ${selectedFiles[0] ?? ""}`, ...current].slice(0, 4),
       );
       setToolResults((current) => ({
         ...current,
-        print: { title: mode === "fallback" ? t.directPrintFallback : mode === "system" ? t.systemPrintDialogOpened : t.printReady, detail: selectedFiles[0] },
+        print: { title: printStatus, detail: selectedFiles[0] },
       }));
-      if (mode === "direct" || mode === "unconfirmed") {
-        Alert.alert(
-          isArabic ? "هل خرجت الورقة؟" : "Did the page print?",
-          isArabic ? "نجح اتصال الطباعة، لكن التطبيق لا يستطيع معرفة خروج الورقة آليًا." : "The print connection completed, but the app cannot detect paper output automatically.",
-          [
-            { text: isArabic ? "نعم" : "Yes", onPress: () => logEvent("print", "user confirmed paper output") },
-            { text: isArabic ? "لا" : "No", style: "destructive", onPress: () => logEvent("print", "user reported no paper output") },
-            { text: isArabic ? "لم أتحقق" : "Not checked", style: "cancel", onPress: () => logEvent("print", "paper output not checked") },
-          ],
-        );
-      }
+      if (mode === "completed") updateDeviceTask(t.printJobCompleted, "completed", t.printStatusHint);
+      else if (mode === "failed") updateDeviceTask(t.printJobFailed, "failed", t.printStatusHint);
+      else if (mode === "canceled") updateDeviceTask(t.printJobCanceled, "canceled", t.printStatusHint);
+      else updateDeviceTask(t.awaitingReliableConfirmation, "awaiting-confirmation", t.printStatusHint);
       setErrorMessage(null);
-      completeProgress();
     } catch {
-      setOperationProgress(null);
-      showError(t.printerUnavailable, t.printerUnavailableHint);
+      const failureState = printFailureStatus(submissionAttempted);
+      if (failureState === "failed") {
+        updateDeviceTask(t.deviceTaskFailed, "failed", t.printerUnavailableHint);
+        showError(t.printerUnavailable, t.printerUnavailableHint);
+      } else {
+        updateDeviceTask(t.awaitingReliableConfirmation, "awaiting-confirmation", t.printStatusHint);
+        showError(t.awaitingReliableConfirmation, t.printStatusHint);
+      }
     } finally {
       printingRef.current = false;
       setProcessing(false);
@@ -3078,7 +3173,7 @@ export default function HomeScreen() {
           progress={operationProgress}
           colors={colors}
           isArabic={isArabic}
-          hint={t.progressApprox}
+          hint={operationProgress.hint ?? t.progressApprox}
           dismissLabel={t.progressDismiss}
           onDismiss={() => setOperationProgress(null)}
         />

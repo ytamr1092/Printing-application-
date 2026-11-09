@@ -4,6 +4,7 @@
  */
 export const IPP_OPERATION = {
   printJob: 0x0002,
+  getJobAttributes: 0x0009,
   getPrinterAttributes: 0x000b,
 } as const;
 
@@ -15,6 +16,10 @@ export type IppJobOptions = {
   sides?: string;
   /** "color" | "monochrome" */
   colorMode?: string;
+  /** Attributes requested by Get-Printer-Attributes or Get-Job-Attributes. */
+  requestedAttributes?: string[];
+  /** Job identifier required by Get-Job-Attributes. */
+  jobId?: number;
 };
 
 const TAG = {
@@ -102,10 +107,23 @@ export function buildIppRequest(
     if (job.length) bytes.push(TAG.job, ...job);
   } else if (operation === IPP_OPERATION.getPrinterAttributes) {
     bytes.push(...multiValueAttribute(TAG.keyword, "requested-attributes", [
-      "printer-name",
-      "printer-make-and-model",
-      "document-format-supported",
-      "operations-supported",
+      ...(options.requestedAttributes ?? [
+        "printer-name",
+        "printer-make-and-model",
+        "document-format-supported",
+        "operations-supported",
+      ]),
+    ]));
+  } else if (operation === IPP_OPERATION.getJobAttributes) {
+    if (!Number.isSafeInteger(options.jobId) || Number(options.jobId) < 1) {
+      throw new Error("Get-Job-Attributes requires a positive job-id.");
+    }
+    bytes.push(...attribute(TAG.integer, "job-id", Number(options.jobId)));
+    bytes.push(...multiValueAttribute(TAG.keyword, "requested-attributes", options.requestedAttributes ?? [
+      "job-id",
+      "job-name",
+      "job-state",
+      "job-state-reasons",
     ]));
   }
   bytes.push(TAG.end);

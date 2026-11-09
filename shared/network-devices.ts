@@ -10,7 +10,7 @@ import {
 import { esclBaseUrl, esclBaseUrls, type EsclSettings } from "./escl";
 import { logEvent } from "./diagnostic-log";
 import { base64ToBytes } from "./pdf-encoding";
-import { hasWsdScanService, runWsdScan, type WsdScannerBridge, type WsdScannerDevice } from "./wsd-scanner";
+import { hasWsdScanService, runWsdScan, type WsdScanStatusEvent, type WsdScanTaskUpdate, type WsdScannerBridge, type WsdScannerDevice } from "./wsd-scanner";
 
 export const IPP_PATHS = ["/ipp/print", "/ipp", "/ipp/printer"];
 
@@ -31,7 +31,7 @@ async function ippCall(
   options: IppJobOptions,
   document: Uint8Array | undefined,
   ms: number,
-): Promise<{ ok: boolean; statusCode: number; timedOut?: boolean } | null> {
+): Promise<{ ok: boolean; statusCode: number; timedOut?: boolean; attributes?: Record<string, string[]> } | null> {
   try {
     const response = await fetchWithTimeout(
       ippHttpUrl(ip, 631, path),
@@ -46,8 +46,10 @@ async function ippCall(
       },
       ms,
     );
-    const parsed = parseIppResponse(new Uint8Array(await response.arrayBuffer()));
-    return parsed ? { ok: parsed.ok, statusCode: parsed.statusCode } : null;
+    const body = new Uint8Array(await response.arrayBuffer());
+    const parsed = parseIppResponse(body);
+    const detailed = parsed ? parseIppPrinterAttributes(body) : null;
+    return parsed ? { ok: parsed.ok, statusCode: parsed.statusCode, attributes: detailed?.attributes } : null;
   } catch (error) {
     return error instanceof Error && error.name === "AbortError" ? { ok: false, statusCode: -1, timedOut: true } : null;
   }
@@ -84,14 +86,17 @@ async function sendIppPrintJob(
   document: Uint8Array,
   options: IppJobOptions,
   knownPath?: string | null,
-): Promise<boolean | "unconfirmed"> {
+): Promise<{ ippPath: string; jobId?: number } | false | "unconfirmed"> {
   const paths = knownPath ? [knownPath, ...IPP_PATHS.filter((path) => path !== knownPath)] : IPP_PATHS;
   for (const path of paths) {
     logEvent("print", `IPP attempt: ${ippHttpUrl(ip, 631, path)}`);
     const result = await ippCall(ip, path, IPP_OPERATION.printJob, options, document, 90000);
     if (result?.ok) {
       logEvent("print", `IPP accepted: ${ippHttpUrl(ip, 631, path)} status=0x${result.statusCode.toString(16)}`);
-      return true;
+      const rawJobId = result.attributes?.["job-id"]?.find(Boolean);
+      const parsedJobId = rawJobId === undefined ? NaN : Number(rawJobId);
+      const jobId = Number.isSafeInteger(parsedJobId) && parsedJobId > 0 ? parsedJobId : undefined;
+      return { ippPath: path, ...(jobId ? { jobId } : {}) };
     }
     // The printer took the data but never answered: it may well print, so do not retry or hand over to another path.
     if (result?.timedOut) {
@@ -104,7 +109,7 @@ async function sendIppPrintJob(
 }
 
 export type IppPrintAttempt =
-  | { status: "accepted" }
+  | { status: "accepted"; ippPath: string; jobId?: number }
   | { status: "unconfirmed" }
   | { status: "failed" }
   | { status: "unconfirmed-capability" }
@@ -126,7 +131,72 @@ export async function sendIppPrintJobToDevice(
   if (!device.supportedFormats.includes(mimeType)) return { status: "unsupported-format" };
   const result = await sendIppPrintJob(device.address, document, options, device.ippPath);
   if (result === "unconfirmed") return { status: "unconfirmed" };
-  return result ? { status: "accepted" } : { status: "failed" };
+  return result ? { status: "accepted", ...result } : { status: "failed" };
+}
+
+export type IppPrintJobState = "pending" | "processing" | "paused" | "completed" | "canceled" | "failed" | "unknown";
+export type IppPrintMonitorUpdate = { jobState: IppPrintJobState };
+export type IppPrintMonitorResult = {
+  state: "completed" | "canceled" | "failed" | "unavailable" | "timeout";
+  lastUpdate?: IppPrintMonitorUpdate;
+};
+
+/** A thrown print error is ambiguous only after a submission call was started. */
+export function printFailureStatus(submissionAttempted: boolean): "failed" | "awaiting-confirmation" {
+  return submissionAttempted ? "awaiting-confirmation" : "failed";
+}
+
+function parseIppJobState(value?: string): IppPrintJobState {
+  const state = value?.trim().toLowerCase();
+  if (state === "3" || state === "pending" || state === "4" || state === "pending-held") return "pending";
+  if (state === "5" || state === "processing") return "processing";
+  if (state === "6" || state === "processing-stopped") return "paused";
+  if (state === "7" || state === "canceled" || state === "cancelled") return "canceled";
+  if (state === "8" || state === "aborted") return "failed";
+  if (state === "9" || state === "completed") return "completed";
+  return "unknown";
+}
+
+/** Polls only the exact accepted IPP job. It never requests page or impression counters. */
+export async function monitorIppPrintJob(
+  device: Pick<NetworkPrinterDevice, "address" | "ippPath" | "supportedOperations">,
+  jobId: number,
+  onUpdate?: (update: IppPrintMonitorUpdate) => void,
+  options: { pollIntervalMs?: number; maxDurationMs?: number } = {},
+): Promise<IppPrintMonitorResult> {
+  if (!Number.isSafeInteger(jobId) || jobId < 1 || !isPrivateIpv4Literal(device.address)
+    || !device.supportedOperations?.includes(IPP_OPERATION.getJobAttributes)) {
+    return { state: "unavailable" };
+  }
+  const path = device.ippPath || IPP_PATHS[0];
+  const duration = Math.max(1000, options.maxDurationMs ?? 15 * 60 * 1000);
+  const pollIntervalMs = Math.max(0, options.pollIntervalMs ?? 2000);
+  const deadline = Date.now() + duration;
+  let misses = 0;
+  let lastUpdate: IppPrintMonitorUpdate | undefined;
+
+  while (Date.now() < deadline) {
+    const result = await ippCall(device.address, path, IPP_OPERATION.getJobAttributes, {
+      jobId,
+      requestedAttributes: ["job-id", "job-name", "job-state", "job-state-reasons"],
+    }, undefined, 4000);
+    const state = result?.ok ? parseIppJobState(result.attributes?.["job-state"]?.[0]) : "unknown";
+    if (state === "unknown") {
+      misses += 1;
+      if (misses >= 3) return { state: "unavailable", ...(lastUpdate ? { lastUpdate } : {}) };
+    } else {
+      misses = 0;
+      lastUpdate = { jobState: state };
+      onUpdate?.(lastUpdate);
+      if (state === "completed" || state === "canceled" || state === "failed") {
+        return { state, lastUpdate };
+      }
+    }
+    if (Date.now() < deadline && pollIntervalMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+  }
+  return { state: "timeout", ...(lastUpdate ? { lastUpdate } : {}) };
 }
 
 /** A chosen destination must never be replaced by Android's print dialog without user confirmation. */
@@ -348,8 +418,12 @@ export async function discoverNetworkDevices(localIp: string): Promise<NetworkDi
 }
 
 /** Runs a local WSD/WS-Scan job on the exact discovered scanner selected by the user; no eSCL fallback. */
-export async function runWsdNetworkScan(scanner: WsdScannerDevice, settings: EsclSettings): Promise<Uint8Array[]> {
-  const { NativeModules, Platform } = await import("react-native");
+export async function runWsdNetworkScan(
+  scanner: WsdScannerDevice,
+  settings: EsclSettings,
+  onStatus?: (update: WsdScanTaskUpdate) => void,
+): Promise<Uint8Array[]> {
+  const { DeviceEventEmitter, NativeModules, Platform } = await import("react-native");
   if (Platform.OS !== "android") {
     throw new Error("Local WSD scanning requires the Android app. Next: run this scan from the Android app on the printer's local Wi-Fi.");
   }
@@ -361,21 +435,57 @@ export async function runWsdNetworkScan(scanner: WsdScannerDevice, settings: Esc
     throw new Error("Choose a discovered WSD scanner before starting the scan.");
   }
   const FileSystem = await import("expo-file-system/legacy");
+  const requestId = `wsd-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  let latestState: WsdScanTaskUpdate["state"] | undefined;
+  let nativeResultReturned = false;
+  let localReadFailed = false;
+  const publishStatus = (update: WsdScanTaskUpdate) => {
+    if ((latestState === "completed" || latestState === "failed") && update.state !== latestState) return;
+    latestState = update.state;
+    onStatus?.(update);
+  };
+  publishStatus({ state: "connecting" });
+  const subscription = DeviceEventEmitter.addListener("PrintPilotWsdScanStatus", (event: WsdScanStatusEvent) => {
+    if (event.requestId !== requestId || event.state === "completed" || latestState === "completed" || latestState === "failed") return;
+    publishStatus({ state: event.state, ...(event.message ? { message: event.message } : {}) });
+  });
   logEvent("scan", `WSD-only start for ${scanner.name} (${scanner.address}): ${settings.source}, ${settings.dpi}dpi, ${settings.format}`);
   try {
-    const documents = await runWsdScan(bridge, scanner, settings, async (uri) => {
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      return base64ToBytes(base64);
-    });
-    logEvent("scan", `WSD-only completed: ${documents.length} page(s) from ${scanner.address}`);
+    const trackingBridge: WsdScannerBridge = {
+      discover: () => bridge.discover(),
+      scan: async (serviceUrl, inputSource, dpi, color, duplex, outputFormat, scanRequestId) => {
+        const result = await bridge.scan(serviceUrl, inputSource, dpi, color, duplex, outputFormat, scanRequestId);
+        nativeResultReturned = true;
+        return result;
+      },
+    };
+    const documents = await runWsdScan(trackingBridge, scanner, settings, async (uri) => {
+      try {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return base64ToBytes(base64);
+      } catch (error) {
+        localReadFailed = true;
+        throw error;
+      }
+    }, requestId);
+    if (latestState === "failed") throw new Error("The scanner reported a failed WSD job despite returning a result.");
+    publishStatus({ state: "completed" });
+    logEvent("scan", `WSD-only completed from ${scanner.address}`);
     return documents;
   } catch (error) {
     const cause = error instanceof Error ? error.message : String(error);
+    if (nativeResultReturned && (latestState !== "failed" || localReadFailed)) {
+      publishStatus({ state: "failed", message: cause, ...(localReadFailed ? { failureKind: "result-delivery" } : {}) });
+    } else if (latestState !== "failed" && latestState !== "awaiting-confirmation") {
+      publishStatus({ state: "awaiting-confirmation" });
+    }
     const message = `WSD scan failed for ${scanner.address}: ${cause}\nNext: confirm the phone and printer are on the same local Wi-Fi without client isolation, WSD Scan is enabled, paper is loaded, and the scanner is idle; check the printer panel for an error, then retry. No eSCL fallback was attempted.`;
     logEvent("scan", message);
     throw new Error(message);
+  } finally {
+    subscription.remove();
   }
 }
 

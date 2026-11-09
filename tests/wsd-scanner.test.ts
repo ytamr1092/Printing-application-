@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   runWsdScan,
+  scanFailureStatus,
   wsdScannerSetupHint,
   type WsdScannerBridge,
 } from "../shared/wsd-scanner";
@@ -32,9 +33,10 @@ describe("WSD scanner selection and local scan bridge", () => {
       selectedScanner,
       { dpi: 300, color: "bw", source: "adf", duplex: true, format: "pdf" },
       readLocalPage,
+      "scan-request-1",
     );
 
-    expect(bridge.scan).toHaveBeenCalledWith("http://192.168.1.102/wsd/scan", "ADF", 300, "bw", true, "jpg");
+    expect(bridge.scan).toHaveBeenCalledWith("http://192.168.1.102/wsd/scan", "ADF", 300, "bw", true, "jpg", "scan-request-1");
     expect(bridge.discover).not.toHaveBeenCalled();
     expect(readLocalPage).toHaveBeenCalledTimes(2);
     expect(Array.from(pages[0])).toEqual([255, 216, 255]);
@@ -47,7 +49,7 @@ describe("WSD scanner selection and local scan bridge", () => {
       scan: vi.fn(async () => ({ pages: [] })),
     };
     await expect(
-      runWsdScan(bridge, null as never, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, async () => new Uint8Array([1])),
+      runWsdScan(bridge, null as never, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, async () => new Uint8Array([1]), "scan-request-2"),
     ).rejects.toThrow("Choose a discovered WSD scanner");
     expect(bridge.scan).not.toHaveBeenCalled();
   });
@@ -60,7 +62,7 @@ describe("WSD scanner selection and local scan bridge", () => {
       }),
     };
     await expect(
-      runWsdScan(bridge, selectedScanner, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, async () => new Uint8Array([1])),
+      runWsdScan(bridge, selectedScanner, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, async () => new Uint8Array([1]), "scan-request-3"),
     ).rejects.toThrow("non-local file");
   });
 
@@ -69,5 +71,13 @@ describe("WSD scanner selection and local scan bridge", () => {
     expect(hint).toContain("UDP 3702");
     expect(hint).toContain("does not require Internet");
     expect(hint).not.toContain("192.168.1.102");
+  });
+
+  it("settles scan failures instead of retaining a stale connecting/completed state", () => {
+    expect(scanFailureStatus("connecting")).toBe("failed");
+    expect(scanFailureStatus("completed")).toBe("failed");
+    expect(scanFailureStatus("in-progress")).toBe("awaiting-confirmation");
+    expect(scanFailureStatus("awaiting-confirmation")).toBeNull();
+    expect(scanFailureStatus("failed")).toBeNull();
   });
 });
