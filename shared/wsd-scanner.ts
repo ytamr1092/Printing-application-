@@ -37,6 +37,17 @@ export type WsdScanPageFile = {
   size: number;
 };
 
+export type WsdScanTaskState = "connecting" | "in-progress" | "completed" | "failed" | "awaiting-confirmation";
+export type WsdScanTaskUpdate = { state: WsdScanTaskState; message?: string; failureKind?: "result-delivery" };
+export type WsdScanStatusEvent = WsdScanTaskUpdate & { requestId: string };
+
+/** Chooses a terminal UI state when a scan workflow throws outside its native status stream. */
+export function scanFailureStatus(lastState: WsdScanTaskState): "failed" | "awaiting-confirmation" | null {
+  if (lastState === "connecting" || lastState === "completed") return "failed";
+  if (lastState === "in-progress") return "awaiting-confirmation";
+  return null;
+}
+
 export type WsdScannerBridge = {
   discover(): Promise<WsdScannerDevice[]>;
   scan(
@@ -46,6 +57,7 @@ export type WsdScannerBridge = {
     color: "color" | "bw",
     duplex: boolean,
     outputFormat: "jpg" | "png",
+    requestId: string,
   ): Promise<{ pages: WsdScanPageFile[] }>;
 };
 
@@ -55,6 +67,7 @@ export async function runWsdScan(
   scanner: WsdScannerDevice,
   settings: EsclSettings,
   readLocalPage: (uri: string) => Promise<Uint8Array>,
+  requestId: string,
 ): Promise<Uint8Array[]> {
   if (!scanner?.serviceUrl || !scanner.address) {
     throw new Error("Choose a discovered WSD scanner before starting the scan.");
@@ -67,6 +80,7 @@ export async function runWsdScan(
     settings.color,
     settings.source === "adf" && settings.duplex,
     settings.format === "png" ? "png" : "jpg",
+    requestId,
   );
   if (!Array.isArray(result.pages) || result.pages.length === 0) {
     throw new Error("The local WSD scan returned no pages.");

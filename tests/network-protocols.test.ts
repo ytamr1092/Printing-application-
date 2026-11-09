@@ -7,6 +7,7 @@ const nativeWsd = vi.hoisted(() => ({
   discover: vi.fn(),
   scan: vi.fn(),
   readAsStringAsync: vi.fn(),
+  statusListener: null as null | ((event: { requestId: string; state: string; message?: string }) => void),
 }));
 
 vi.mock("react-native", () => ({
@@ -15,6 +16,12 @@ vi.mock("react-native", () => ({
       discover: nativeWsd.discover,
       scan: nativeWsd.scan,
     },
+  },
+  DeviceEventEmitter: {
+    addListener: vi.fn((_name: string, listener: (event: { requestId: string; state: string; message?: string }) => void) => {
+      nativeWsd.statusListener = listener;
+      return { remove: vi.fn() };
+    }),
   },
   Platform: { OS: "android" },
 }));
@@ -26,8 +33,8 @@ vi.mock("expo-file-system/legacy", () => ({
 
 import { clearEvents, getEvents } from "../shared/diagnostic-log";
 import { copy } from "../shared/copy";
-import { hasWsdScanService, WSD_SCAN_ELEMENT_NAMESPACE } from "../shared/wsd-scanner";
-import { readIppPrinterDevice, retainExplicitSelection, runSingleFlight } from "../shared/network-devices";
+import { hasWsdScanService, scanFailureStatus, WSD_SCAN_ELEMENT_NAMESPACE } from "../shared/wsd-scanner";
+import { readIppPrinterDevice, retainExplicitSelection, runSingleFlight, monitorIppPrintJob, printFailureStatus } from "../shared/network-devices";
 import {
   discoverDevices,
   discoverNetworkDevices,
@@ -99,6 +106,15 @@ describe("IPP", () => {
     expect(new TextDecoder().decode(query)).toContain("operations-supported");
     expect(new TextDecoder().decode(query)).not.toContain("application/pdf");
   });
+  it("builds a Get-Job-Attributes request for one job without requesting counters", () => {
+    const query = buildIppRequest(IPP_OPERATION.getJobAttributes, "ipp://192.168.1.50:631/ipp/print", { jobId: 42 });
+    const text = new TextDecoder().decode(query);
+    expect(Array.from(query.slice(0, 4))).toEqual([1, 1, 0, 9]);
+    expect(text).toContain("job-id");
+    expect(text).toContain("job-state");
+    expect(text).not.toMatch(/page-count|pages-printed|impressions-completed/);
+    expect(() => buildIppRequest(IPP_OPERATION.getJobAttributes, "ipp://printer", {})).toThrow("positive job-id");
+  });
 
   it("reads the status code and rejects non-IPP bodies", () => {
     expect(parseIppResponse(Uint8Array.from([1, 1, 0, 0, 0, 0, 0, 1, 3]))).toEqual({ statusCode: 0, ok: true });
@@ -126,6 +142,7 @@ describe("network devices", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    nativeWsd.statusListener = null;
     clearEvents();
   });
 
@@ -137,7 +154,7 @@ describe("network devices", () => {
     }));
     expect(await sendIppPrintJobToDevice({
       address: "10.0.0.9", ippPath: "/ipp/print", supportedOperations: [IPP_OPERATION.printJob], supportedFormats: ["application/pdf"], supportsPrint: true,
-    }, Uint8Array.from([1]), { mimeType: "application/pdf" })).toEqual({ status: "accepted" });
+    }, Uint8Array.from([1]), { mimeType: "application/pdf" })).toEqual({ status: "accepted", ippPath: "/ipp" });
     expect(calls).toEqual(["http://10.0.0.9:631/ipp/print", "http://10.0.0.9:631/ipp"]);
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
     expect(await sendIppPrintJobToDevice({
@@ -298,14 +315,77 @@ describe("network devices", () => {
     const calls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       calls.push(url);
-      return okIpp();
+      return ippAttributesResponse([{ tag: 0x21, name: "job-id", values: [42] }]);
     }));
     const result = await sendIppPrintJobToDevice({
       address: "192.168.1.55", ippPath: "/ipp/printer", supportedOperations: [IPP_OPERATION.printJob], supportedFormats: ["application/pdf"], supportsPrint: true,
     }, Uint8Array.from([1]), { mimeType: "application/pdf" });
 
-    expect(result).toEqual({ status: "accepted" });
+    expect(result).toEqual({ status: "accepted", ippPath: "/ipp/printer", jobId: 42 });
     expect(calls).toEqual(["http://192.168.1.55:631/ipp/printer"]);
+  });
+
+  it("polls only the accepted job and requires an explicit completed job-state", async () => {
+    const requestBodies: Uint8Array[] = [];
+    const updates: string[] = [];
+    let jobPolls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = init?.body as Uint8Array;
+      requestBodies.push(body);
+      const operation = (body[2] << 8) | body[3];
+      expect(operation).toBe(IPP_OPERATION.getJobAttributes);
+      jobPolls += 1;
+      return ippAttributesResponse([{ tag: 0x23, name: "job-state", values: [jobPolls === 1 ? 5 : 9] }]);
+    }));
+
+    const result = await monitorIppPrintJob(
+      { address: "192.168.1.55", ippPath: "/ipp/printer", supportedOperations: [IPP_OPERATION.getJobAttributes] },
+      42,
+      (update) => updates.push(update.jobState),
+      { pollIntervalMs: 0, maxDurationMs: 1000 },
+    );
+
+    expect(result.state).toBe("completed");
+    expect(updates).toEqual(["processing", "completed"]);
+    const query = new TextDecoder().decode(requestBodies[0]);
+    expect(query).toContain("job-state");
+    expect(query).not.toMatch(/page-count|pages-printed|impressions-completed/);
+  });
+
+  it("keeps completion unconfirmed when a printer does not return a usable job-state", async () => {
+    const fetchMock = vi.fn(async () => ippAttributesResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await monitorIppPrintJob(
+      { address: "192.168.1.55", ippPath: "/ipp/printer", supportedOperations: [IPP_OPERATION.getJobAttributes] },
+      42,
+      undefined,
+      { pollIntervalMs: 0, maxDurationMs: 1000 },
+    );
+    expect(result.state).toBe("unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    { value: 7, expected: "canceled" },
+    { value: 8, expected: "failed" },
+  ])("reports explicit IPP terminal state $value as $expected", async ({ value, expected }) => {
+    vi.stubGlobal("fetch", vi.fn(async () => ippAttributesResponse([{ tag: 0x23, name: "job-state", values: [value] }])));
+    const result = await monitorIppPrintJob(
+      { address: "192.168.1.55", ippPath: "/ipp/printer", supportedOperations: [IPP_OPERATION.getJobAttributes] },
+      42,
+      undefined,
+      { pollIntervalMs: 0, maxDurationMs: 1000 },
+    );
+    expect(result.state).toBe(expected);
+  });
+
+  it("does not query an untrusted public IP or accept an invalid job id", async () => {
+    const fetchMock = vi.fn(async () => ippAttributesResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(monitorIppPrintJob({ address: "8.8.8.8", ippPath: "/ipp/print", supportedOperations: [IPP_OPERATION.getJobAttributes] }, 42)).resolves.toEqual({ state: "unavailable" });
+    await expect(monitorIppPrintJob({ address: "192.168.1.55", ippPath: "/ipp/print", supportedOperations: [IPP_OPERATION.getJobAttributes] }, 0)).resolves.toEqual({ state: "unavailable" });
+    await expect(monitorIppPrintJob({ address: "192.168.1.55", ippPath: "/ipp/print", supportedOperations: [IPP_OPERATION.printJob] }, 42)).resolves.toEqual({ state: "unavailable" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("requires a destination-choice confirmation and discloses Android may change destinations", () => {
@@ -319,6 +399,9 @@ describe("network devices", () => {
     expect(copy.en.directPrintFallback).toContain("destination may differ from the selected printer");
     expect(copy.en.directPrintFallback).not.toContain("sent to the selected printer");
     expect(copy.en.systemPrintDialogOpened).toContain("choose the destination there");
+    expect(appSource).toContain("monitorIppPrintJob");
+    expect(appSource).not.toContain("Did the page print?");
+    expect(copy.en.printStatusHint).toContain("no page totals");
   });
 
   it("starts discovery on Print/Scan entry, keeps refresh, and exports no raw print bypass", () => {
@@ -343,32 +426,130 @@ describe("network devices", () => {
     expect(toolWorkflowSource).toContain("local IP address");
   });
 
+  it("does not report a pre-submission print error as possibly sent", () => {
+    expect(printFailureStatus(false)).toBe("failed");
+    expect(printFailureStatus(true)).toBe("awaiting-confirmation");
+    const continuePrint = appSource.match(/const continuePrint = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "";
+    const printDocument = appSource.match(/const printDocument = async \([\s\S]*?\n  \};/)?.[0] ?? "";
+    const ippSubmission = printDocument.slice(printDocument.indexOf("const ippTarget"));
+    expect(continuePrint).toContain("let submissionAttempted = false");
+    expect(continuePrint).toContain("printFailureStatus(submissionAttempted)");
+    expect(continuePrint).toContain("() => { submissionAttempted = true; }");
+    expect(ippSubmission.indexOf("if (ippTarget) onSubmissionAttempt?.();")).toBeLessThan(
+      ippSubmission.indexOf("await sendIppPrintJobToDevice"),
+    );
+  });
+
+  it("settles app scan errors that occur before a native status event or after native completion", () => {
+    expect(scanFailureStatus("connecting")).toBe("failed");
+    expect(scanFailureStatus("completed")).toBe("failed");
+    const startScan = appSource.match(/const startScan = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "";
+    const scanIdFace = appSource.match(/const scanIdFaceFromKyocera = async \(side: "front" \| "back"\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "";
+    for (const handler of [startScan, scanIdFace]) {
+      expect(handler).toContain("scanFailureStatus(latestScanState)");
+      expect(handler).toContain("if (failureState) updateScanTask({");
+      expect(handler).toContain('failureKind: "result-delivery"');
+    }
+    expect(appSource).toContain('update.failureKind === "result-delivery" ? t.scanResultReadFailed');
+  });
+
   it("scans only through the exact selected WSD service and reads locally saved page files", async () => {
-    nativeWsd.scan.mockResolvedValue({
-      pages: [{ uri: "file:///data/user/0/com.app.printpilotsmart/files/scan-01.jpg", name: "scan-01.jpg", mimeType: "image/jpeg", size: 2 }],
+    nativeWsd.scan.mockImplementation(async (_url: string, _source: string, _dpi: number, _color: string, _duplex: boolean, _format: string, requestId: string) => {
+      nativeWsd.statusListener?.({ requestId, state: "in-progress" });
+      return { pages: [{ uri: "file:///data/user/0/com.app.printpilotsmart/files/scan-01.jpg", name: "scan-01.jpg", mimeType: "image/jpeg", size: 2 }] };
     });
     nativeWsd.readAsStringAsync.mockResolvedValue("CQg=");
     const fetchMock = vi.fn(async () => { throw new Error("unexpected non-WSD network request"); });
     vi.stubGlobal("fetch", fetchMock);
 
+    const statuses: string[] = [];
     const pages = await runWsdNetworkScan({
       serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102",
     }, {
       dpi: 300, color: "bw", source: "adf", duplex: true, format: "jpg",
-    });
+    }, (update) => statuses.push(update.state));
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(nativeWsd.discover).not.toHaveBeenCalled();
-    expect(nativeWsd.scan).toHaveBeenCalledWith("http://192.168.1.102/wsd/scan", "ADF", 300, "bw", true, "jpg");
+    expect(nativeWsd.scan).toHaveBeenCalledWith("http://192.168.1.102/wsd/scan", "ADF", 300, "bw", true, "jpg", expect.any(String));
     expect(nativeWsd.readAsStringAsync).toHaveBeenCalledWith(
       "file:///data/user/0/com.app.printpilotsmart/files/scan-01.jpg",
       { encoding: "base64" },
     );
     expect(Array.from(pages[0])).toEqual([9, 8]);
     expect(getEvents().join("\n")).toContain("WSD-only completed");
+    expect(statuses).toEqual(["connecting", "in-progress", "completed"]);
   });
 
-  it("surfaces WSD faults with a next step and never falls back to eSCL", async () => {
+  it("fails local result delivery when the native completion event is missing", async () => {
+    nativeWsd.scan.mockImplementation(async () => {
+      return { pages: [{ uri: "file:///data/user/0/com.app.printpilotsmart/files/scan-01.jpg", name: "scan-01.jpg", mimeType: "image/jpeg", size: 2 }] };
+    });
+    nativeWsd.readAsStringAsync.mockRejectedValue(new Error("local page read failed"));
+
+    const updates: { state: string; failureKind?: string }[] = [];
+    await expect(
+      runWsdNetworkScan({ serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102" }, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, (update) => updates.push(update)),
+    ).rejects.toThrow(/local page read failed/);
+    expect(updates.map((update) => update.state)).toEqual(["connecting", "failed"]);
+    expect(updates.at(-1)).toMatchObject({ state: "failed", failureKind: "result-delivery" });
+  });
+
+  it("does not publish a delayed native completion event before local reads succeed", async () => {
+    let requestIdSeen = "";
+    nativeWsd.scan.mockImplementation(async (_url: string, _source: string, _dpi: number, _color: string, _duplex: boolean, _format: string, requestId: string) => {
+      requestIdSeen = requestId;
+      nativeWsd.statusListener?.({ requestId, state: "in-progress" });
+      return { pages: [{ uri: "file:///data/user/0/com.app.printpilotsmart/files/scan-01.jpg", name: "scan-01.jpg", mimeType: "image/jpeg", size: 2 }] };
+    });
+    nativeWsd.readAsStringAsync.mockImplementation(async () => {
+      nativeWsd.statusListener?.({ requestId: requestIdSeen, state: "completed" });
+      throw new Error("local page read failed after delayed completion event");
+    });
+
+    const updates: { state: string; failureKind?: string }[] = [];
+    await expect(
+      runWsdNetworkScan({ serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102" }, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, (update) => updates.push(update)),
+    ).rejects.toThrow(/local page read failed after delayed completion event/);
+    expect(updates.map((update) => update.state)).toEqual(["connecting", "in-progress", "failed"]);
+    expect(updates.at(-1)).toMatchObject({ state: "failed", failureKind: "result-delivery" });
+  });
+
+  it("ignores late events after Completed has been confirmed from the native result and local reads", async () => {
+    let requestIdSeen = "";
+    nativeWsd.scan.mockImplementation(async (_url: string, _source: string, _dpi: number, _color: string, _duplex: boolean, _format: string, requestId: string) => {
+      requestIdSeen = requestId;
+      nativeWsd.statusListener?.({ requestId, state: "in-progress" });
+      return { pages: [{ uri: "file:///data/user/0/com.app.printpilotsmart/files/scan-01.jpg", name: "scan-01.jpg", mimeType: "image/jpeg", size: 2 }] };
+    });
+    nativeWsd.readAsStringAsync.mockResolvedValue("CQg=");
+    const statuses: string[] = [];
+    await runWsdNetworkScan({ serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102" }, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, (update) => {
+      statuses.push(update.state);
+      if (update.state === "completed") {
+        nativeWsd.statusListener?.({ requestId: requestIdSeen, state: "failed" });
+        nativeWsd.statusListener?.({ requestId: requestIdSeen, state: "in-progress" });
+      }
+    });
+    expect(statuses).toEqual(["connecting", "in-progress", "completed"]);
+  });
+
+  it("preserves a terminal Failed state against later progress/completion events", async () => {
+    nativeWsd.scan.mockImplementation(async (_url: string, _source: string, _dpi: number, _color: string, _duplex: boolean, _format: string, requestId: string) => {
+      nativeWsd.statusListener?.({ requestId, state: "failed" });
+      nativeWsd.statusListener?.({ requestId, state: "in-progress" });
+      nativeWsd.statusListener?.({ requestId, state: "completed" });
+      return { pages: [{ uri: "file:///data/user/0/com.app.printpilotsmart/files/scan-01.jpg", name: "scan-01.jpg", mimeType: "image/jpeg", size: 2 }] };
+    });
+    nativeWsd.readAsStringAsync.mockResolvedValue("CQg=");
+    const statuses: string[] = [];
+    await expect(
+      runWsdNetworkScan({ serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102" }, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, (update) => statuses.push(update.state)),
+    ).rejects.toThrow(/reported a failed WSD job/);
+    expect(statuses).toEqual(["connecting", "failed"]);
+  });
+
+  it("settles a WSD fault before a native status event and never falls back to eSCL", async () => {
     nativeWsd.discover.mockResolvedValue([
       { serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102" },
     ]);
@@ -376,11 +557,14 @@ describe("network devices", () => {
     const fetchMock = vi.fn(async () => { throw new Error("unexpected eSCL fallback"); });
     vi.stubGlobal("fetch", fetchMock);
 
+    const statuses: string[] = [];
     await expect(
-      runWsdNetworkScan({ serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102" }, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }),
+      runWsdNetworkScan({ serviceUrl: "http://192.168.1.102/wsd/scan", name: "Kyocera", address: "192.168.1.102" }, { dpi: 300, color: "color", source: "glass", duplex: false, format: "jpg" }, (update) => statuses.push(update.state)),
     ).rejects.toThrow(/WSD CreateScanJob HTTP 500: Scanner busy[\s\S]*Next:[\s\S]*No eSCL fallback was attempted/);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getEvents().join("\n")).toContain("No eSCL fallback was attempted");
+    expect(statuses).toEqual(["connecting", "awaiting-confirmation"]);
+    expect(statuses.at(-1)).not.toBe("connecting");
   });
 
   it("returns an empty combined result while keeping discovery limited to local IPP and WSD", async () => {

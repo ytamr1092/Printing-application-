@@ -52,4 +52,15 @@ describe("WSD Scan SOAP contract", () => {
     expect(androidModule).toContain("the partial scan was discarded");
     expect(androidModule).not.toMatch(/documentNames\.take\(50\)/);
   });
+
+  it("emits correlated scan-state events and keeps ambiguous outcomes unconfirmed", () => {
+    const statusEmitter = androidModule.match(/private fun emitScanStatus[\s\S]*?\n  }/)?.[0] ?? "";
+    expect(androidModule).toContain('emitScanStatus(requestId, "in-progress")');
+    expect(androidModule).toContain('emitScanStatus(requestId, "completed")');
+    expect(androidModule).toContain('if (error is WsdTerminalScanFailure) "failed" else "awaiting-confirmation"');
+    expect(androidModule).toContain('emit("PrintPilotWsdScanStatus", payload)');
+    expect(statusEmitter).toContain('putString("requestId", requestId)');
+    expect(statusEmitter).toContain('putString("state", state)');
+    expect(statusEmitter).not.toMatch(/pageCount|pagesPrinted|ScansCompleted/);
+  });
 });
