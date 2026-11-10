@@ -73,7 +73,7 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
         val isFeeder = inputSource.equals("ADF", true) || inputSource.equals("Feeder", true)
         val source = if (!isFeeder) "Platen" else if (duplex) "ADFDuplex" else "ADF"
         val processing = if (color.equals("bw", true) || color.equals("black-and-white", true)) "Grayscale8" else "RGB24"
-        val created = soap(endpoint, "CreateScanJob", createJobRequest(source, resolution, processing, duplex))
+        val created = createScanJobWithRetry(endpoint, createJobRequest(source, resolution, processing, duplex))
         jobId = findText(created, "JobId") ?: run {
           val fault = scannerFault(created)
           if (fault != null) throw WsdTerminalScanFailure(fault)
@@ -245,6 +245,31 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
   """.trimIndent()
 
   private data class HttpResult(val bytes: ByteArray, val contentType: String)
+
+  /**
+   * Kyocera returns SOAP fault ServerErrorNotAcceptingJobs ("temporarily blocked") while it is busy,
+   * e.g. right after a print job. The scan did not start, so waiting and retrying is safe.
+   */
+  private fun createScanJobWithRetry(endpoint: String, body: String): Document {
+    var attempt = 0
+    while (true) {
+      try {
+        return soap(endpoint, "CreateScanJob", body)
+      } catch (error: IllegalStateException) {
+        val text = error.message.orEmpty()
+        val busy = text.contains("NotAcceptingJobs", true) || text.contains("temporarily blocked", true)
+        if (!busy) throw error
+        attempt += 1
+        if (attempt >= 5) {
+          throw WsdTerminalScanFailure(
+            "The scanner is busy and refused the job (ServerErrorNotAcceptingJobs) even after several retries. " +
+              "Wait until the printer finishes any print job, make sure its screen is idle (no menu or error), then try again.",
+          )
+        }
+        Thread.sleep(4000)
+      }
+    }
+  }
 
   private fun soap(url: String, operation: String, body: String): Document = parseXml(soapBytes(url, operation, body).bytes)
 
