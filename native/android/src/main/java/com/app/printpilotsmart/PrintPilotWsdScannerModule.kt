@@ -439,12 +439,22 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
   }
 
   private fun parseXml(bytes: ByteArray): Document {
+    // WSD/SOAP messages never carry a DTD. Android's DOM parser does not support the Xerces
+    // "disallow-doctype-decl" feature (it throws), so DTDs/entities are rejected up front instead.
+    val head = String(bytes, Charsets.ISO_8859_1)
+    if (head.contains("<!DOCTYPE", true) || head.contains("<!ENTITY", true)) {
+      throw IllegalArgumentException("XML with a DTD or entity declaration is not accepted")
+    }
     val factory = DocumentBuilderFactory.newInstance().apply {
       isNamespaceAware = true
-      setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-      setFeature("http://xml.org/sax/features/external-general-entities", false)
-      setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-      setExpandEntityReferences(false)
+      // Best-effort hardening only: unsupported features must not make discovery fail.
+      for (feature in listOf(
+        "http://xml.org/sax/features/external-general-entities",
+        "http://xml.org/sax/features/external-parameter-entities",
+      )) {
+        try { setFeature(feature, false) } catch (_: Throwable) { }
+      }
+      try { setExpandEntityReferences(false) } catch (_: Throwable) { }
     }
     return factory.newDocumentBuilder().parse(bytes.inputStream())
   }
