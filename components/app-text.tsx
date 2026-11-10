@@ -29,27 +29,19 @@ function flattenStyle(style: unknown): Record<string, unknown> {
   return merged;
 }
 
-function weightValue(weight: unknown) {
-  if (weight === "bold") return 700;
-  if (typeof weight === "number") return weight;
-  const parsed = typeof weight === "string" ? Number(weight) : NaN;
-  return Number.isFinite(parsed) ? parsed : 400;
-}
-
 /**
  * Applies the app font on top of whatever style a screen passes in.
  * - An explicit fontFamily (an icon font, the display font) still wins.
- * - The weight picks the font file (400 regular, 500-700 bold, 800+ black); fontWeight itself
- *   is reset so Android does not add a second, synthetic bold.
+ * - Weights are ignored: everything uses the regular file (no bold).
  * - letterSpacing is reset because spacing breaks Arabic letters apart.
  */
 export function withAppFont(style: unknown) {
   const flat = flattenStyle(style);
-  const weight = weightValue(flat.fontWeight);
-  const family = weight >= 800 ? APP_FONT_BLACK_FAMILY : weight >= 600 ? APP_FONT_BOLD_FAMILY : APP_FONT_FAMILY;
+  // Bold/black files are intentionally not used: every weight renders as the regular file
+  // (the user finds the heavy weights tiring to read). fontWeight is reset so Android adds no fake bold.
   return {
     ...flat,
-    fontFamily: flat.fontFamily ?? family,
+    fontFamily: flat.fontFamily ?? APP_FONT_FAMILY,
     fontWeight: "normal",
     letterSpacing: 0,
   };
