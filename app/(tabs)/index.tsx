@@ -1408,10 +1408,10 @@ export default function HomeScreen() {
       await FileSystem.writeAsStringAsync(reportUri, report, { encoding: FileSystem.EncodingType.UTF8 });
       setDiagnosisReportUri(reportUri);
       setOperationProgress(null);
-      showError("Diagnosis", `${lines.join("\n")}\n\n${isArabic ? "التقرير جاهز: اضغط مشاركة التقرير" : "Report ready: tap Share report"}`);
+      showError(t.diagnosisTitle, `${lines.join("\n")}\n\n${t.diagnosisReady}`);
     } catch (error) {
       setOperationProgress(null);
-      showError("Diagnosis", `error: ${error instanceof Error ? error.message : "unknown"}`);
+      showError(t.diagnosisTitle, `${isArabic ? "حدث خطأ: " : "Error: "}${error instanceof Error ? error.message : "unknown"}`);
     } finally {
       setDiscovering(false);
     }
@@ -1428,14 +1428,14 @@ export default function HomeScreen() {
   const copyDiagnosisReport = async () => {
     if (!diagnosisReportText) return;
     await Clipboard.setStringAsync(diagnosisReportText);
-    if (Platform.OS === "android") ToastAndroid.show(isArabic ? "تم نسخ التقرير" : "Report copied", ToastAndroid.SHORT);
+    if (Platform.OS === "android") ToastAndroid.show(t.diagnosisCopied, ToastAndroid.SHORT);
   };
 
   const clearDiagnosticHistory = () => {
     clearEvents();
     setDiagnosisReportText("");
     setDiagnosisReportUri(null);
-    if (Platform.OS === "android") ToastAndroid.show(isArabic ? "تم مسح سجل التشخيص" : "Diagnosis history cleared", ToastAndroid.SHORT);
+    if (Platform.OS === "android") ToastAndroid.show(t.diagnosisHistoryCleared, ToastAndroid.SHORT);
   };
 
   // Brings scanned images made by another app (e.g. the printer maker's) into the scan review window.
@@ -3456,15 +3456,15 @@ export default function HomeScreen() {
             style={[
               styles.errorBanner,
               {
-                backgroundColor: colorScheme === "dark" ? "#3A2026" : "#FFF1F1",
-                borderColor: colorScheme === "dark" ? "#A94B5C" : "#E7A4A9",
+                backgroundColor: colors.error + "14",
+                borderColor: colors.error + "55",
                 flexDirection: isArabic ? "row-reverse" : "row",
               },
             ]}
           >
             <Icon
               name="error-outline"
-              color={colorScheme === "dark" ? "#FF9AAA" : "#B42332"}
+              color={colors.error}
               size={21}
             />
             <View style={styles.errorCopy}>
@@ -3472,7 +3472,7 @@ export default function HomeScreen() {
                 style={[
                   styles.errorTitle,
                   {
-                    color: colorScheme === "dark" ? "#FFD9DE" : "#8E1C29",
+                    color: colors.error,
                     textAlign: isArabic ? "right" : "left",
                   },
                 ]}
@@ -3483,7 +3483,7 @@ export default function HomeScreen() {
                 style={[
                   styles.errorHint,
                   {
-                    color: colorScheme === "dark" ? "#F4BFC7" : "#7C3B43",
+                    color: colors.muted,
                     textAlign: isArabic ? "right" : "left",
                   },
                 ]}
@@ -3494,7 +3494,7 @@ export default function HomeScreen() {
             <Pressable onPress={() => setErrorMessage(null)}>
               <Icon
                 name="close"
-                color={colorScheme === "dark" ? "#FFB2BF" : "#8E1C29"}
+                color={colors.error}
                 size={19}
               />
             </Pressable>
@@ -3543,7 +3543,7 @@ export default function HomeScreen() {
               icon="picture-as-pdf"
               title={t.workspacePdf}
               hint={t.workspacePdfHint}
-              color="#2563EB"
+              color={colors.primary}
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => setWorkspace("pdf")}
@@ -3552,7 +3552,7 @@ export default function HomeScreen() {
               icon="print"
               title={t.workspacePrint}
               hint={t.workspacePrintHint}
-              color="#8B5CF6"
+              color={colors.accent}
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => startTool("print")}
@@ -3561,7 +3561,7 @@ export default function HomeScreen() {
               icon="document-scanner"
               title={t.workspaceScan}
               hint={t.workspaceScanHint}
-              color="#F59E0B"
+              color={colors.accentBright}
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => enterWorkspace("scan")}
@@ -3570,7 +3570,7 @@ export default function HomeScreen() {
               icon="badge"
               title={t.workspaceId}
               hint={t.workspaceIdHint}
-              color="#10B981"
+              color={colors.success}
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => startTool("id")}
@@ -3579,7 +3579,7 @@ export default function HomeScreen() {
               icon="folder-special"
               title={t.workspaceResults}
               hint={t.workspaceResultsHint}
-              color="#EF4444"
+              color={colors.primary}
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => setWorkspace("results")}
@@ -3588,7 +3588,7 @@ export default function HomeScreen() {
               icon="auto-awesome"
               title={t.workspaceAi}
               hint={t.workspaceAiHint}
-              color="#EC4899"
+              color={colors.accentBright}
               textColor={readableText}
               mutedColor={readableMuted}
               onPress={() => setWorkspace("ai")}
@@ -6220,7 +6220,7 @@ export default function HomeScreen() {
                 >
                   <Icon name="search" color={colors.foreground} size={18} />
                   <Text style={[styles.printButtonText, { color: colors.foreground }]}>
-                    {isArabic ? "تشخيص الطابعة والسكانر" : "Diagnose printer & scanner"}
+                    {t.diagnosisTitle}
                   </Text>
                 </Pressable>
                 {diagnosisReportUri && (
@@ -6232,7 +6232,7 @@ export default function HomeScreen() {
                     >
                       <Icon name="share" color={colors.success} size={18} />
                       <Text style={[styles.printButtonText, { color: colors.success }]}>
-                        {isArabic ? "إرسال آخر تقرير تشخيص" : "Share latest diagnosis report"}
+                        {t.diagnosisReportShare}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -6242,7 +6242,7 @@ export default function HomeScreen() {
                     >
                       <Icon name="content-copy" color={colors.foreground} size={18} />
                       <Text style={[styles.printButtonText, { color: colors.foreground }]}>
-                        {isArabic ? "نسخ التقرير" : "Copy report"}
+                        {t.diagnosisReportCopy}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -6252,7 +6252,7 @@ export default function HomeScreen() {
                     >
                       <Icon name="delete-outline" color={colors.muted} size={18} />
                       <Text style={[styles.printButtonText, { color: colors.muted }]}>
-                        {isArabic ? "مسح سجل التشخيص" : "Clear diagnosis history"}
+                        {t.diagnosisHistoryClear}
                       </Text>
                     </Pressable>
                   </>
@@ -6268,7 +6268,7 @@ export default function HomeScreen() {
                 >
                   <Icon name="search" color={colors.foreground} size={18} />
                   <Text style={[styles.printButtonText, { color: colors.foreground }]}>
-                    {isArabic ? "استيراد صور ممسوحة من الهاتف" : "Import scanned images from phone"}
+                    {t.importScans}
                   </Text>
                 </Pressable>
                 <View
@@ -6330,7 +6330,7 @@ export default function HomeScreen() {
                         fontSize: FONT_SIZE.secondary,
                       }}
                     >
-                      {t.scanDuplex}: {scannerDuplex ? "ON" : "OFF"}
+                      {t.scanDuplex}: {scannerDuplex ? t.enabled : t.disabled}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -6347,7 +6347,7 @@ export default function HomeScreen() {
                         fontSize: FONT_SIZE.secondary,
                       }}
                     >
-                      {t.deskew}: {scannerDeskew ? "ON" : "OFF"}
+                      {t.deskew}: {scannerDeskew ? t.enabled : t.disabled}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -6366,7 +6366,7 @@ export default function HomeScreen() {
                         fontSize: FONT_SIZE.secondary,
                       }}
                     >
-                      {t.removeBlanks}: {scannerBlankPages ? "ON" : "OFF"}
+                      {t.removeBlanks}: {scannerBlankPages ? t.enabled : t.disabled}
                     </Text>
                   </Pressable>
                 </View>
@@ -6395,7 +6395,7 @@ export default function HomeScreen() {
                   <Text style={[styles.workspaceHint, { color: colors.muted }]}>
                     {t.dpi}: {scannerDpi} ·{" "}
                     {scannerColor === "color" ? t.scanColor : t.scanBw} ·{" "}
-                    {t.adf}: {scannerAdf ? "ON" : "OFF"}
+                    {t.adf}: {scannerAdf ? t.enabled : t.disabled}
                   </Text>
                 </View>
                 {scanPages.length > 0 && !scanReviewOpen ? (
@@ -6881,8 +6881,8 @@ const styles = StyleSheet.create({
   errorCopy: { flex: 1 },
   errorTitle: { fontSize: FONT_SIZE.label, fontWeight: "800" },
   errorHint: { fontSize: FONT_SIZE.secondary, marginTop: 3, lineHeight: LINE_HEIGHT.secondary },
-  workspaceShell: { paddingTop: 6, paddingBottom: 24, gap: 14 },
-  workspaceHeader: { alignItems: "center", gap: 10, marginBottom: 4 },
+  workspaceShell: { paddingTop: 8, paddingBottom: 28, gap: 16 },
+  workspaceHeader: { alignItems: "center", gap: 12, marginBottom: 6 },
   backButton: {
     minHeight: 40,
     borderRadius: 11,
@@ -6895,7 +6895,7 @@ const styles = StyleSheet.create({
   backButtonText: { fontSize: FONT_SIZE.secondary, fontWeight: "800" },
   workspaceHeading: { flex: 1, alignItems: "flex-end", gap: 3 },
   workspaceTitle: { fontFamily: DISPLAY_FONT_FAMILY, fontSize: 38, lineHeight: 52 },
-  workspaceHint: { fontSize: FONT_SIZE.secondary, lineHeight: LINE_HEIGHT.secondary },
+  workspaceHint: { fontSize: FONT_SIZE.secondary, lineHeight: LINE_HEIGHT.secondary + 2 },
   workspaceSectionLabel: {
     fontSize: FONT_SIZE.body,
     fontWeight: "900",
@@ -6924,8 +6924,8 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHT.secondary,
     textAlign: "right",
   },
-  workspacePanel: { gap: 12 },
-  advancedCard: { borderRadius: 14, borderWidth: 1, padding: 12, gap: 9 },
+  workspacePanel: { gap: 14 },
+  advancedCard: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
   advancedTitle: { fontSize: FONT_SIZE.body, fontWeight: "900", textAlign: "right" },
   settingLabel: { fontSize: FONT_SIZE.secondary, fontWeight: "800", textAlign: "right", gap: 3 },
   settingPills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -6986,8 +6986,8 @@ const styles = StyleSheet.create({
   workspacePreviewCard: {
     borderRadius: 16,
     borderWidth: 1,
-    padding: 15,
-    gap: 9,
+    padding: 16,
+    gap: 11,
   },
   workspacePreviewTitle: {
     fontSize: FONT_SIZE.subtitle,
@@ -7003,13 +7003,13 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   workspacePrimary: {
-    minHeight: 44,
+    minHeight: 46,
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 7,
-    paddingHorizontal: 13,
+    gap: 9,
+    paddingHorizontal: 14,
   },
   hero: {
     borderRadius: 22,
@@ -7020,7 +7020,7 @@ const styles = StyleSheet.create({
   },
   heroCopy: { flex: 1, gap: 5 },
   heroKicker: {
-    color: "#BFE8F2",
+    color: "#F0C978",
     fontWeight: "700",
     fontSize: FONT_SIZE.secondary,
     letterSpacing: 0.7,
@@ -7137,8 +7137,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  actionTitle: { color: "#111111", fontSize: FONT_SIZE.body, fontWeight: "800" },
-  actionHint: { color: "#6A7E91", fontSize: FONT_SIZE.secondary, marginTop: 4 },
+  actionTitle: { color: "#102033", fontSize: FONT_SIZE.body, fontWeight: "800" },
+  actionHint: { color: "#52657A", fontSize: FONT_SIZE.secondary, marginTop: 4 },
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
   rowPressed: { opacity: 0.65 },
   filesCard: {

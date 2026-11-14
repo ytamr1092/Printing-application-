@@ -33,7 +33,7 @@ export function ScanPagePreview({ visible, pages, isArabic, onClose }: Props) {
           {pages.map((page, index) => {
             const sideways = page.rotation === 90 || page.rotation === 270;
             return (
-              <View key={page.id} style={[styles.page, { width, height, borderColor: colors.border, backgroundColor: "#fff" }]}>
+              <View key={page.id} style={[styles.page, { width, height, borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <Image
                   resizeMethod="resize"
                   accessibilityLabel={isArabic ? `الصفحة ${index + 1}` : `Page ${index + 1}`}
@@ -59,6 +59,6 @@ const styles = StyleSheet.create({
   bar: { height: 56, alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   title: { fontSize: FONT_SIZE.subtitle, fontWeight: "900" },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  content: { padding: 12, gap: 12, alignItems: "center" },
+  content: { padding: 14, gap: 16, alignItems: "center" },
   page: { borderWidth: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
 });

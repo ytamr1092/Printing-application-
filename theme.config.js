@@ -1,14 +1,17 @@
 /** @type {const} */
 const themeColors = {
-  primary: { light: '#2563EB', dark: '#3B82F6' },
-  // Solid blue behind white text (buttons, selected chips). Primary itself is lighter in dark
-  // mode so it reads as text and icons on near-black, which is too light for white text.
+  primary: { light: '#2563EB', dark: '#60A5FA' },
+  // Solid blue behind white text (buttons and selected chips).
   primaryFill: { light: '#2563EB', dark: '#2563EB' },
-  background: { light: '#F2F2F2', dark: '#0D0D0D' },
-  surface: { light: '#FFFFFF', dark: '#1A1A1A' },
-  foreground: { light: '#111111', dark: '#F2F2F2' },
-  muted: { light: '#5F5F5F', dark: '#A0A0A0' },
-  border: { light: '#BDBDBD', dark: '#444444' },
+  // Restrained gold signature accents for the Arabic identity and hero details.
+  accent: { light: '#B8863B', dark: '#D6A85F' },
+  accentBright: { light: '#9A6B22', dark: '#F0C978' },
+  background: { light: '#F4F7FB', dark: '#0B1220' },
+  surface: { light: '#FFFFFF', dark: '#122033' },
+  surfaceRaised: { light: '#F8FAFD', dark: '#182A40' },
+  foreground: { light: '#102033', dark: '#F5F7FA' },
+  muted: { light: '#52657A', dark: '#A9B8C8' },
+  border: { light: '#D7E0EA', dark: '#29415C' },
   success: { light: '#147A37', dark: '#22C55E' },
   warning: { light: '#A84F0A', dark: '#FBBF24' },
   error: { light: '#B91C1C', dark: '#F87171' },
