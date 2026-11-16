@@ -5,6 +5,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useColors } from "@/hooks/use-colors";
 import { devicesForTask, type NetworkPrinterDevice } from "@/shared/network-devices";
 import { copy } from "@/shared/copy";
+import { styles } from "./home-styles";
 import type { OperationProgress } from "./home-types";
 
 export function Icon({
