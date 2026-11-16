@@ -64,6 +64,13 @@ vi.mock("@/components/pdf-document-preview", async () => {
 import { PageGridEditor } from "../components/page-grid-editor";
 import { ToolWorkflowScreen } from "../components/tool-workflow-screen";
 
+/** The home screen is split across several files; source-level assertions read them together. */
+const readHomeSource = () =>
+  ["app/(tabs)/index.tsx", "components/home/home-parts.tsx", "components/home/home-styles.ts", "components/home/home-types.ts"]
+    .map((file) => readFileSync(path.resolve(process.cwd(), file), "utf8"))
+    .join("\n");
+
+
 const firstFile = {
   uri: "file:///contract.pdf",
   name: "contract.pdf",
@@ -401,7 +408,7 @@ describe("tool workflow UI", () => {
   });
 
   it("keeps picker cancellation non-destructive and carries image rotation into generated PDFs", () => {
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     const selectionStart = appSource.indexOf("const selectFilesFor = async");
     const selectionEnd = appSource.indexOf("const executeMergePdfs", selectionStart);
     const selectionSource = appSource.slice(selectionStart, selectionEnd);
@@ -413,7 +420,7 @@ describe("tool workflow UI", () => {
   });
 
   it("keeps Android back inside the app and makes keyboard-covered fields scrollable", () => {
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     const screenSource = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
     expect(appSource).toMatch(/hardwareBackPress[\s\S]*?if \(previewKind\)[\s\S]*?closeTool\(\)[\s\S]*?if \(workspace !== "home"\)[\s\S]*?setWorkspace\("home"\)[\s\S]*?return false/);
     expect(appSource).toContain("keyboardDidShow");
@@ -426,7 +433,7 @@ describe("tool workflow UI", () => {
   });
 
   it("contains no modal or bottom-sheet component in the tool navigation path", () => {
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     const screenSource = readFileSync(path.resolve(process.cwd(), "components/tool-workflow-screen.tsx"), "utf8");
     expect(appSource).not.toMatch(/<Modal\b/);
     expect(screenSource).not.toMatch(/<Modal\b|BottomSheet/);
@@ -538,7 +545,7 @@ describe("tool workflow UI: separate save and share, isolated tools", () => {
   });
 
   it("clears each tool's files, preview and results when leaving it, and asks twice before exiting", () => {
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     const closeStart = appSource.indexOf("const closeTool = () => {");
     const closeSource = appSource.slice(closeStart, appSource.indexOf("useEffect(", closeStart));
     for (const call of [
@@ -883,7 +890,7 @@ describe("page grid window", () => {
   });
 
   it("extracts the selected PDF pages into a new file without touching the editor", () => {
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     const start = appSource.indexOf("const extractGridSelected = async () => {");
     expect(start).toBeGreaterThan(-1);
     const body = appSource.slice(start, appSource.indexOf("const pageThumbsRef", start));
@@ -966,13 +973,13 @@ describe("page grid window", () => {
     expect(render({ printNumbering: true })).toContain("صيغة الرقم");
     const image = { uri: "file:///a.jpg", name: "a.jpg", mimeType: "image/jpeg" };
     expect(render({}, image)).not.toContain("ترقيم الصفحات عند الطباعة");
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     expect(appSource).toContain("applyNumbering(document, StandardFonts, rgb)");
     expect(appSource).toContain("setPrintNumbering(false);");
   });
 
   it("is wired into the app: the phone back button closes the window before the tool", () => {
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     expect(appSource).toContain("<PageGridEditor");
     expect(appSource).toContain("onOpenPageGrid=");
     const backStart = appSource.indexOf('"hardwareBackPress"');
@@ -984,7 +991,7 @@ describe("page grid window", () => {
   });
 
   it("is available in every PDF tool, with select-only grids where order cannot change", () => {
-    const appSource = readFileSync(path.resolve(process.cwd(), "app/(tabs)/index.tsx"), "utf8");
+    const appSource = readHomeSource();
     expect(appSource).toContain('previewKind && pageGridOpen && previewKind !== "id"');
     expect(appSource).toContain("const openPageGrid = async");
     expect(appSource).toContain("const applyGridSelection = async");

@@ -45,7 +45,9 @@ import {
   sendIppPrintJobToDevice,
 } from "../shared/network-devices";
 
-const appSource = readFileSync(fileURLToPath(new NodeURL("../app/(tabs)/index.tsx", import.meta.url)), "utf8");
+const appSource = ["../app/(tabs)/index.tsx", "../components/home/home-parts.tsx", "../components/home/home-styles.ts", "../components/home/home-types.ts"]
+  .map((file) => readFileSync(fileURLToPath(new NodeURL(file, import.meta.url)), "utf8"))
+  .join("\n");
 const rawPrintSource = readFileSync(fileURLToPath(new NodeURL("../shared/raw-print.ts", import.meta.url)), "utf8");
 const toolWorkflowSource = readFileSync(fileURLToPath(new NodeURL("../components/tool-workflow-screen.tsx", import.meta.url)), "utf8");
 
