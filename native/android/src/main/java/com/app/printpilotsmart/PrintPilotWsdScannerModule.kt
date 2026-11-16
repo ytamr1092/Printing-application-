@@ -246,6 +246,21 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
 
   private data class HttpResult(val bytes: ByteArray, val contentType: String)
 
+  /** Best-effort WSD GetScannerElements(ScannerStatus) summary used only to explain a refusal. */
+  private fun scannerStatusSummary(endpoint: String): String = try {
+    val doc = soap(
+      endpoint,
+      "GetScannerElements",
+      "<wscn:GetScannerElementsRequest><wscn:RequestedElements><wscn:Name>wscn:ScannerStatus</wscn:Name></wscn:RequestedElements></wscn:GetScannerElementsRequest>",
+    )
+    val state = findText(doc, "ScannerState") ?: "unknown"
+    val reasons = findTexts(doc, "ScannerStateReason").joinToString(",").ifBlank { "none" }
+    val active = findElements(doc, "JobSummary").size
+    "state=$state, reasons=$reasons, activeJobs=$active"
+  } catch (error: Throwable) {
+    "unavailable (${error.message?.take(80)})"
+  }
+
   /**
    * Kyocera returns SOAP fault ServerErrorNotAcceptingJobs ("temporarily blocked") while it is busy,
    * e.g. right after a print job. The scan did not start, so waiting and retrying is safe.
@@ -262,8 +277,9 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
         attempt += 1
         if (attempt >= 5) {
           throw WsdTerminalScanFailure(
-            "The scanner is busy and refused the job (ServerErrorNotAcceptingJobs) even after several retries. " +
-              "Wait until the printer finishes any print job, make sure its screen is idle (no menu or error), then try again.",
+            "The scanner refused the job (ServerErrorNotAcceptingJobs) even after several retries. " +
+              "Scanner status: ${scannerStatusSummary(endpoint)}. " +
+              "Turn the printer off and on to clear any stuck scan job, make sure its screen is idle (no menu or error), then try again.",
           )
         }
         Thread.sleep(4000)
