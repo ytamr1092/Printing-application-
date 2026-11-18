@@ -279,7 +279,8 @@ class PrintPilotWsdScannerModule(private val context: ReactApplicationContext) :
           throw WsdTerminalScanFailure(
             "The scanner refused the job (ServerErrorNotAcceptingJobs) even after several retries. " +
               "Scanner status: ${scannerStatusSummary(endpoint)}. " +
-              "Turn the printer off and on to clear any stuck scan job, make sure its screen is idle (no menu or error), then try again.",
+              "Check the printer screen for an active job, paper/feed issue, or error and resolve it from the device panel. " +
+              "Avoid power-cycling while a job is active; retry the scan once the scanner is idle.",
           )
         }
         Thread.sleep(4000)
